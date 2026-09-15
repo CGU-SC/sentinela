@@ -67,7 +67,7 @@ const crmKpiTooltips = Object.freeze({
   ),
   fraudeCrm: createCrmKpiTooltip(
     'Fraudes CRM',
-    'Quantidade de CRMs com inconsistência cadastral ou temporal na base do Conselho Federal de Medicina: CRM inexistente ou prescrição anterior ao registro oficial.',
+    'Quantidade de CRMs com inconsistência cadastral ou temporal na base do Conselho Federal de Medicina: CRM não localizado ou prescrição anterior ao registro oficial.',
     'O valor financeiro em destaque representa o montante associado às ocorrências identificadas.'
   ),
   distancia: createCrmKpiTooltip(
@@ -233,7 +233,7 @@ const crmKpiTooltips = Object.freeze({
       <div class="alert-kpi-body">
         <div class="alert-kpi-val-row">
           <span class="alert-kpi-val">{{ kpiData.totalIrregularesCfm }}</span>
-          <span class="alert-kpi-val-sub">{{ kpiData.qtdCrmInvalido }} Inexistentes | {{ kpiData.qtdPrescrAntesRegistro }} Irregulares</span>
+          <span class="alert-kpi-val-sub">{{ kpiData.qtdCrmInvalido }} Não localizados | {{ kpiData.qtdPrescrAntesRegistro }} Irregulares</span>
         </div>
         <span class="alert-kpi-hint">
           <strong style="color: var(--risk-high)">

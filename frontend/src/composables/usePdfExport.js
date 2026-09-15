@@ -1019,7 +1019,7 @@ export function usePdfExport() {
             { label: '>30 PRESCRIÇÕES/DIA NESTE CNPJ', val: String(kpis.qtdPrescrIntensivaLocal   || 0),               color: kpis.qtdPrescrIntensivaLocal  > 0  ? red    : green, subtitle: 'Na unidade local' },
             { label: '>30 PRESCRIÇÕES/DIA NO BRASIL',  val: String(kpis.qtdPrescrIntensivaOcultos || 0),               color: kpis.qtdPrescrIntensivaOcultos > 0 ? red    : green, subtitle: 'Soma de todo o Brasil' },
             { label: 'MULTI-FARMÁCIA',                  val: String(kpis.qtdMultiFarmacia          || 0),               color: kpis.qtdMultiFarmacia         > 0  ? red    : green, subtitle: 'CRMs com registro em > 70 farmácias distintas' },
-            { label: 'FRAUDES CRM',                     val: String(kpis.totalIrregularesCfm       || 0),               color: kpis.totalIrregularesCfm      > 0  ? red    : green, subtitle: `${kpis.qtdCrmInvalido || 0} Inexist. | ${kpis.qtdPrescrAntesRegistro || 0} Irreg. | ${formatCurrencyFull((summary2.vl_crm_invalido || 0) + (summary2.vl_crm_antes_registro || 0))}` },
+            { label: 'FRAUDES CRM',                     val: String(kpis.totalIrregularesCfm       || 0),               color: kpis.totalIrregularesCfm      > 0  ? red    : green, subtitle: `${kpis.qtdCrmInvalido || 0} Não localizados | ${kpis.qtdPrescrAntesRegistro || 0} Irreg. | ${formatCurrencyFull((summary2.vl_crm_invalido || 0) + (summary2.vl_crm_antes_registro || 0))}` },
             { label: 'DISTÂNCIA (>400KM)',              val: String(kpis.qtdAcima400km             || 0),               color: kpis.qtdAcima400km            > 0  ? orange : green, subtitle: 'Prescrições em locais distantes' },
           ];
 
@@ -1054,7 +1054,7 @@ export function usePdfExport() {
             if (m.flag_robo > 0) issues.push('>30 presc/dia local');
             if (m.flag_robo_oculto > 0 && !m.flag_robo) issues.push('>30 presc/dia Brasil');
             if (m.alerta_concentracao_unico_crm) issues.push('Lançamentos sequenciais');
-            if (m.flag_crm_invalido > 0) issues.push('CRM Inexistente');
+            if (m.flag_crm_invalido > 0) issues.push('CRM não localizado');
             if (m.flag_prescricao_antes_registro > 0) issues.push('CRM Irregular (Autor. antes do Registro)');
             if (m.qtd_estabelecimentos_atua === 1) issues.push('Exclusivo do CNPJ');
             if (m.alerta5_geografico) issues.push('Distância >400km');

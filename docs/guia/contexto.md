@@ -70,7 +70,7 @@ A irregularidade mais comum ocorre quando uma farmácia **registra mais vendas d
 
 - Concentração excessiva de vendas em **poucos médicos prescritores**
 - Médicos com volume de prescrições **fora do comum** (>30/dia)
-- Uso de **CRMs inexistentes ou cancelados**
+- Uso de **CRMs não localizados ou cancelados**
 - Prescrições emitidas **antes da data de registro** do médico no CFM
 
 #### 2.2.3. Anomalias Cadastrais

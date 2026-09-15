@@ -750,7 +750,7 @@ def gerar_aba_prescritores(wb, cnpj, dados_prescritores, top20_prescritores, cur
                     # Se houver erro na conversão, exibe normalmente
                     ws.write(row_top, col, dt_inscricao_crm, f_celula_data)
             else:
-                texto_sem_registro = "Sem data registro" if crm_existe_dados_medico else "Inexistente"
+                texto_sem_registro = "Sem data registro" if crm_existe_dados_medico else "Não localizado"
                 ws.write(row_top, col, texto_sem_registro, fmt_alerta_vermelho)
             col += 1
 

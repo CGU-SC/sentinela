@@ -64,7 +64,7 @@ Identificar **padrões anômalos de prescrição** que podem indicar:
 
 | Alerta                    | Critério                                 | Cor         | Gravidade |
 | ------------------------- | ---------------------------------------- | ----------- | --------- |
-| **CRM Inválido**          | Não encontrado no CFM                    | 🔴 Vermelho | Crítica   |
+| **CRM Não Localizado**    | Não encontrado no CFM                    | 🔴 Vermelho | Crítica   |
 | **>30/dia Aqui**          | >30 prescrições/dia nesta farmácia       | 🔴 Magenta  | Crítica   |
 | **>30/dia Rede**          | >30 prescrições/dia em todo Brasil       | 🟣 Roxo     | Alta      |
 | **Multi-Farmácia**        | Atua em >20 estabelecimentos             | 🟣 Roxo     | Alta      |

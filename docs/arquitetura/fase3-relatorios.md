@@ -353,7 +353,7 @@ Lista os **principais prescritores** ordenados por risco/volume:
 
 | Flag                      | Critério                                 | Cor         |
 | ------------------------- | ---------------------------------------- | ----------- |
-| **CRM Inválido**          | Não encontrado no CFM                    | 🔴 Vermelho |
+| **CRM Não Localizado**    | Não encontrado no CFM                    | 🔴 Vermelho |
 | **>30/dia Aqui**          | >30 prescrições/dia nesta farmácia       | 🔴 Magenta  |
 | **>30/dia Rede**          | >30 prescrições/dia em todas farmácias   | 🟣 Roxo     |
 | **Multi-Farmácia**        | Atua em >20 estabelecimentos             | 🟣 Roxo     |
@@ -368,7 +368,7 @@ Ao final da aba, uma seção consolida e descreve os alertas encontrados com tex
 ```
 ALERTAS IDENTIFICADOS:
 
-⚠️ CRM INVÁLIDO: O médico CRM 123456/SP não foi localizado na base
+⚠️ CRM NÃO LOCALIZADO: O médico CRM 123456/SP não foi localizado na base
    do Conselho Federal de Medicina. Vendas vinculadas: R$ 45.000,00.
 
 ⚠️ PRESCRITOR ROBÔ: O médico Dr. João Silva (CRM 789012/SC) apresentou

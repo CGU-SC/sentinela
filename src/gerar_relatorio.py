@@ -865,7 +865,7 @@ def gerarRelatorioMovimentacao(cnpj_analise, dados_memoria, tipo_relatorio, curs
                 "Concentração de CRMs (HHI)": "METODOLOGIA: Utiliza o Índice Herfindahl-Hirschman (HHI) para medir a concentração de prescrições. Calcula a soma dos quadrados das participações de cada médico no faturamento da farmácia. O quadrado penaliza exponencialmente a concentração. Um HHI elevado indica que a farmácia depende excessivamente de poucos CRMs.",
 
 
-                "Irregularidade de CRMs":"Identifica o percentual do faturamento vinculado a CRMs com irregularidades cadastrais. Duas anomalias são detectadas: (1) CRM/UF não localizado na base oficial do Conselho Federal de Medicina (CFM); (2) Prescrições realizadas ANTES da data de inscrição do médico no CFM. Ambas indicam uso de CRMs inexistentes ou fraudulentos."
+                "Irregularidade de CRMs":"Identifica o percentual do faturamento vinculado a CRMs com irregularidades cadastrais. Duas anomalias são detectadas: (1) CRM/UF não localizado na base oficial do Conselho Federal de Medicina (CFM); (2) Prescrições realizadas ANTES da data de inscrição do médico no CFM. Ambas indicam uso de CRMs não localizados ou fraudulentos."
 
             }
 

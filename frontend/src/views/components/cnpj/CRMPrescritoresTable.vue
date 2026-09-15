@@ -120,7 +120,7 @@ const crmTableTooltips = Object.freeze({
       'pi-globe'
     ),
     crmInvalido: createCrmTableTooltip(
-      'CRM inexistente',
+      'CRM não localizado',
       'O CRM não foi encontrado na base oficial do Conselho Federal de Medicina.',
       'O alerta aponta uma inconsistência cadastral que precisa ser confrontada com os registros da autorização.',
       'pi-ban'
@@ -501,7 +501,7 @@ const maxPDOverall = computed(() => {
                     <i :class="expandedAlertasMedico.has(m.id_medico) ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" style="font-size:0.6rem; margin-left:0.2rem;" />
                   </span>
                   <span v-if="m.flag_crm_invalido" class="issue-tag red" v-tooltip.top="crmTableTooltips.issues.crmInvalido">
-                    <i class="pi pi-ban"></i> CRM INEXISTENTE
+                    <i class="pi pi-ban"></i> CRM NÃO LOCALIZADO
                   </span>
                   <span v-if="m.flag_prescricao_antes_registro" class="issue-tag red" v-tooltip.top="crmTableTooltips.issues.antesRegistro">
                     <i class="pi pi-calendar-times"></i> CRM IRREGULAR

@@ -26,6 +26,7 @@ from cache_producers.crm import (
 from .nota_tecnica_docx_utils import (
     _add_bookmark,
     _cell_bg,
+    _footnote_ref,
     _format_block_footnote,
     _format_block_title,
     _run,
@@ -453,7 +454,7 @@ def _crm_table_header(table, headers: list[str], widths: list[Any], *, size: flo
 def _crm_alertas_contexto_labels(row: dict[str, Any]) -> list[str]:
     labels: list[str] = []
     if _as_int(row.get("flag_crm_invalido")) > 0:
-        labels.append("CRM inexistente")
+        labels.append("CRM não localizado")
     if _as_int(row.get("flag_prescricao_antes_registro")) > 0:
         labels.append("CRM irregular")
     if _as_int(row.get("flag_crm_exclusivo")) > 0:
@@ -1891,9 +1892,38 @@ def _add_crms_irregulares_text(
     p1 = doc.add_paragraph()
     _run(
         p1,
-        "No âmbito do PFPB, as dispensações devem estar respaldadas por prescrições emitidas por médicos com registro ativo e regular no Conselho Regional de Medicina (CRM). Para este indicador, foram consideradas duas situações de irregularidade: CRMs inválidos ou não localizados na base do Conselho Federal de Medicina (CFM), e prescrições com data anterior à primeira inscrição do médico na UF do respectivo CRM. A ocorrência de qualquer dessas situações aponta para o processamento de dispensações com prescrição médica incompatível com os requisitos legais do Programa.",
+        "No âmbito do PFPB, as dispensações devem estar respaldadas por prescrições emitidas por médicos com registro ativo e regular no Conselho Regional de Medicina (CRM) ou, no caso de participantes do Programa Mais Médicos",
         color="0F172A",
         size=12,
+    )
+    _footnote_ref(
+        doc,
+        p1,
+        17,
+        "O Ministério da Saúde disponibiliza a relação de médicos ativos no Painel Mais Médicos - APS do Ministério da Saúde: https://www.gov.br/saude/pt-br/composicao/sgtes/mais-medicos/painel-aps.",
+    )
+    _run(
+        p1,
+        ", no Registro do Ministério da Saúde (RMS). Para este indicador, foram consideradas duas situações de irregularidade: registros de CRM ou RMS não localizados e prescrições com data anterior à primeira inscrição do médico na UF de seu registro. A ocorrência de qualquer dessas situações aponta para possível processamento de dispensações com prescrição médica incompatível com os requisitos legais do Programa.",
+        color="0F172A",
+        size=12,
+    )
+
+    p_auditoria = doc.add_paragraph()
+    _run(
+        p_auditoria,
+        "ATENÇÃO: ",
+        color="DC2626",
+        size=12,
+        bold=True,
+        italic=True,
+    )
+    _run(
+        p_auditoria,
+        "Para registro médico apontado como “não localizado”, sugere-se consulta ao site do Programa Mais Médicos, informado na nota de rodapé, para tentar localizar o seu número (que consta no Programa Farmácia Popular). Em caso de sucesso, pedimos que se traga a identificação do nome do médico para a NT, tanto para as tabelas do corpo da constatação quanto para as tabelas do ANEXO I.",
+        color="DC2626",
+        size=12,
+        italic=True,
     )
 
     p2 = doc.add_paragraph()
@@ -1969,7 +1999,7 @@ def _add_crms_irregulares_text(
             pct_producao_total = (row_autorizacoes / total_autorizacoes * 100) if total_autorizacoes else 0.0
             motivos = []
             if _as_int(row.get("flag_crm_invalido")) > 0:
-                motivos.append("CRM inválido")
+                motivos.append("CRM não localizado")
             if _as_int(row.get("flag_prescricao_antes_registro")) > 0:
                 motivos.append("Prescrição antes da primeira inscrição na UF")
             values = [

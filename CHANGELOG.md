@@ -5,6 +5,14 @@ Todas as mudanças relevantes do Sentinela serão registradas neste arquivo.
 O versionamento segue o padrão SemVer: `MAJOR.MINOR.PATCH`.
 
 
+## [1.6.11] - 2026-09-15
+
+### Alterado
+- **Terminologia dos alertas de CRM padronizada.** As ocorrências anteriormente apresentadas como "CRM inexistente" passaram a ser exibidas como "CRM não localizado" nas telas, tooltips, exportação em PDF, relatórios e documentação, preservando a distinção em relação aos CRMs irregulares.
+- **Primeiro parágrafo da constatação de CRMs atualizado na Nota Técnica.** O texto agora contempla CRM e RMS, considera registros de CRM ou RMS não localizados e prescrições anteriores à primeira inscrição do médico na UF de registro, além de indicar a possibilidade de incompatibilidade com os requisitos legais do PFPB.
+- **Orientação ao auditor incluída na constatação de CRMs.** A NT passou a exibir uma nota de auditoria orientando a consulta ao Painel Mais Médicos para registros não localizados e a inclusão do nome do médico nas tabelas do corpo da constatação e do ANEXO I.
+- **Nota de rodapé numerada adicionada à constatação de CRMs.** A referência nº 17 aponta para a relação de médicos ativos no Painel Mais Médicos - APS do Ministério da Saúde.
+
 ## [1.6.10] - 2026-09-11
 
 ### Alterado

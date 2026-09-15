@@ -141,7 +141,7 @@ Mede a proporção de vendas vinculadas a CRMs **inválidos ou com prescrição 
 
 | Tipo                      | Descrição                                    | Gravidade   |
 | ------------------------- | -------------------------------------------- | ----------- |
-| **CRM Inexistente**       | Não encontrado na base do CFM                | 🔴 Crítico  |
+| **CRM Não Localizado**    | Não encontrado na base do CFM                | 🔴 Crítico  |
 | **CRM Cancelado**         | Médico com registro cancelado                | 🔴 Crítico  |
 | **Prescrição Retroativa** | Data da prescrição < Data de registro no CFM | 🔴 Crítico  |
 | **CRM de Outra UF**       | Médico prescrevendo fora de sua jurisdição   | 🟡 Moderado |
