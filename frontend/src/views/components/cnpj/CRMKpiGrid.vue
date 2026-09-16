@@ -51,8 +51,8 @@ const crmKpiTooltips = Object.freeze({
     'O percentual mostra quanto do volume financeiro do estabelecimento está concentrado nos cinco principais prescritores.'
   ),
   agrupamento: createCrmKpiTooltip(
-    'Concentração CRM único',
-    'Quantidade de ocorrências em que um único CRM concentrou muitas autorizações em um intervalo de tempo muito curto.',
+    'Autorizações em Sequência (Único CRM)',
+    'Quantidade de ocorrências em que o mesmo CRM registrou muitas autorizações em sequência em um intervalo de tempo muito curto.',
     'Clique no card para filtrar a tabela pelos médicos relacionados e consultar os episódios detalhados.'
   ),
   intensiva: createCrmKpiTooltip(
@@ -76,8 +76,8 @@ const crmKpiTooltips = Object.freeze({
     'O card sinaliza o volume de prescritores relacionados; as evidências geográficas podem ser consultadas na tabela.'
   ),
   surtosCnpj: createCrmKpiTooltip(
-    'Concentração com CRMs múltiplos',
-    'Quantidade de ocorrências em que a farmácia apresentou concentração atípica de autorizações usando múltiplos CRMs em sequência.',
+    'Autorizações em Sequência (Múltiplos CRMs)',
+    'Quantidade de ocorrências em que a farmácia registrou muitas autorizações em sequência com participação de alguns CRMs.',
     'A linha de apoio informa em quantos dias distintos esse padrão foi identificado.'
   ),
 });
@@ -148,12 +148,12 @@ const crmKpiTooltips = Object.freeze({
       @click="emit('kpi-click', 'agrupamento')"
     >
       <div class="alert-kpi-header">
-        <span class="alert-kpi-label">CONCENTRAÇÃO CRM ÚNICO</span>
+        <span class="alert-kpi-label">Autorizações em Sequência (Único CRM)</span>
         <i
           class="pi pi-info-circle kpi-info-icon"
           v-tooltip.top="crmKpiTooltips.agrupamento"
           tabindex="0"
-          aria-label="Informações sobre concentração CRM único"
+          aria-label="Informações sobre autorizações em sequência por um único CRM"
         />
       </div>
       <div class="alert-kpi-body">
@@ -278,12 +278,12 @@ const crmKpiTooltips = Object.freeze({
       @click="emit('kpi-click', 'surtos_cnpj')"
     >
       <div class="alert-kpi-header">
-        <span class="alert-kpi-label">CONCENTRAÇÃO CRMs MÚLTIPLOS</span>
+        <span class="alert-kpi-label">Autorizações em Sequência (Múltiplos CRMs)</span>
         <i
           class="pi pi-info-circle kpi-info-icon"
           v-tooltip.left="crmKpiTooltips.surtosCnpj"
           tabindex="0"
-          aria-label="Informações sobre concentração com CRMs múltiplos"
+          aria-label="Informações sobre autorizações em sequência por múltiplos CRMs"
         />
       </div>
       <div class="alert-kpi-body">
@@ -431,11 +431,14 @@ const crmKpiTooltips = Object.freeze({
   align-items: center;
 }
 .alert-kpi-label {
+  flex: 1;
+  min-width: 0;
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  line-height: 1.2;
   opacity: 0.85;
 }
 .kpi-info-icon {

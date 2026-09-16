@@ -1031,7 +1031,7 @@ def generate_nota_tecnica(
         if len(snippets) > 4:
             doc.add_paragraph()
         p_crm_intro = doc.add_paragraph()
-        _run(p_crm_intro, f'Adicionalmente, o ANEXO {anexo_crm_num} desta Nota Técnica traz evidências complementares relacionadas ao uso de CRMs no SAV, incluindo volume diário atípico de prescrições por CRM, volume de autorizações em horário anômalo, concentração temporal de autorizações vinculadas a um mesmo CRM, episódios de autorizações concentradas envolvendo múltiplos CRMs e CRMs de interesse com alertas operacionais associados ao estabelecimento, relevantes para a compreensão dos padrões de prescrição e dispensação observados no estabelecimento auditado.', color='0F172A', size=12)
+        _run(p_crm_intro, f'Adicionalmente, o ANEXO {anexo_crm_num} desta Nota Técnica traz evidências complementares relacionadas ao uso de CRMs no SAV, incluindo volume diário atípico de prescrições por CRM, volume de autorizações em horário anômalo, muitas autorizações em sequência pelo mesmo CRM, muitas autorizações em sequência por alguns CRMs e CRMs de interesse com alertas operacionais associados ao estabelecimento, relevantes para a compreensão dos padrões de prescrição e dispensação observados no estabelecimento auditado.', color='0F172A', size=12)
     p_item5_intro = doc.add_paragraph()
     _run(p_item5_intro, 'A NT traz ainda, em seu item 5, análise da empresa em relação aos seus sócios, capital social, porte, situação cadastral junto à Receita Federal do Brasil e ao PFPB, bem como da compatibilidade entre o número de empregados e o volume de recursos recebidos do MS.', color='0F172A', size=12)
 

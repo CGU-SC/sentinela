@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import Dialog from "primevue/dialog";
+import { integrityAlertTooltip } from "@/config/integrityAlertTooltipConfig";
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -62,6 +63,13 @@ const navigate = (alert) => {
         <div class="integrity-alert-content">
           <div class="integrity-alert-heading">
             <span class="integrity-alert-title">{{ alert.titulo }}</span>
+            <i
+              class="pi pi-info-circle integrity-alert-info"
+              role="img"
+              tabindex="0"
+              :aria-label="`Explicação do alerta ${alert.titulo}`"
+              v-tooltip.right="integrityAlertTooltip(alert)"
+            />
             <span class="integrity-alert-sep">·</span>
             <span class="integrity-alert-entity">{{ alert.entidade_nome }}</span>
           </div>
@@ -138,6 +146,19 @@ const navigate = (alert) => {
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--text-color-85);
+}
+
+.integrity-alert-info {
+  flex-shrink: 0;
+  color: var(--primary-color);
+  cursor: help;
+  font-size: 0.72rem;
+}
+
+.integrity-alert-info:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 
 .integrity-alert-sep {

@@ -553,6 +553,20 @@ def get_crm_data(
         ids = ", ".join(str(row["id_medico"]) for row in missing_brasil.select("id_medico").head(10).iter_rows(named=True))
         raise RuntimeError(f"Cache CRM mensal sem cobertura Brasil para CRM(s): {ids}.")
 
+    # Mantem a competencia correspondente ao maior numero mensal de estabelecimentos.
+    # Em caso de empate, a competencia mais recente e usada como referencia.
+    df_med_estabelecimentos_ref = (
+        df_med_mes
+        .sort(
+            ["id_medico", "nu_estabelecimentos", "competencia"],
+            descending=[False, True, True],
+        )
+        .group_by("id_medico", maintain_order=True)
+        .agg(
+            pl.col("competencia").first().alias("competencia_nu_estabelecimentos")
+        )
+    )
+
     df_med = (
         df_med_mes.group_by("id_medico")
         .agg([
@@ -575,6 +589,8 @@ def get_crm_data(
             (pl.col("nu_prescricoes_total_brasil").cast(pl.Float64) / pl.col("_dias_ativos")).round(2).alias("prescricoes_dia_total_brasil"),
         ])
     )
+
+    df_med = df_med.join(df_med_estabelecimentos_ref, on="id_medico", how="left")
 
     df_med = (
         df_med

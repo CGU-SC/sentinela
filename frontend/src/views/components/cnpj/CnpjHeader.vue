@@ -12,6 +12,7 @@ import { useGeoStore } from "@/stores/geo";
 import { useRouter } from "vue-router";
 import { extractCnpjRaiz } from "@/composables/useParsing";
 import { MONTH_LABELS } from "@/config/constants";
+import { integrityAlertTooltip } from "@/config/integrityAlertTooltipConfig";
 import ObservationDialog from "./ObservationDialog.vue";
 import IntegrityAlertsDialog from "./IntegrityAlertsDialog.vue";
 import CnpjCadastroDialog from "./CnpjCadastroDialog.vue";
@@ -541,8 +542,13 @@ const pdfTooltip = computed(() => {
           :key="alert.tipo"
           class="integrity-preview"
           :class="`integrity-preview--${alert.severidade}`"
+          role="img"
+          tabindex="0"
+          :aria-label="`Explicação do alerta ${alert.titulo}`"
+          v-tooltip.top="integrityAlertTooltip(alert)"
         >
           {{ alert.titulo }}
+          <i class="pi pi-info-circle integrity-preview-info" aria-hidden="true" />
         </span>
         <span class="integrity-strip-action">
           Ver detalhes
@@ -804,6 +810,18 @@ const pdfTooltip = computed(() => {
   font-size: 0.71rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.integrity-preview-info {
+  margin-left: 0.3rem;
+  color: currentColor;
+  font-size: 0.66rem;
+  opacity: 0.75;
+}
+
+.integrity-preview:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .integrity-preview--critico {

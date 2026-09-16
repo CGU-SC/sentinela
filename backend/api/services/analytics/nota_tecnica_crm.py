@@ -192,6 +192,15 @@ def _format_competencia_crm(value: Any) -> str:
     return text or "—"
 
 
+def _required_competencia_crm(value: Any, context: str) -> str:
+    text = str(value or "").strip()
+    if len(text) != 6 or not text.isdigit():
+        raise ValueError(
+            f"Campo obrigatorio competencia_nu_estabelecimentos ausente ou invalido em {context}."
+        )
+    return _format_competencia_crm(text)
+
+
 def _format_time_hour(value: Any) -> str:
     try:
         return f"{int(float(value or 0)):02d}:00"
@@ -231,6 +240,82 @@ def _format_crm_table_title(paragraph):
 
 def _format_crm_table_footnote(paragraph):
     _format_block_footnote(paragraph, space_before=5, space_after=18, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+
+def _add_crm_alert_legend(doc, rows: list[dict[str, Any]]):
+    alertas_presentes = {
+        str(alerta)
+        for row in rows
+        for alerta in (row.get("alertas_contexto") or [])
+    }
+    definitions = [
+        (
+            "Concentração em único CRM",
+            "Muitas autorizações em sequência pelo mesmo CRM",
+            "Este alerta é gerado quando o mesmo CRM registra várias autorizações de venda em uma janela de tempo muito curta. A análise considera a quantidade de autorizações, a duração do intervalo e a taxa de autorizações por hora. Quanto maior a quantidade registrada em menor tempo, mais atípico é o padrão observado.",
+        ),
+        (
+            "Concentração em múltiplos CRMs",
+            "Muitas autorizações em sequência por alguns CRMs",
+            "Este alerta é gerado quando, em uma mesma janela de tempo muito curta, a farmácia registra várias autorizações de venda distribuídas entre diferentes CRMs. A análise considera o volume total de autorizações, a quantidade de CRMs envolvidos, a duração do intervalo e a taxa de autorizações por hora.",
+        ),
+        (
+            "CRM não localizado",
+            "CRM não localizado",
+            "O número informado não foi localizado na base oficial consultada do Conselho Federal de Medicina. O resultado deve ser confrontado com outras fontes oficiais, como o RMS, quando aplicável.",
+        ),
+        (
+            "CRM irregular",
+            "CRM irregular",
+            "A data da autorização de venda é anterior à primeira inscrição do médico na UF do CRM, indicando uma incompatibilidade temporal que deve ser verificada na documentação correspondente.",
+        ),
+    ]
+    items = [item for item in definitions if item[0] in alertas_presentes]
+    items.extend(
+        [
+            (
+                "Nº Estab.",
+                "Nº Estab.",
+                "Número de estabelecimentos distintos em que o CRM registrou autorizações. O valor corresponde ao maior número mensal observado no período, cuja competência aparece logo abaixo.",
+            ),
+            (
+                "Nº Aut.",
+                "Nº Aut.",
+                "Quantidade de autorizações de venda vinculadas ao CRM na farmácia analisada durante o período selecionado.",
+            ),
+            (
+                "Part.",
+                "Part.",
+                "Participação percentual do valor autorizado associado ao CRM em relação ao valor total autorizado pela farmácia.",
+            ),
+            (
+                "Presc./dia",
+                "Presc./dia",
+                "Média diária de prescrições associadas ao CRM. Local corresponde à farmácia analisada; Brasil corresponde ao conjunto de estabelecimentos associados ao CRM na base consultada.",
+            ),
+        ]
+    )
+    if not items:
+        return
+
+    title = doc.add_paragraph()
+    title.paragraph_format.space_before = Pt(8)
+    title.paragraph_format.space_after = Pt(4)
+    title.paragraph_format.keep_with_next = True
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _run(title, "Quadro 1 – Definição dos alertas e status de auditoria dos CRMs", color="334155", size=10, bold=True)
+
+    headers = ["Alerta/status", "Definição e interpretação"]
+    table = doc.add_table(rows=1, cols=len(headers))
+    _crm_table_header(table, headers, [Inches(2.35), Inches(4.95)], size=9.0)
+
+    for index, (_, label, description) in enumerate(items):
+        cells = table.add_row().cells
+        if index % 2 == 0:
+            for cell in cells:
+                _cell_bg(cell, "F8FAFC")
+        _write_cell(cells[0], label, size=9.0, bold=True, color="334155", align=WD_ALIGN_PARAGRAPH.LEFT)
+        _write_cell(cells[1], description, size=9.0, color="0F172A", align=WD_ALIGN_PARAGRAPH.LEFT)
 
 
 def _format_crm_subheading(paragraph):
@@ -480,6 +565,32 @@ def _crm_alertas_contexto_labels(row: dict[str, Any]) -> list[str]:
     return labels
 
 
+_CRM_ALERTAS_TABELA_LABELS = {
+    "Concentração em único CRM": "Muitas autorizações em sequência pelo mesmo CRM",
+    "Concentração em múltiplos CRMs": "Muitas autorizações em sequência por alguns CRMs",
+}
+
+def _write_crm_alertas_cell(cell, alertas: list[str], *, size: float = 9.0):
+    paragraph = cell.paragraphs[0]
+    paragraph.text = ""
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    if not alertas:
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
+        _run(paragraph, "Sem alerta", color="64748B", size=size)
+        return
+
+    for index, alerta in enumerate(alertas):
+        current = paragraph if index == 0 else cell.add_paragraph()
+        current.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        current.paragraph_format.space_before = Pt(0)
+        current.paragraph_format.space_after = Pt(2 if index < len(alertas) - 1 else 0)
+        current.paragraph_format.line_spacing = 1.0
+        label = _CRM_ALERTAS_TABELA_LABELS.get(alerta, alerta)
+        _run(current, f"• {label}", color="0F172A", size=size)
+
+
 def _build_principais_crms_contexto_rows(crms: list[dict[str, Any]]) -> list[dict[str, Any]]:
     crms_ordenados = sorted(
         crms,
@@ -508,6 +619,15 @@ def _build_principais_crms_contexto_rows(crms: list[dict[str, Any]]) -> list[dic
             "pct_participacao": _as_float(row.get("pct_participacao")),
             "nu_prescricoes_dia": _as_float(row.get("nu_prescricoes_dia")),
             "prescricoes_dia_total_brasil": _as_float(row.get("prescricoes_dia_total_brasil")),
+            "nu_estabelecimentos": _required_nonnegative_int(
+                row.get("nu_estabelecimentos"),
+                "nu_estabelecimentos",
+                "Tabela de principais CRMs",
+            ),
+            "competencia_nu_estabelecimentos": _required_competencia_crm(
+                row.get("competencia_nu_estabelecimentos"),
+                "Tabela de principais CRMs",
+            ),
         }
         contexto_row["alertas_contexto"] = _crm_alertas_contexto_labels(row)
         rows.append(contexto_row)
@@ -1242,7 +1362,7 @@ def _add_crm_unico_complementar_text(
         if principal_intervalo is None:
             principal_intervalo = principal.get("nu_minutos")
 
-    _add_crm_subheading(doc, f"{letra}) Autorizações concentradas para um único CRM")
+    _add_crm_subheading(doc, f"{letra}) Muitas autorizações em sequência pelo mesmo CRM")
 
     p = doc.add_paragraph()
     _run(p, f"{_plural(qtd_alertas, 'Foi identificado', 'Foram identificados')} ", color="0F172A", size=12)
@@ -1282,7 +1402,7 @@ def _add_crm_unico_complementar_text(
 
     title = doc.add_paragraph()
     _format_crm_table_title(title)
-    _run(title, f"Tabela {tabela_num} - Principais episódios de autorizações concentradas para um único CRM.", color="334155", size=10, bold=True)
+    _run(title, f"Tabela {tabela_num} - Muitas autorizações em sequência pelo mesmo CRM — principais episódios.", color="334155", size=10, bold=True)
 
     headers = ["Início", "Fim", "Médico/CRM", "Autorizações", "Intervalo", "Taxa/hora", "Valor"]
     table = doc.add_table(rows=1, cols=len(headers))
@@ -1344,7 +1464,7 @@ def _add_crms_multiplos_complementar_text(
     eventos = list(crms_multiplos_comp.get("eventos") or [])
     principal = eventos[0] if eventos else {}
 
-    _add_crm_subheading(doc, f"{letra}) Autorizações concentradas envolvendo múltiplos CRMs")
+    _add_crm_subheading(doc, f"{letra}) Muitas autorizações em sequência por alguns CRMs")
 
     p = doc.add_paragraph()
     _run(
@@ -1386,7 +1506,7 @@ def _add_crms_multiplos_complementar_text(
     if eventos:
         title = doc.add_paragraph()
         _format_crm_table_title(title)
-        _run(title, f"Tabela {tabela_num} - Principais episódios de autorizações concentradas envolvendo múltiplos CRMs.", color="334155", size=10, bold=True)
+        _run(title, f"Tabela {tabela_num} - Muitas autorizações em sequência por alguns CRMs — principais episódios.", color="334155", size=10, bold=True)
 
         headers = ["Início", "Fim", "CRMs", "Autorizações", "Intervalo", "Taxa/hora", "Valor"]
         table = doc.add_table(rows=1, cols=len(headers))
@@ -1575,17 +1695,19 @@ def _add_principais_crms_contexto_text(
 
     headers = [
         "Médico/CRM",
-        "Alertas/anomalias",
-        "Autorizações",
+        "Alertas",
+        "Nº Aut.",
+        "Nº Estab.",
         "Valor autorizado",
         "Part.",
         "Presc./dia",
     ]
     table = doc.add_table(rows=1, cols=len(headers))
     widths = [
-        Inches(2.00),
-        Inches(1.89),
-        Inches(0.74),
+        Inches(1.50),
+        Inches(1.65),
+        Inches(0.65),
+        Inches(0.83),
         Inches(1.05),
         Inches(0.62),
         Inches(1.00),
@@ -1602,12 +1724,16 @@ def _add_principais_crms_contexto_text(
         crm_row, uf_row = _crm_num_uf(row.get("id_medico"))
         crm_uf = f"{crm_row}/{uf_row}" if uf_row else crm_row
         presc_dia = (
-            f'{_format_decimal_pt(_as_float(row.get("nu_prescricoes_dia")), 2)} local\n'
+            f'{_format_decimal_pt(_as_float(row.get("nu_prescricoes_dia")), 2)} Local\n'
             f'{_format_decimal_pt(_as_float(row.get("prescricoes_dia_total_brasil")), 2)} Brasil'
         )
+        estabelecimentos = (
+            f'{row["nu_estabelecimentos"]}\n'
+            f'{row["competencia_nu_estabelecimentos"]}'
+        )
         values = [
-            "\n".join(alertas) if alertas else "Sem alerta",
             str(_as_int(row.get("nu_prescricoes"))),
+            estabelecimentos,
             f'R$ {_format_decimal_pt(_as_float(row.get("vl_total_prescricoes")), 2)}',
             f'{_format_decimal_pt(_as_float(row.get("pct_participacao")), 2)}%',
             presc_dia,
@@ -1617,20 +1743,22 @@ def _add_principais_crms_contexto_text(
         p_medico.alignment = WD_ALIGN_PARAGRAPH.LEFT
         p_medico.paragraph_format.space_before = Pt(0)
         p_medico.paragraph_format.space_after = Pt(0)
-        _run(p_medico, _title_case_pt(row.get("no_medico") or "Não localizado"), color="0F172A", size=9)
-        _run(p_medico, f"\nCRM {crm_uf}", color="64748B", size=9)
+        _run(p_medico, _title_case_pt(row.get("no_medico") or "Não localizado"), color="0F172A", size=8.5)
+        _run(p_medico, f"\nCRM {crm_uf}", color="64748B", size=8.5)
 
-        for col_idx, value in enumerate(values, start=1):
+        for col_idx, value in enumerate(values, start=2):
             align = (
-                WD_ALIGN_PARAGRAPH.LEFT
-                if col_idx == 1
-                else WD_ALIGN_PARAGRAPH.RIGHT
-                if col_idx in (2, 3, 4)
+                WD_ALIGN_PARAGRAPH.RIGHT
+                if col_idx in (2, 4)
                 else WD_ALIGN_PARAGRAPH.CENTER
-                if col_idx == 5
+                if col_idx in (3, 5, 6)
+                else WD_ALIGN_PARAGRAPH.RIGHT
+                if col_idx == 7
                 else None
             )
-            _write_cell(cells[col_idx], value, size=9.0, align=align)
+            _write_cell(cells[col_idx], value, size=8.5, align=align)
+
+        _write_crm_alertas_cell(cells[1], alertas, size=8.5)
 
     fonte = doc.add_paragraph()
     _format_crm_table_footnote(fonte)
@@ -1641,6 +1769,7 @@ def _add_principais_crms_contexto_text(
         size=10,
         italic=True,
     )
+    _add_crm_alert_legend(doc, rows)
 
 
 def _add_crm_evidencias_complementares_body(

@@ -167,12 +167,12 @@ const kpiFilters = {
 const kpiFilterLabels = {
   top1:        "Concentração TOP 1",
   top5:        "Concentração TOP 5",
-  agrupamento: "CONCENTRAÇÃO CRM ÚNICO",
+  agrupamento: "Autorizações em Sequência (Único CRM)",
   intensiva:   ">30 Prescrições/Dia",
   exclusivo:   "CRM Exclusivo",
   fraude_crm:  "Fraudes CRM",
   distancia:   "Distância (>400km)",
-  surtos_cnpj: "CONCENTRAÇÃO CRMs MÚLTIPLOS",
+  surtos_cnpj: "Autorizações em Sequência (Múltiplos CRMs)",
 };
 
 function setKpiFilter(key) {

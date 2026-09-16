@@ -146,8 +146,8 @@ const crmTableTooltips = Object.freeze({
   }),
   evidence: Object.freeze({
     unico: createCrmTableTooltip(
-      'CRM único',
-      'Dias em que este CRM acumulou um alto número de autorizações em um intervalo muito curto. A evidência detalha a data, o volume, a janela de tempo e a taxa por hora.',
+      'Autorizações em Sequência (Único CRM)',
+      'Dias em que este CRM registrou muitas autorizações em sequência em um intervalo muito curto. A evidência detalha a data, o volume, a janela de tempo e a taxa por hora.',
       'Quanto maior a taxa por hora, maior o indício de lançamento automatizado com um único médico.',
       'pi-user'
     ),
@@ -158,8 +158,8 @@ const crmTableTooltips = Object.freeze({
       'pi-map-marker'
     ),
     multiplos: createCrmTableTooltip(
-      'CRMs múltiplos',
-      'Horas em que este CNPJ emitiu volume elevado de autorizações usando vários CRMs diferentes em sequência. A evidência mostra a diversidade de médicos e o total de prescrições.',
+      'Autorizações em Sequência (Múltiplos CRMs)',
+      'Horas em que este CNPJ registrou muitas autorizações em sequência com participação de diferentes CRMs. A evidência mostra a diversidade de médicos e o total de prescrições.',
       'O padrão é compatível com lançamento em lote com rodízio de prescritores.',
       'pi-users'
     ),
@@ -175,13 +175,13 @@ const crmTableTooltips = Object.freeze({
 const alertToggleTooltipCopy = Object.freeze({
   conc: Object.freeze({
     collapsed: {
-      title: 'Ver episódios de CRM único',
-      body: 'Abre os dias em que este CRM concentrou autorizações em um intervalo muito curto.',
+      title: 'Ver episódios de Autorizações em Sequência (Único CRM)',
+      body: 'Abre os episódios em que este CRM registrou muitas autorizações em sequência em um intervalo muito curto.',
       note: 'O painel detalha volume, janela de tempo e taxa por hora.',
     },
     expanded: {
-      title: 'Recolher episódios de CRM único',
-      body: 'Oculta o painel com os episódios detalhados de concentração deste CRM.',
+      title: 'Recolher episódios de Autorizações em Sequência (Único CRM)',
+      body: 'Oculta o painel com os episódios detalhados de autorizações em sequência registradas por este CRM.',
       note: 'Os indicadores e alertas da linha permanecem visíveis.',
     },
   }),
@@ -199,13 +199,13 @@ const alertToggleTooltipCopy = Object.freeze({
   }),
   surto: Object.freeze({
     collapsed: {
-      title: 'Ver episódios de CRMs múltiplos',
-      body: 'Abre as horas em que a farmácia concentrou autorizações usando vários CRMs em sequência.',
+      title: 'Ver episódios de Autorizações em Sequência (Múltiplos CRMs)',
+      body: 'Abre os episódios em que a farmácia registrou muitas autorizações em sequência com participação de diferentes CRMs.',
       note: 'A tabela apresenta os CRMs acionados, os volumes e a diversidade do episódio.',
     },
     expanded: {
-      title: 'Recolher episódios de CRMs múltiplos',
-      body: 'Oculta o painel com os episódios detalhados de concentração com múltiplos CRMs.',
+      title: 'Recolher episódios de Autorizações em Sequência (Múltiplos CRMs)',
+      body: 'Oculta o painel com os episódios detalhados de autorizações em sequência envolvendo diferentes CRMs.',
       note: 'Os indicadores e alertas da linha permanecem visíveis.',
     },
   }),
@@ -496,7 +496,7 @@ const maxPDOverall = computed(() => {
                     v-tooltip.top="getAlertToggleTooltip('conc', expandedAlertasMedico.has(m.id_medico))"
                     @click.stop="toggleAlertasDiarios(m.id_medico)"
                   >
-                    <i class="pi pi-stopwatch"></i> CONCENTRAÇÃO CRM ÚNICO
+                    <i class="pi pi-stopwatch"></i> Autorizações em Sequência (Único CRM)
                     <span v-if="qtdAlertasUnico(m) > 0" class="badge-count">({{ qtdAlertasUnico(m) }}x)</span>
                     <i :class="expandedAlertasMedico.has(m.id_medico) ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" style="font-size:0.6rem; margin-left:0.2rem;" />
                   </span>
@@ -525,7 +525,7 @@ const maxPDOverall = computed(() => {
                     v-tooltip.top="getAlertToggleTooltip('surto', expandedAlertasMedico.has(m.id_medico))"
                     @click.stop="toggleAlertasDiarios(m.id_medico)"
                   >
-                    <i class="pi pi-bolt"></i> CONCENTRAÇÃO CRMs MÚLTIPLOS
+                    <i class="pi pi-bolt"></i> Autorizações em Sequência (Múltiplos CRMs)
                     <span v-if="qtdAlertasMultiplos(m) > 0" class="badge-count">({{ qtdAlertasMultiplos(m) }}x)</span>
                     <i :class="expandedAlertasMedico.has(m.id_medico) ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" style="font-size:0.6rem; margin-left:0.2rem;" />
                   </span>
@@ -635,7 +635,7 @@ const maxPDOverall = computed(() => {
                         :class="{ 'seg-active': activeAlertTab[m.id_medico] === 'conc' }"
                         @click="setAlertTab(m.id_medico, 'conc')"
                       >
-                        CRM Único
+                        Autorizações em Sequência (Único CRM)
                         <span class="seg-count">{{ qtdAlertasUnico(m) }}</span>
                         <i
                           class="pi pi-info-circle seg-info-icon"
@@ -664,7 +664,7 @@ const maxPDOverall = computed(() => {
                         :class="{ 'seg-active': activeAlertTab[m.id_medico] === 'surto' }"
                         @click="setAlertTab(m.id_medico, 'surto')"
                       >
-                        CRMs Múltiplos
+                        Autorizações em Sequência (Múltiplos CRMs)
                         <span class="seg-count">{{ qtdAlertasMultiplos(m) }}</span>
                         <i
                           class="pi pi-info-circle seg-info-icon"
@@ -928,7 +928,10 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
   align-items: center;
   justify-content: center;
   gap: 0.3rem;
-  white-space: nowrap;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: left;
   letter-spacing: 0.01em;
   text-transform: none !important;
   backdrop-filter: blur(4px);

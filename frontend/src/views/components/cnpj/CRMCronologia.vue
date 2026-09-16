@@ -430,15 +430,15 @@ const cronologiaInfoTooltips = Object.freeze({
     'A navegação altera somente a janela visual do gráfico e preserva os filtros ativos.'
   ),
   rankUnico: createCronologiaInfoTooltip(
-    'Ranqueamento · CRM Único',
+    'Ranqueamento · Autorizações em Sequência (Único CRM)',
     'Classifica os dias pela maior intensidade de autorizações emitidas em sequência com o mesmo CRM em um intervalo reduzido.',
-    [['Critério', 'Concentração com um único CRM'], ['Resultado', 'Dias mais intensos no gráfico']],
+    [['Critério', 'Autorizações em Sequência (Único CRM)'], ['Resultado', 'Dias mais intensos no gráfico']],
     'O ranking prioriza o maior ritmo horário identificado para esse padrão.'
   ),
   rankMultiplo: createCronologiaInfoTooltip(
-    'Ranqueamento · Multi-CRM',
+    'Ranqueamento · Autorizações em Sequência (Múltiplos CRMs)',
     'Classifica os dias pela maior intensidade de autorizações emitidas em sequência com participação de múltiplos CRMs.',
-    [['Critério', 'Concentração com vários CRMs'], ['Resultado', 'Dias mais intensos no gráfico']],
+    [['Critério', 'Autorizações em Sequência (Múltiplos CRMs)'], ['Resultado', 'Dias mais intensos no gráfico']],
     'O ranking considera o maior ritmo horário associado ao acionamento sequencial de diferentes CRMs.'
   ),
   rankVolume: createCronologiaInfoTooltip(
@@ -450,24 +450,24 @@ const cronologiaInfoTooltips = Object.freeze({
   rankLimit: createCronologiaInfoTooltip(
     'Quantidade de dias exibidos',
     'Define quantos dos dias mais intensos serão apresentados quando um critério de ranqueamento estiver ativo.',
-    [['Opções', 'Top 10, Top 20, Top 50 ou Todos'], ['Base', 'CRM Único, Multi-CRM ou Volume']],
+    [['Opções', 'Top 10, Top 20, Top 50 ou Todos'], ['Base', 'Autorizações em Sequência (Único CRM), Autorizações em Sequência (Múltiplos CRMs) ou Volume']],
     'O controle fica disponível para limitar a lista ranqueada ou exibir todos os dias encontrados.'
   ),
   onlyAnomalies: createCronologiaInfoTooltip(
     'Filtro · Apenas Anomalias',
-    'Exibe exclusivamente os dias que apresentaram volume horário atípico, concentração com CRM Único ou concentração Multi-CRM.',
+    'Exibe exclusivamente os dias que apresentaram volume horário atípico ou autorizações em sequência pelo mesmo CRM ou por alguns CRMs.',
     [['Inclui', 'Dias com pelo menos uma anomalia'], ['Oculta', 'Dias de operação normal']],
     'Ao selecionar um critério de ranqueamento, este filtro é desativado para que o ranking controle o recorte exibido.'
   ),
   unicoSection: createCronologiaInfoTooltip(
-    'Alertas de CRM Único no período',
-    'Apresenta as janelas em que várias autorizações foram concentradas em um único CRM.',
+    'Alertas de Autorizações em Sequência (Único CRM) no período',
+    'Apresenta as janelas em que o mesmo CRM registrou muitas autorizações em sequência.',
     [['Exibe', 'Janela, volume e duração'], ['Também informa', 'Ritmo e classificação de severidade']],
     'Cada alerta pode ser selecionado para acompanhar as autorizações correspondentes no Raio-X.'
   ),
   multiploSection: createCronologiaInfoTooltip(
-    'Alertas Multi-CRM no período',
-    'Apresenta as janelas em que várias autorizações foram emitidas em sequência com participação de múltiplos CRMs.',
+    'Alertas de Autorizações em Sequência (Múltiplos CRMs) no período',
+    'Apresenta as janelas em que a farmácia registrou muitas autorizações em sequência com participação de diferentes CRMs.',
     [['Exibe', 'CRMs distintos, volume e duração'], ['Também informa', 'Ritmo e classificação de severidade']],
     'Cada alerta pode ser selecionado para acompanhar as autorizações correspondentes no Raio-X.'
   ),
@@ -480,8 +480,8 @@ function formatUnicoAlertTitle(alerta) {
 
   return `
     <div class="crm-alert-tooltip-content">
-      <div class="crm-alert-tooltip-title">CRM ÚNICO · ALERTA #${escapeTooltipHtml(alerta.numero_alerta)}</div>
-      <p class="crm-alert-tooltip-intro">Este alerta identifica uma concentração temporal de autorizações emitidas com o mesmo CRM.</p>
+      <div class="crm-alert-tooltip-title">Autorizações em Sequência (Único CRM) · ALERTA #${escapeTooltipHtml(alerta.numero_alerta)}</div>
+      <p class="crm-alert-tooltip-intro">Este alerta identifica muitas autorizações emitidas em sequência pelo mesmo CRM em um intervalo reduzido.</p>
       <div class="crm-alert-tooltip-details">
         <div><span>CRM</span><strong>${escapeTooltipHtml(alerta.id_medico)}</strong></div>
         <div><span>Janela observada</span><strong>${escapeTooltipHtml(alerta.dt_ini_hora)}–${escapeTooltipHtml(alerta.dt_fim_hora)}</strong></div>
@@ -501,8 +501,8 @@ function formatMultiAlertTitle(alerta) {
 
   return `
     <div class="crm-alert-tooltip-content">
-      <div class="crm-alert-tooltip-title">MULTI-CRM · ALERTA #${escapeTooltipHtml(alerta.numero_alerta)}</div>
-      <p class="crm-alert-tooltip-intro">Este alerta identifica uma concentração temporal de autorizações emitidas em sequência com participação de múltiplos CRMs.</p>
+      <div class="crm-alert-tooltip-title">Autorizações em Sequência (Múltiplos CRMs) · ALERTA #${escapeTooltipHtml(alerta.numero_alerta)}</div>
+      <p class="crm-alert-tooltip-intro">Este alerta identifica muitas autorizações emitidas em sequência por alguns CRMs em um intervalo reduzido.</p>
       <div class="crm-alert-tooltip-details">
         <div><span>CRMs distintos</span><strong>${escapeTooltipHtml(alerta.nu_crms_display)}</strong></div>
         <div><span>Janela observada</span><strong>${escapeTooltipHtml(alerta.dt_ini_hora)}–${escapeTooltipHtml(alerta.dt_fim_hora)}</strong></div>
@@ -800,10 +800,10 @@ const chartOptionDaily = computed(() => {
           badges.push('<span style="font-size:10px; background:rgba(239, 68, 68, 0.15); color:#ef4444; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid rgba(239, 68, 68, 0.3); margin-left:8px;">⚠ SURTO</span>');
         }
         if (day.is_crm_unico === 1) {
-          badges.push('<span style="font-size:10px; background:rgba(245, 158, 11, 0.15); color:#f59e0b; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid rgba(245, 158, 11, 0.3); margin-left:8px;">⚠ CRM ÚNICO</span>');
+          badges.push('<span style="font-size:10px; background:rgba(245, 158, 11, 0.15); color:#f59e0b; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid rgba(245, 158, 11, 0.3); margin-left:8px;">⚠ Autorizações em Sequência (Único CRM)</span>');
         }
         if (day.is_crm_multiplo === 1) {
-          badges.push('<span style="font-size:10px; background:rgba(139, 92, 246, 0.15); color:#8b5cf6; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid rgba(139, 92, 246, 0.3); margin-left:8px;">⚠ CRM MÚLTIPLO</span>');
+          badges.push('<span style="font-size:10px; background:rgba(139, 92, 246, 0.15); color:#8b5cf6; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid rgba(139, 92, 246, 0.3); margin-left:8px;">⚠ Autorizações em Sequência (Múltiplos CRMs)</span>');
         }
         const rankMetric = dailyRankMode.value ? formatDailyRankMetric(day) : '';
         const rankMetricHtml = rankMetric
@@ -1058,13 +1058,13 @@ const chartOptionHourly = computed(() => {
           },
           pt.is_crm_unico === 1 && {
             color: '#f59e0b',
-            label: 'CRM ÚNICO',
-            description: 'concentração de autorizações em uma janela curta com um único CRM',
+            label: 'Autorizações em Sequência (Único CRM)',
+            description: 'muitas autorizações em sequência pelo mesmo CRM em uma janela curta',
           },
           pt.is_crm_multiplo === 1 && {
             color: '#8b5cf6',
-            label: 'MULTI-CRM',
-            description: 'concentração de autorizações em uma janela curta com múltiplos CRMs',
+            label: 'Autorizações em Sequência (Múltiplos CRMs)',
+            description: 'muitas autorizações em sequência por alguns CRMs em uma janela curta',
           },
         ].filter(Boolean);
 
@@ -1478,11 +1478,11 @@ const activeTransactionsLoading = computed(() =>
               @click="toggleDailyRankMode('unico')"
             >
               <i class="pi pi-user" />
-              <span>CRM Único</span>
+              <span>Autorizações em Sequência (Único CRM)</span>
               <i
                 class="pi pi-info-circle control-info-icon"
                 role="img"
-                aria-label="Informações sobre o ranqueamento por CRM Único"
+                aria-label="Informações sobre o ranqueamento por autorizações em sequência por um único CRM"
                 v-tooltip.top="cronologiaInfoTooltips.rankUnico"
                 @click.stop
               />
@@ -1493,11 +1493,11 @@ const activeTransactionsLoading = computed(() =>
               @click="toggleDailyRankMode('multiplo')"
             >
               <i class="pi pi-users" />
-              <span>Multi-CRM</span>
+              <span>Autorizações em Sequência (Múltiplos CRMs)</span>
               <i
                 class="pi pi-info-circle control-info-icon"
                 role="img"
-                aria-label="Informações sobre o ranqueamento por Multi-CRM"
+                aria-label="Informações sobre o ranqueamento por autorizações em sequência por múltiplos CRMs"
                 v-tooltip.top="cronologiaInfoTooltips.rankMultiplo"
                 @click.stop
               />
@@ -1645,8 +1645,8 @@ const activeTransactionsLoading = computed(() =>
           <div v-if="selectedDay.is_volume_horario_anomalo || selectedDay.is_crm_unico || selectedDay.is_crm_multiplo" class="legend-divider"></div>
           <div class="legend-group">
             <span v-if="selectedDay.is_volume_horario_anomalo === 1" class="track-badge is-volume">Volume Atípico</span>
-            <span v-if="selectedDay.is_crm_unico === 1" class="track-badge is-unico">CRM Único</span>
-            <span v-if="selectedDay.is_crm_multiplo === 1" class="track-badge is-multiplo">Multi-CRM</span>
+            <span v-if="selectedDay.is_crm_unico === 1" class="track-badge is-unico">Autorizações em Sequência (Único CRM)</span>
+            <span v-if="selectedDay.is_crm_multiplo === 1" class="track-badge is-multiplo">Autorizações em Sequência (Múltiplos CRMs)</span>
           </div>
         </div>
         <VChart
@@ -1694,11 +1694,11 @@ const activeTransactionsLoading = computed(() =>
       <div v-if="unicoAlertas.length > 0" class="unico-alertas-section alertas-unico-section">
         <div class="unico-alertas-header">
           <i class="pi pi-exclamation-triangle" />
-          <span>Alertas de CRM Único no Período</span>
+          <span>Alertas de Autorizações em Sequência (Único CRM) no Período</span>
           <i
             class="pi pi-info-circle section-info-icon"
             role="img"
-            aria-label="Informações sobre os alertas de CRM Único"
+            aria-label="Informações sobre os alertas de autorizações em sequência por um único CRM"
             tabindex="0"
             v-tooltip.top="cronologiaInfoTooltips.unicoSection"
           />
@@ -1739,11 +1739,11 @@ const activeTransactionsLoading = computed(() =>
       <div v-if="multiAlertas.length > 0" class="unico-alertas-section alertas-multi-section">
         <div class="unico-alertas-header">
           <i class="pi pi-users" />
-          <span>Alertas Multi-CRM no Período</span>
+          <span>Alertas de Autorizações em Sequência (Múltiplos CRMs) no Período</span>
           <i
             class="pi pi-info-circle section-info-icon"
             role="img"
-            aria-label="Informações sobre os alertas Multi-CRM"
+            aria-label="Informações sobre os alertas de autorizações em sequência por múltiplos CRMs"
             tabindex="0"
             v-tooltip.top="cronologiaInfoTooltips.multiploSection"
           />
@@ -2142,6 +2142,9 @@ const activeTransactionsLoading = computed(() =>
   cursor: pointer;
   font-size: 0.7rem;
   font-weight: 700;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: left;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .rank-btn i { font-size: 0.75rem; }

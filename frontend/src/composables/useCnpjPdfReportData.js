@@ -59,6 +59,13 @@ function buildPontosCriticos(indicadores) {
 function buildCrmKpis(crmData) {
   const summary = assertObject(crmData.summary, "crm-data.summary");
   const crmsInteresse = assertArray(crmData.crms_interesse, "crm-data.crms_interesse");
+  crmsInteresse.forEach((crm, index) => {
+    ["nu_estabelecimentos", "competencia_nu_estabelecimentos"].forEach((field) => {
+      if (crm?.[field] === undefined || crm?.[field] === null) {
+        throw new Error(`Contrato invalido em crm-data: crms_interesse[${index}].${field} obrigatorio.`);
+      }
+    });
+  });
   const valorTop1 = crmsInteresse.length > 0 ? Number(crmsInteresse[0].vl_total_prescricoes || 0) : 0;
   const valorTop5 = crmsInteresse.slice(0, 5).reduce((acc, curr) => acc + Number(curr.vl_total_prescricoes || 0), 0);
   const doctorsIntensivaLocal = crmsInteresse.filter((m) => Number(m.flag_robo || 0) > 0);
@@ -81,7 +88,7 @@ function buildCrmKpis(crmData) {
     qtdAcima400km: crmsInteresse.filter((m) => Boolean(m.alerta5_geografico)).length,
     totalSurtosCnpj: Number(summary.qtd_alertas_cnpj_multiplo || 0),
     diasComSurtosCnpj: Number(summary.qtd_dias_alertas_cnpj_multiplo || 0),
-    qtdMultiFarmacia: crmsInteresse.filter((m) => Number(m.qtd_estabelecimentos_atua || 0) > 70).length,
+    qtdMultiFarmacia: crmsInteresse.filter((m) => Number(m.nu_estabelecimentos) > 70).length,
   };
 }
 

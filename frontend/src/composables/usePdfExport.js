@@ -96,6 +96,18 @@ function fmtRisco(v) {
   return v != null ? v.toFixed(1) + 'x' : '—';
 }
 
+function formatCompetenciaMes(value, context) {
+  const text = String(value);
+  if (!/^\d{6}$/.test(text)) {
+    throw new Error(`Competência mensal inválida em ${context}.`);
+  }
+  const month = Number(text.slice(4, 6));
+  if (month < 1 || month > 12) {
+    throw new Error(`Competência mensal inválida em ${context}.`);
+  }
+  return `${text.slice(4, 6)}/${text.slice(0, 4)}`;
+}
+
 /** Converte hex (#rrggbb) → [r, g, b]. */
 function hexToRgb(hex) {
   return [
@@ -440,6 +452,61 @@ export function usePdfExport() {
         pdf.setTextColor(...color);
         pdf.text(text, textX, y);
         return y + 7;
+      };
+
+      const drawCrmLegend = (items, startY) => {
+        if (!items.length) return;
+
+        const labelW = 52;
+        const descriptionX = margin + labelW;
+        const descriptionW = contentW - labelW - 6;
+        const lineHeight = 3.1;
+
+        pdf.setFont(F, 'bold');
+        pdf.setFontSize(6.7);
+        const measuredRows = items.map(item => {
+          const labelLines = pdf.splitTextToSize(item.label, labelW - 6);
+          pdf.setFont(F, 'normal');
+          const descriptionLines = pdf.splitTextToSize(item.description, descriptionW);
+          pdf.setFont(F, 'bold');
+          return {
+            labelLines,
+            descriptionLines,
+            height: Math.max(labelLines.length, descriptionLines.length) * lineHeight + 2,
+          };
+        });
+
+        const titleH = 7;
+        const legendH = titleH + measuredRows.reduce((total, row) => total + row.height, 0) + 3;
+        let y = startY;
+        if (y + legendH > pageH - margin) {
+          pdf.addPage();
+          pageHeader('Análise de CRMs e Prescritores', cnpjData.razao_social, PI.USERS);
+          y = 26;
+        }
+
+        pdf.setFillColor(248, 250, 252);
+        pdf.setDrawColor(226, 232, 240);
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(margin, y, contentW, legendH, 1.5, 1.5, 'FD');
+
+        pdf.setFont(F, 'bold');
+        pdf.setFontSize(7.2);
+        pdf.setTextColor(30, 41, 59);
+        pdf.text('LEGENDA DOS ALERTAS / STATUS E DO NÚMERO DE FARMÁCIAS', margin + 3, y + 4.5);
+
+        let rowY = y + titleH;
+        measuredRows.forEach(row => {
+          pdf.setFont(F, 'bold');
+          pdf.setFontSize(6.7);
+          pdf.setTextColor(30, 41, 59);
+          pdf.text(row.labelLines, margin + 3, rowY + 3);
+
+          pdf.setFont(F, 'normal');
+          pdf.setTextColor(71, 85, 105);
+          pdf.text(row.descriptionLines, descriptionX, rowY + 3);
+          rowY += row.height;
+        });
       };
 
       // ── PÁGINA CAPA (Início) ──────────────────────────────────
@@ -1053,27 +1120,28 @@ export function usePdfExport() {
             const issues = [];
             if (m.flag_robo > 0) issues.push('>30 presc/dia local');
             if (m.flag_robo_oculto > 0 && !m.flag_robo) issues.push('>30 presc/dia Brasil');
-            if (m.alerta_concentracao_unico_crm) issues.push('Lançamentos sequenciais');
+            if (m.alerta_concentracao_unico_crm) issues.push('Muitas autorizações em sequência pelo mesmo CRM');
+            if (m.alerta_concentracao_multiplos_crms) issues.push('Muitas autorizações em sequência por alguns CRMs');
             if (m.flag_crm_invalido > 0) issues.push('CRM não localizado');
             if (m.flag_prescricao_antes_registro > 0) issues.push('CRM Irregular (Autor. antes do Registro)');
-            if (m.qtd_estabelecimentos_atua === 1) issues.push('Exclusivo do CNPJ');
+            if (Number(m.nu_estabelecimentos) === 1) issues.push('Exclusivo do CNPJ');
             if (m.alerta5_geografico) issues.push('Distância >400km');
 
-            let alertStr = issues.length > 0 ? issues.join(' | ') : 'Regular';
+            let alertStr = issues.length > 0 ? issues.join('\n') : 'Regular';
             return [
               m.id_medico,
               alertStr,
+              formatNumberFull(m.nu_prescricoes),
+              `${formatNumberFull(m.nu_estabelecimentos)}\n${formatCompetenciaMes(m.competencia_nu_estabelecimentos, `CRM ${m.id_medico}`)}`,
               formatCurrencyFull(m.vl_total_prescricoes),
-              m.nu_prescricoes,
               fmtVal(m.pct_participacao, 'pct', formatCurrencyFull),
-              formatNumberFull(m.nu_prescricoes_dia),
-              m.qtd_estabelecimentos_atua
+              formatNumberFull(m.nu_prescricoes_dia)
             ];
           });
 
           autoTable(pdf, {
             startY: y4 + 2,
-            head: [['CRM', 'Alertas / Status de Auditoria', 'Volume (R$)', 'Prescrições', '% Volume', 'Presc/Dia\nAqui', 'Nº\nFarmácias']],
+            head: [['Médico/CRM', 'Alertas', 'Nº Aut.', 'Nº Estab.', 'Valor autorizado', 'Part.', 'Presc./dia']],
             body: crmRows,
             margin: { left: margin, right: margin },
             styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak', font: F, fontStyle: 'normal' },
@@ -1082,15 +1150,15 @@ export function usePdfExport() {
             columnStyles: {
               0: { cellWidth: 24 },
               1: { cellWidth: 56 },
-              2: { halign: 'right', textColor: [30, 41, 59] },
-              3: { halign: 'right' },
-              4: { halign: 'center' },
+              2: { halign: 'right' },
+              3: { halign: 'center' },
+              4: { halign: 'right', textColor: [30, 41, 59] },
               5: { halign: 'center' },
               6: { halign: 'center' }
             },
             didParseCell: (data) => {
               if (data.section === 'head') {
-                const hAligns = ['left', 'left', 'right', 'right', 'center', 'center', 'center'];
+                const hAligns = ['left', 'left', 'right', 'center', 'right', 'center', 'center'];
                 data.cell.styles.halign = hAligns[data.column.index];
               }
               if (data.section === 'body') {
@@ -1103,13 +1171,44 @@ export function usePdfExport() {
                   data.cell.styles.fontStyle = 'normal';
                   data.cell.styles.textColor = [150, 150, 150];
                 }
-                if (data.column.index === 2 && hasAlert) {
+                if (data.column.index === 4 && hasAlert) {
                   data.cell.styles.textColor = [239, 68, 68];
                   data.cell.styles.fillColor = [255, 240, 240];
                 }
               }
             }
           });
+
+          const crmLegendItems = [];
+          if (top20.some(m => m.alerta_concentracao_unico_crm)) {
+            crmLegendItems.push({
+              label: 'Muitas autorizações em sequência pelo mesmo CRM',
+              description: 'Este alerta é gerado quando o mesmo CRM registra várias autorizações de venda em uma janela de tempo muito curta. A análise considera a quantidade de autorizações, a duração do intervalo e a taxa de autorizações por hora. Quanto maior a quantidade registrada em menor tempo, mais atípico é o padrão observado.',
+            });
+          }
+          if (top20.some(m => m.alerta_concentracao_multiplos_crms)) {
+            crmLegendItems.push({
+              label: 'Muitas autorizações em sequência por alguns CRMs',
+              description: 'Este alerta é gerado quando, em uma mesma janela de tempo muito curta, a farmácia registra várias autorizações de venda distribuídas entre diferentes CRMs. A análise considera o volume total de autorizações, a quantidade de CRMs envolvidos, a duração do intervalo e a taxa de autorizações por hora.',
+            });
+          }
+          if (top20.some(m => m.flag_crm_invalido > 0)) {
+            crmLegendItems.push({
+              label: 'CRM não localizado',
+              description: 'O número informado não foi localizado na base oficial consultada do Conselho Federal de Medicina. O resultado deve ser confrontado com outras fontes oficiais, como o RMS, quando aplicável.',
+            });
+          }
+          if (top20.some(m => m.flag_prescricao_antes_registro > 0)) {
+            crmLegendItems.push({
+              label: 'CRM irregular',
+              description: 'A data da autorização de venda é anterior à primeira inscrição do médico na UF do CRM, indicando uma incompatibilidade temporal que deve ser verificada na documentação correspondente.',
+            });
+          }
+          crmLegendItems.push({
+            label: 'Nº Estab.',
+            description: 'Indica o maior número de estabelecimentos distintos em que o médico/CRM registrou autorizações de venda em uma mesma competência mensal dentro do período analisado. O mês correspondente aparece abaixo do número na tabela. Por exemplo, 20 e 03/2022 significam que aquele CRM registrou autorizações em 20 estabelecimentos distintos no mês de março de 2022. Esse número não representa o total acumulado de estabelecimentos únicos em todo o período.',
+          });
+          drawCrmLegend(crmLegendItems, pdf.lastAutoTable.finalY + 5);
       }
 
       // ── PÁGINA 5 — Falecidos ─────────────────────────────

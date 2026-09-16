@@ -5,6 +5,15 @@ Todas as mudanças relevantes do Sentinela serão registradas neste arquivo.
 O versionamento segue o padrão SemVer: `MAJOR.MINOR.PATCH`.
 
 
+## [1.6.12] - 2026-09-16
+
+### Alterado
+- **Tooltips dos alertas de integridade revisados e concisados.** Os 11 tipos de alerta exibidos no detalhe do estabelecimento agora apresentam explicações objetivas, mantendo os critérios, fórmulas e limites metodológicos essenciais para interpretação pelo auditor.
+- **Tooltips dos alertas estruturados em HTML.** O resumo do card de Alertas e o diálogo de detalhes utilizam o mesmo padrão visual dos tooltips da aba Indicadores, com seções curtas e ícones informativos.
+
+### Corrigido
+- **Tooltip de valor financeiro associado na aba Indicadores.** O montante em reais deixou de ser tratado como fórmula. O bloco agora é identificado corretamente como **VALOR**, sem exibir o rótulo incorreto "FÓRMULA".
+
 ## [1.6.11] - 2026-09-15
 
 ### Alterado

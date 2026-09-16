@@ -41,3 +41,119 @@
 .p-tooltip.sentinela-tooltip.p-tooltip-bottom .p-tooltip-arrow {
   border-bottom-color: var(--tooltip-bg);
 }
+
+/* Tooltips metodológicos do card de alertas de integridade. */
+.p-tooltip.sentinela-tooltip.integrity-alert-tooltip {
+  max-width: min(420px, calc(100vw - 2rem));
+  width: auto;
+}
+
+.p-tooltip.sentinela-tooltip.integrity-alert-tooltip .p-tooltip-text {
+  width: 100%;
+  padding: 0;
+  white-space: normal;
+}
+
+.integrity-tooltip-content {
+  display: flex;
+  width: min(390px, calc(100vw - 2rem));
+  flex-direction: column;
+  gap: 0.62rem;
+  padding: 0.75rem 0.85rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.integrity-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-color-85);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.integrity-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--risk-medium);
+  font-size: 0.8rem;
+}
+
+.integrity-tooltip-intro {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.integrity-tooltip-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.integrity-tooltip-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--tabs-border);
+}
+
+.integrity-tooltip-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.integrity-tooltip-section-label {
+  color: var(--risk-medium);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.integrity-tooltip-section p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.integrity-tooltip-section ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.integrity-tooltip-section li::marker {
+  color: var(--risk-medium);
+}
+
+.integrity-tooltip-formula {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--tabs-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
+}
+
+.integrity-tooltip-formula span {
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.integrity-tooltip-formula strong {
+  color: var(--text-color-85);
+  font-size: 0.7rem;
+  font-weight: 600;
+}

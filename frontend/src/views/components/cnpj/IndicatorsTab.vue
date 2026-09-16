@@ -88,7 +88,9 @@ function renderTooltipSection(section) {
     ? `<ul>${section.items.map((item) => `<li>${escapeTooltipHtml(item)}</li>`).join('')}</ul>`
     : section.formula
       ? `<div class="indicator-tooltip-formula"><span>Fórmula</span><strong>${escapeTooltipHtml(section.formula)}</strong></div>`
-      : `<p>${escapeTooltipHtml(section.text)}</p>`;
+      : section.value != null
+        ? `<div class="indicator-tooltip-value"><strong>${escapeTooltipHtml(section.value)}</strong></div>`
+        : `<p>${escapeTooltipHtml(section.text)}</p>`;
 
   return `
     <section class="indicator-tooltip-section">
@@ -148,7 +150,7 @@ function valorFinanceiroTooltip(indicadorData, indicator) {
     title: 'Valor financeiro associado',
     intro: `Montante em reais relacionado ao indicador ${copy.title.toLowerCase()} no período analisado.`,
     sections: [
-      { label: 'Valor informado', formula: formatCurrencyFull(indicadorData.valor_financeiro) },
+      { label: 'Valor', value: formatCurrencyFull(indicadorData.valor_financeiro) },
       { label: 'O que representa', text: copy.financialMeaning + '.' },
     ],
   });
@@ -1460,6 +1462,20 @@ function riscoTextStyle(indicadorData) {
 }
 
 :global(.indicator-tooltip-formula strong) {
+  color: var(--text-color-85);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+:global(.indicator-tooltip-value) {
+  display: flex;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--tabs-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
+}
+
+:global(.indicator-tooltip-value strong) {
   color: var(--text-color-85);
   font-size: 0.7rem;
   font-weight: 600;
