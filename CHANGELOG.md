@@ -8,7 +8,7 @@ O versionamento segue o padrão SemVer: `MAJOR.MINOR.PATCH`.
 ## [1.6.12] - 2026-09-16
 
 ### Alterado
-- **Tooltips dos alertas de integridade revisados e concisados.** Os 11 tipos de alerta exibidos no detalhe do estabelecimento agora apresentam explicações objetivas, mantendo os critérios, fórmulas e limites metodológicos essenciais para interpretação pelo auditor.
+- **Tooltips dos alertas de integridade revisados e tornados mais concisos.** Os 11 tipos de alerta exibidos no detalhe do estabelecimento agora apresentam explicações objetivas, mantendo os critérios, fórmulas e limites metodológicos essenciais para interpretação pelo auditor.
 - **Tooltips dos alertas estruturados em HTML.** O resumo do card de Alertas e o diálogo de detalhes utilizam o mesmo padrão visual dos tooltips da aba Indicadores, com seções curtas e ícones informativos.
 
 ### Corrigido
