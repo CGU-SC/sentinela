@@ -117,3 +117,7 @@ cloudflare/sentinela-auth-worker/.wrangler/state/v3/kv/miniflare-KVNamespaceObje
 cloudflare/sentinela-auth-worker/.wrangler/state/v3/kv/miniflare-KVNamespaceObject/metadata.sqlite-wal
 cloudflare/sentinela-auth-worker/src/index.js
 docs/updates/manifest.sig
+docs/updates/manifest.sig
+docs/fluxograma_tecnologias.html
+docs/roteiro_apresentacao_fluxograma.md
+docs/updates/manifest.sig
