@@ -19,6 +19,10 @@
 --      Totais nacionais por (id_medico, competencia), equivalentes ao antigo
 --      #prescricoes_todos_estabelecimentos.
 --
+--   4. temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes
+--      Totais por (id_medico, competencia e localidade), destinados ao mapa
+--      e ao ranking gerencial de prescricoes por dia.
+--
 -- Observacao:
 --   build_alertas_crm_geografico e benchmarks dependem de build_dados_crm_detalhado
 --   completo, entao ficam para o script pos-global.
@@ -55,8 +59,11 @@ END;
 IF COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'id') IS NULL
     OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'cnpj') IS NULL
     OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'uf') IS NULL
+    OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'id_regiao_saude') IS NULL
+    OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'codibge') IS NULL
+    OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'municipio') IS NULL
 BEGIN
-    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia nao possui o schema minimo esperado: id, cnpj, uf.', 16, 1);
+    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia nao possui o schema minimo esperado: id, cnpj, uf, id_regiao_saude, codibge, municipio.', 16, 1);
     RETURN;
 END;
 
@@ -252,6 +259,7 @@ SET @t1 = GETDATE();
 
 DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes;
 DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos;
+DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes;
 
 ;WITH base_crm_cnpj AS (
     SELECT
@@ -302,6 +310,49 @@ CREATE CLUSTERED INDEX IDX_CrmPrescEstabMes_Key
 
 CREATE NONCLUSTERED INDEX IDX_CrmPrescEstabMes_Medico
     ON temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes(id_medico, competencia, id_cnpj);
+
+SELECT
+    P.id_medico,
+    P.competencia,
+    CAST(F.uf AS CHAR(2)) AS uf,
+    CAST(F.id_regiao_saude AS VARCHAR(20)) AS id_regiao_saude,
+    CAST(F.codibge AS INT) AS id_ibge7,
+    CAST(F.municipio AS VARCHAR(100)) AS no_municipio,
+    CAST(SUM(CAST(P.nu_prescricoes_mes AS BIGINT)) AS BIGINT) AS nu_prescricoes_mes,
+    CAST(COUNT(DISTINCT P.id_cnpj) AS INT) AS nu_estabelecimentos_mes
+INTO temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes
+FROM temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes P
+INNER JOIN temp_CGUSC.fp.dados_farmacia F
+    ON F.id = P.id_cnpj
+GROUP BY
+    P.id_medico,
+    P.competencia,
+    F.uf,
+    F.id_regiao_saude,
+    F.codibge,
+    F.municipio;
+
+CREATE CLUSTERED INDEX IDX_CrmPrescGerencialMes_Localidade
+    ON temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes(
+        competencia,
+        uf,
+        id_regiao_saude,
+        id_ibge7,
+        id_medico
+    );
+
+CREATE NONCLUSTERED INDEX IDX_CrmPrescGerencialMes_Medico
+    ON temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes(id_medico, competencia)
+    INCLUDE (
+        uf,
+        id_regiao_saude,
+        id_ibge7,
+        no_municipio,
+        nu_prescricoes_mes,
+        nu_estabelecimentos_mes
+    );
+
+PRINT '   temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes concluida em: ' + CONVERT(VARCHAR(20), GETDATE() - @t1, 114);
 
 SELECT
     id_medico,

@@ -141,3 +141,9 @@ export const CHART_UF_ACCENTS = {
     barOrange: PALETTE.orange[500], // '#f97316' (igual em ambos os modos)
   },
 };
+
+// Escala contínua da taxa diária de prescrições na análise geográfica de CRMs.
+export const CRM_PRESCRICOES_SCALE = {
+  dark: [PALETTE.blue[500], PALETTE.indigo[500], PALETTE.violet[500], PALETTE.fuchsia[500]],
+  light: [PALETTE.blue[600], PALETTE.indigo[600], PALETTE.violet[600], PALETTE.fuchsia[600]],
+};

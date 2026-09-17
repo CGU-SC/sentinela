@@ -14,6 +14,7 @@ from .crm import (
     get_crm_raio_x,
     get_crm_timeline_dataset,
 )
+from .crm_analysis import get_crm_prescricoes_analise
 from .dashboard import (
     get_dashboard_data,
     get_producao_semestral_data,
@@ -96,6 +97,7 @@ class AnalyticsService:
     get_regional_benchmarking = staticmethod(get_regional_benchmarking)
     get_regional_benchmarking_animation = staticmethod(get_regional_benchmarking_animation)
     get_crm_data = staticmethod(get_crm_data)
+    get_crm_prescricoes_analise = staticmethod(get_crm_prescricoes_analise)
     get_crm_medico_alertas = staticmethod(get_crm_medico_alertas)
     get_crm_timeline_dataset = staticmethod(get_crm_timeline_dataset)
     sync_crm_raiox_tx = staticmethod(sync_crm_raiox_tx)

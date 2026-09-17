@@ -12,8 +12,7 @@ const routes = [
       { path: 'municipios', name: 'Municipalities', component: () => import('@/views/MunicipalView.vue') },
       { path: 'estabelecimentos', name: 'Establishments', component: () => import('@/views/EstablishmentsView.vue') },
       { path: 'estabelecimentos/:cnpj', name: 'EstablishmentDetail', component: () => import('@/views/CnpjDetailView.vue') },
-      { path: 'analises', name: 'Analyses', redirect: '/analises/prescricoes-dia' },
-      { path: 'analises/prescricoes-dia', name: 'DailyDoctorPrescriptions', component: () => import('@/views/AnalysesView.vue') },
+      { path: 'analises', name: 'Analyses', component: () => import('@/views/AnalysesView.vue') },
       { path: 'alvos', name: 'Targets', component: () => import('@/views/TargetsView.vue') },
       
       // Redirecionamentos para legibilidade e retrocompatibilidade

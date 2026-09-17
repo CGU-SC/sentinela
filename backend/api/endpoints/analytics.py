@@ -21,6 +21,7 @@ from ..schemas.analytics import (
     IndicadorEvolucaoBenchmarkResponse,
     ClinicoIncompatibilidadeResponse,
     AlertasPanoramaResponse,
+    CrmPrescricoesAnaliseResponse,
     NotaTecnicaReadinessResponse,
     NotaTecnicaPrepareResponse,
 )
@@ -34,6 +35,68 @@ import traceback
 import urllib.parse
 
 router = APIRouter()
+
+
+@router.get("/crm-prescricoes-analise", response_model=CrmPrescricoesAnaliseResponse)
+def get_crm_prescricoes_analise(
+    map_level: str = Query("uf", description="Nível do mapa: uf, municipio ou regiao."),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+    perc_min: Optional[float] = Query(None),
+    perc_max: Optional[float] = Query(None),
+    val_min: Optional[float] = Query(None),
+    uf: Optional[str] = Query(None),
+    regiao_id: Optional[int] = Query(None),
+    id_ibge7: Optional[int] = Query(None),
+    situacao_rf: Optional[str] = Query(None),
+    conexao_ms: Optional[str] = Query(None),
+    porte_empresa: Optional[str] = Query(None),
+    grande_rede: Optional[str] = Query(None),
+    cnpj_raiz: Optional[str] = Query(None),
+    unidade_pf: Optional[str] = Query(None),
+    razao_social: Optional[str] = Query(None),
+    estabelecimento: Optional[str] = Query(None),
+    par_teia: Optional[str] = Query(None),
+    socio_beneficio: Optional[str] = Query(None),
+    socio_esocial: Optional[str] = Query(None),
+    cnae_incompativel: bool = Query(False),
+    socio_idade_atipica: bool = Query(False),
+    socio_falecido: bool = Query(False),
+    volume_atipico: bool = Query(False),
+    volume_atipico_limite: Optional[float] = Query(None),
+    dispersao_uf_sem_fronteira: bool = Query(False),
+    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
+):
+    """Retorna o P95 da taxa diária de prescrições por UF/município e o ranking de médicos."""
+    return AnalyticsService.get_crm_prescricoes_analise(
+        map_level=map_level,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        perc_min=perc_min,
+        perc_max=perc_max,
+        val_min=val_min,
+        uf=uf,
+        regiao_id=regiao_id,
+        id_ibge7=id_ibge7,
+        situacao_rf=situacao_rf,
+        conexao_ms=conexao_ms,
+        porte_empresa=porte_empresa,
+        grande_rede=grande_rede,
+        cnpj_raiz=cnpj_raiz,
+        unidade_pf=unidade_pf,
+        razao_social=razao_social,
+        estabelecimento=estabelecimento,
+        par_teia=par_teia,
+        socio_beneficio=socio_beneficio,
+        socio_esocial=socio_esocial,
+        cnae_incompativel=cnae_incompativel,
+        socio_idade_atipica=socio_idade_atipica,
+        socio_falecido=socio_falecido,
+        volume_atipico=volume_atipico,
+        volume_atipico_limite=volume_atipico_limite,
+        dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
+        dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
+    )
 
 
 def _parse_assinantes_tecnicos_param(value: Optional[str]) -> Optional[List[dict]]:

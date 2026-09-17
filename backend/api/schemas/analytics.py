@@ -517,6 +517,41 @@ class MultiCnpjTimelineResponse(BaseModel):
     cnpjs_envolvidos: List[str]
 
 # ── Análise CRMs (Prescritores) ─────────────────────────
+class CrmPrescricoesMapaItemSchema(BaseModel):
+    nivel: Literal["uf", "municipio"]
+    identificador: str
+    nome: str
+    uf: str
+    id_ibge7: Optional[int] = None
+    id_regiao_saude: Optional[str] = None
+    p95_prescricoes_dia: float
+    mediana_prescricoes_dia: float
+    maior_prescricoes_dia: float
+    qtd_medicos: int
+
+
+class CrmPrescricoesRankingItemSchema(BaseModel):
+    rank: int
+    id_medico: str
+    nu_crm: Optional[int] = None
+    sg_uf: Optional[str] = None
+    no_medico: Optional[str] = None
+    taxa_prescricoes_dia: float
+    nu_prescricoes: int
+    dias_calendario: int
+    qtd_estabelecimentos: int
+
+
+class CrmPrescricoesAnaliseResponse(BaseModel):
+    map_level: Literal["uf", "municipio", "regiao"]
+    escopo: str
+    periodo_inicio: date
+    periodo_fim: date
+    qtd_medicos: int
+    mapa: List[CrmPrescricoesMapaItemSchema]
+    ranking: List[CrmPrescricoesRankingItemSchema]
+
+
 class PrescritoresResponse(BaseModel):
     cnpj: str
     summary: dict
