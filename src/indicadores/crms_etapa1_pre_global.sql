@@ -11,7 +11,11 @@
 --   1. temp_CGUSC.fp.build_dados_medico
 --      Mapa CFM normalizado por id_medico.
 --
---   2. temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos
+--   2. temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes
+--      Relacao completa por (id_cnpj, id_medico, competencia), com o total
+--      mensal de prescricoes do medico no estabelecimento.
+--
+--   3. temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos
 --      Totais nacionais por (id_medico, competencia), equivalentes ao antigo
 --      #prescricoes_todos_estabelecimentos.
 --
@@ -27,7 +31,7 @@ DECLARE @DataFim    DATE = '2024-12-31';
 DECLARE @t0         DATETIME = GETDATE();
 DECLARE @t1         DATETIME;
 DECLARE @pipeline_nome   VARCHAR(80) = 'crms_detalhado_pre_global';
-DECLARE @pipeline_versao VARCHAR(40) = 'v2_2026_05_07';
+DECLARE @pipeline_versao VARCHAR(40) = 'v3_2026_09_17';
 DECLARE @nu_registros BIGINT;
 
 IF OBJECT_ID('db_FarmaciaPopular.dbo.Relatorio_movimentacaoFP') IS NULL
@@ -48,9 +52,11 @@ BEGIN
     RETURN;
 END;
 
-IF COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'uf') IS NULL
+IF COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'id') IS NULL
+    OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'cnpj') IS NULL
+    OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'uf') IS NULL
 BEGIN
-    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia nao possui coluna uf.', 16, 1);
+    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia nao possui o schema minimo esperado: id, cnpj, uf.', 16, 1);
     RETURN;
 END;
 
@@ -238,10 +244,13 @@ PRINT '   temp_CGUSC.fp.build_dados_medico concluida em: ' + CONVERT(VARCHAR(20)
 --   1. conta autorizacoes por (cnpj, medico, competencia);
 --   2. soma esses totais para (medico, competencia);
 --   3. conta quantos estabelecimentos tiveram registro do medico no mes.
+-- Tambem materializa a relacao completa por estabelecimento, medico e mes,
+-- que sera usada por analises globais com os filtros da aplicacao.
 -- ============================================================================
-PRINT '>> Passo 2: Criando temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos...';
+PRINT '>> Passo 2: Criando caches de prescricoes por estabelecimento e nacionais...';
 SET @t1 = GETDATE();
 
+DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes;
 DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos;
 
 ;WITH base_crm_cnpj AS (
@@ -279,12 +288,28 @@ DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos;
         MONTH(M.data_hora)
 )
 SELECT
+    CAST(F.id AS INT) AS id_cnpj,
+    B.id_medico,
+    B.competencia,
+    CAST(B.nu_prescricoes_medico AS INT) AS nu_prescricoes_mes
+INTO temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes
+FROM base_crm_cnpj B
+INNER JOIN temp_CGUSC.fp.dados_farmacia F
+    ON F.cnpj = B.nu_cnpj;
+
+CREATE CLUSTERED INDEX IDX_CrmPrescEstabMes_Key
+    ON temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes(id_cnpj, id_medico, competencia);
+
+CREATE NONCLUSTERED INDEX IDX_CrmPrescEstabMes_Medico
+    ON temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes(id_medico, competencia, id_cnpj);
+
+SELECT
     id_medico,
     competencia,
-    CAST(SUM(nu_prescricoes_medico) AS SMALLINT)     AS nu_prescricoes_medico_em_todos_estabelecimentos,
-    CAST(COUNT(DISTINCT nu_cnpj) AS SMALLINT)        AS nu_estabelecimentos_com_registro_mesmo_crm
+    CAST(SUM(nu_prescricoes_mes) AS SMALLINT) AS nu_prescricoes_medico_em_todos_estabelecimentos,
+    CAST(COUNT(DISTINCT id_cnpj) AS SMALLINT) AS nu_estabelecimentos_com_registro_mesmo_crm
 INTO temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos
-FROM base_crm_cnpj
+FROM temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes
 GROUP BY id_medico, competencia;
 
 CREATE CLUSTERED INDEX IDX_CrmPrescTodos_Key

@@ -23,6 +23,7 @@ const tabs = [
   { label: 'Home', path: '/' },
   { label: 'Municípios', path: '/municipios' },
   { label: 'Estabelecimentos', path: '/estabelecimentos' },
+  { label: 'Análises', path: '/analises' },
   // { label: 'Alvos', path: '/alvos' },
 ];
 
@@ -79,7 +80,7 @@ function onNavSelect(event) {
           :key="tab.path"
           :to="tab.path"
           class="nav-tab"
-          :class="{ active: route.path === tab.path }"
+          :class="{ active: tab.path === '/analises' ? route.path.startsWith('/analises') : route.path === tab.path }"
         >
           {{ tab.label }}
         </router-link>

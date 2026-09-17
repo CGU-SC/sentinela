@@ -14,7 +14,9 @@ const filterStore = useFilterStore();
 
 // Lógica Profissional: Esconde a sidebar se a rota atual pedir via meta: { hideSidebar: true }
 const isSidebarHidden = computed(() => !!route.meta?.hideSidebar);
-const isAnalysisRoute = computed(() => route.path === "/estabelecimentos");
+const isAnalysisRoute = computed(() =>
+  route.path === "/estabelecimentos" || route.path.startsWith("/analises"),
+);
 
 onMounted(() => {});
 </script>

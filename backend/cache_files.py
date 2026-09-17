@@ -3,6 +3,7 @@
 MODULE_EXT = ".smod"
 CRM_RAIOX_TX_CACHE_VERSION = 3
 CRM_PRESCRITORES_CACHE_VERSION = 3
+CRM_PRESCRICOES_ESTABELECIMENTO_MES_CACHE_VERSION = 1
 MEMORIA_CALCULO_CACHE_VERSION = 1
 PAGAMENTOS_CONSOLIDADOS_FARMACIA_POPULAR_CACHE_VERSION = 1
 
@@ -19,6 +20,7 @@ BENCH_CRM_UF_PARQUET = _module("bench_crm_uf")
 BENCH_CRM_REGIAO_PARQUET = _module("bench_crm_regiao")
 BENCH_CRM_BR_PARQUET = _module("bench_crm_br")
 CRM_PRESCRICOES_BRASIL_SEMESTRE_PARQUET = _module("crm_prescricoes_brasil_semestre")
+CRM_PRESCRICOES_ESTABELECIMENTO_MES_PARQUET = _module("crm_prescricoes_estabelecimento_mes")
 DADOS_MEDICO_PARQUET = _module("dados_medico")
 CRM_PRESCRITORES_GLOBAL_PARQUET = _module("crm_prescritores_global")
 MEMORIA_CALCULO_GLOBAL_PARQUET = _module("memoria_calculo_global")

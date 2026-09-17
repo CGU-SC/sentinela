@@ -86,6 +86,11 @@ BEGIN
     RAISERROR('Tabela fp.build_crm_prescricoes_brasil_semestre nao encontrada.', 16, 1);
     RETURN;
 END;
+IF OBJECT_ID('fp.build_crm_prescricoes_estabelecimento_mes', 'U') IS NULL
+BEGIN
+    RAISERROR('Tabela fp.build_crm_prescricoes_estabelecimento_mes nao encontrada.', 16, 1);
+    RETURN;
+END;
 IF OBJECT_ID('fp.build_crm_timeline_dia', 'U') IS NULL
 BEGIN
     RAISERROR('Tabela fp.build_crm_timeline_dia nao encontrada.', 16, 1);
@@ -148,6 +153,9 @@ BEGIN TRY
 
     IF OBJECT_ID('fp.app_crm_prescricoes_brasil_semestre', 'U') IS NOT NULL DROP TABLE fp.app_crm_prescricoes_brasil_semestre;
     EXEC sp_rename 'fp.build_crm_prescricoes_brasil_semestre', 'app_crm_prescricoes_brasil_semestre';
+
+    IF OBJECT_ID('fp.app_crm_prescricoes_estabelecimento_mes', 'U') IS NOT NULL DROP TABLE fp.app_crm_prescricoes_estabelecimento_mes;
+    EXEC sp_rename 'fp.build_crm_prescricoes_estabelecimento_mes', 'app_crm_prescricoes_estabelecimento_mes';
 
     IF OBJECT_ID('fp.app_crm_timeline_dia', 'U') IS NOT NULL DROP TABLE fp.app_crm_timeline_dia;
     EXEC sp_rename 'fp.build_crm_timeline_dia', 'app_crm_timeline_dia';
