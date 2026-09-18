@@ -55,6 +55,13 @@ _GLOBAL_PARQUET_SCHEMAS = {
 }
 _ON_DEMAND_GLOBAL_CACHE_READY: set[str] = set()
 
+# Módulos da análise de CRMs mantidos no projeto, mas desativados no boot
+# enquanto a funcionalidade permanecer indisponível na navegação principal.
+_DISABLED_BOOT_MODULES = frozenset({
+    "crm_prescricoes_estabelecimento_mes",
+    "crm_prescricoes_gerencial_mes",
+})
+
 _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
     "teia_fonte_nivel2": {
         "cpf_cnpj_socio",
@@ -4589,8 +4596,10 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         _df_dados_ibge_demografia = _try_load("dados_ibge_demografia", _DADOS_IBGE_DEMOGRAFIA_PARQUET_PATH)
         _df_volume_atipico_semestral = _try_load("volume_atipico_semestral", _VOLUME_ATIPICO_SEMESTRAL_PARQUET_PATH)
         _try_mark_on_demand("crm_prescricoes_brasil_semestre", _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH)
-        _try_mark_on_demand("crm_prescricoes_estabelecimento_mes", _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH)
-        _try_mark_on_demand("crm_prescricoes_gerencial_mes", _CRM_PRESCRICOES_GERENCIAL_MES_PATH)
+        if "crm_prescricoes_estabelecimento_mes" not in _DISABLED_BOOT_MODULES:
+            _try_mark_on_demand("crm_prescricoes_estabelecimento_mes", _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH)
+        if "crm_prescricoes_gerencial_mes" not in _DISABLED_BOOT_MODULES:
+            _try_mark_on_demand("crm_prescricoes_gerencial_mes", _CRM_PRESCRICOES_GERENCIAL_MES_PATH)
         _try_mark_on_demand("dados_medico", _DADOS_MEDICO_PARQUET_PATH)
         _try_mark_on_demand("crm_prescritores_global", _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH)
         _try_mark_on_demand("memoria_calculo_global", _MEMORIA_CALCULO_GLOBAL_PARQUET_PATH)
@@ -4944,8 +4953,6 @@ def get_cache_status() -> dict:
     """Retorna o estado atual da sincronização para o frontend."""
     optional_modules = {
         "crm_prescritores_global",
-        "crm_prescricoes_estabelecimento_mes",
-        "crm_prescricoes_gerencial_mes",
         "memoria_calculo_global",
         "crm_raiox_tx_global",
         "pagamentos_consolidados_farmacia_popular",
@@ -5013,6 +5020,9 @@ def get_cache_status() -> dict:
         "dados_par":      {"label": "Indicadores PAR",          "path": _DADOS_PAR_PARQUET_PATH,       "loaded": _df_dados_par is not None},
         "par_teia_alvos": {"label": "PAR na Teia dos Alvos",     "path": _PAR_TEIA_ALVOS_PARQUET_PATH,  "loaded": _df_par_teia_alvos is not None},
     }
+    for module_name in _DISABLED_BOOT_MODULES:
+        modules.pop(module_name, None)
+
     modules_status = {}
     for key, v in modules.items():
         path = str(v["path"])
