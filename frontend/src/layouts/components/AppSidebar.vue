@@ -13,6 +13,7 @@ import { useFormatting } from "@/composables/useFormatting";
 import { useSliderPeriodLogic } from "@/composables/useSliderPeriodLogic";
 import { useFilterParameters } from "@/composables/useFilterParameters";
 import { FILTER_OPTIONS } from "@/config/filterOptions";
+import { filterActionTooltip, filterTooltip } from "@/config/filterTooltipConfig";
 import Button from "primevue/button";
 import Checkbox from "primevue/checkbox";
 import Dropdown from "primevue/dropdown";
@@ -148,26 +149,72 @@ const socioBeneficioOptions = FILTER_OPTIONS.socioBeneficio;
 const socioEsocialOptions = FILTER_OPTIONS.socioEsocial;
 const clusterOptions = FILTER_OPTIONS.cluster;
 const rfaOptions = FILTER_OPTIONS.rfa;
-const parTeiaTooltip =
-  "CNPJ Nível 2 da Teia com PAR: empresa vinculada no nível 2 da teia possui PAR.\n" +
-  "CNPJ Nível 4 da Teia com PAR: empresa vinculada no nível 4 da teia possui PAR.\n" +
-  "Qualquer CNPJ com PAR: considera CNPJs dos níveis 2 ou 4 da teia.";
-const socioBeneficioTooltip =
-  "Sócio direto: vínculo ativo na farmácia alvo e cadastro no CadÚnico ou Seguro Defeso.\n" +
-  "Sócio N3: vínculo ativo em empresa do nível 2 e cadastro no CadÚnico ou Seguro Defeso.\n" +
-  "Sócio direto ou N3: considera qualquer um desses dois níveis.";
-const dispersaoUfSemFronteiraTooltip =
-  "Filtra estabelecimentos com percentual mínimo de vendas para UFs que não fazem fronteira com a UF da farmácia, no período selecionado.";
-const socioEsocialTooltip =
-  "Sócio direto: vínculo societário ativo na farmácia alvo e vínculo em outro CNPJ em função não gerencial no eSocial.\n" +
-  "Sócio N3: vínculo ativo em empresa do nível 2 e vínculo em outro CNPJ em função não gerencial no eSocial.\n" +
-  "Sócio direto ou N3: considera qualquer um desses dois níveis.";
-const socioIdadeAtipicaTooltip =
-  "Filtra estabelecimentos com ao menos um sócio pessoa física com vínculo ativo e idade inferior a 21 anos ou superior a 80 anos na data de referência do período selecionado.";
-const socioFalecidoTooltip =
-  "Filtra estabelecimentos com ao menos um sócio pessoa física com vínculo societário ativo identificado como falecido na base de óbitos.";
-const cnaeIncompativelTooltip =
-  "Filtra estabelecimentos cujo CNAE principal e secundários não identificam atividade farmacêutica compatível com o programa.";
+
+const filterTooltips = Object.freeze({
+  clearAll: filterActionTooltip(
+    "Limpar todos os filtros",
+    "Remove os filtros aplicados e restaura os valores padrão.",
+    "pi-eraser",
+  ),
+  clear: filterActionTooltip(
+    "Limpar filtro",
+    "Restaura este filtro ao valor padrão.",
+    "pi-eraser",
+  ),
+  clearSearch: filterActionTooltip(
+    "Limpar busca",
+    "Remove o texto digitado na busca de filtros.",
+    "pi-times",
+  ),
+  establishment: filterTooltip("estabelecimento"),
+  uf: filterTooltip("uf"),
+  regiao: filterTooltip("regiao"),
+  municipio: filterTooltip("municipio"),
+  unidadePf: filterTooltip("unidadePf"),
+  situacao: filterTooltip("situacao"),
+  ms: filterTooltip("ms"),
+  porte: filterTooltip("porte"),
+  grandeRede: filterTooltip("grandeRede"),
+  percentual: filterTooltip("percentual"),
+  periodo: filterTooltip("periodo"),
+  valorMin: filterTooltip("valorMin"),
+  parTeia: filterTooltip("parTeia"),
+  cnaeIncompativel: filterTooltip("cnaeIncompativel"),
+  socioIdadeAtipica: filterTooltip("socioIdadeAtipica"),
+  socioFalecido: filterTooltip("socioFalecido"),
+  socioBeneficio: filterTooltip("socioBeneficio"),
+  socioEsocial: filterTooltip("socioEsocial"),
+  dispersaoUfSemFronteira: filterTooltip("dispersaoUfSemFronteira"),
+  volumeAtipico: filterTooltip("volumeAtipico"),
+});
+
+const activeFiltersTooltip = computed(() =>
+  filterActionTooltip(
+    "Filtros ativos",
+    `Existem ${activeFilterCount.value} filtro${activeFilterCount.value === 1 ? "" : "s"} ativo${activeFilterCount.value === 1 ? "" : "s"}. Clique para abrir a sidebar e revisar a seleção.`,
+    "pi-filter",
+  ),
+);
+
+const panelTooltip = computed(() =>
+  filterActionTooltip(
+    isCollapsed.value ? "Abrir painel" : "Fechar painel",
+    isCollapsed.value
+      ? "Exibe a sidebar com os filtros de pesquisa."
+      : "Oculta a sidebar com os filtros de pesquisa.",
+    isCollapsed.value ? "pi-angle-right" : "pi-angle-left",
+  ),
+);
+
+const lockTooltip = computed(() =>
+  filterActionTooltip(
+    isSidebarLocked.value ? "Sidebar travada" : "Travar sidebar",
+    isSidebarLocked.value
+      ? "A sidebar permanece aberta ou fechada até ser destravada."
+      : "Mantém a sidebar na posição atual durante a navegação.",
+    isSidebarLocked.value ? "pi-lock" : "pi-lock-open",
+  ),
+);
 
 const { formatBRL: formatCurrency } = useFormatting();
 
@@ -700,7 +747,7 @@ const clearSearch = () => {
     v-if="activeFilterCount > 0"
     class="sidebar-clear-btn"
     @click="filterStore.resetFilters()"
-    v-tooltip.right="'Limpar todos os filtros'"
+    v-tooltip.right="filterTooltips.clearAll"
     aria-label="Limpar todos os filtros"
   >
     <i class="pi pi-eraser"></i>
@@ -711,7 +758,7 @@ const clearSearch = () => {
     v-if="activeFilterCount > 0"
     class="sidebar-filter-count-btn"
     @click="isCollapsed = false"
-    v-tooltip.right="`Existem ${activeFilterCount} filtro(s) ativo(s)`"
+    v-tooltip.right="activeFiltersTooltip"
   >
     <i class="pi pi-filter"></i>
     <span class="filter-count-badge">{{ activeFilterCount }}</span>
@@ -721,7 +768,7 @@ const clearSearch = () => {
   <button
     class="sidebar-float-btn"
     @click="isCollapsed = !isCollapsed"
-    v-tooltip.right="isCollapsed ? 'Abrir painel' : 'Fechar painel'"
+    v-tooltip.right="panelTooltip"
   >
     <i :class="isCollapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'"></i>
   </button>
@@ -731,11 +778,7 @@ const clearSearch = () => {
     class="sidebar-lock-btn"
     :class="{ locked: isSidebarLocked }"
     @click="toggleSidebarLock"
-    v-tooltip.right="
-      isSidebarLocked
-        ? 'Sidebar travada — clique para destravar'
-        : 'Travar sidebar colapsada'
-    "
+    v-tooltip.right="lockTooltip"
   >
     <i :class="isSidebarLocked ? 'pi pi-lock' : 'pi pi-lock-open'"></i>
   </button>
@@ -764,7 +807,7 @@ const clearSearch = () => {
           v-if="sidebarSearch"
           class="sidebar-search-clear"
           @click="clearSearch"
-          v-tooltip.bottom="'Limpar busca'"
+          v-tooltip.bottom="filterTooltips.clearSearch"
           aria-label="Limpar busca"
         >
           <i class="pi pi-times"></i>
@@ -806,11 +849,18 @@ const clearSearch = () => {
       >
         <label class="filter-label">
           UF
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro UF"
+            v-tooltip.right="filterTooltips.uf"
+          />
           <button
             v-if="isFilterActive('selectedUF')"
             class="filter-clear-btn"
             @click="filterStore.selectedUF = FILTER_ALL_VALUE"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -832,11 +882,18 @@ const clearSearch = () => {
       >
         <label class="filter-label">
           Região de Saúde
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Região de Saúde"
+            v-tooltip.right="filterTooltips.regiao"
+          />
           <button
             v-if="isFilterActive('selectedRegiaoSaude')"
             class="filter-clear-btn"
             @click="filterStore.selectedRegiaoSaude = FILTER_ALL_VALUE"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -866,11 +923,18 @@ const clearSearch = () => {
       >
         <label class="filter-label">
           Município
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Município"
+            v-tooltip.right="filterTooltips.municipio"
+          />
           <button
             v-if="isFilterActive('selectedMunicipio')"
             class="filter-clear-btn"
             @click="filterStore.selectedMunicipio = FILTER_ALL_VALUE"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -900,11 +964,18 @@ const clearSearch = () => {
       >
         <label class="filter-label">
           Jurisdição PF
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Jurisdição PF"
+            v-tooltip.right="filterTooltips.unidadePf"
+          />
           <button
             v-if="isFilterActive('selectedUnidadePf')"
             class="filter-clear-btn"
             @click="filterStore.selectedUnidadePf = FILTER_ALL_VALUE"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -929,11 +1000,18 @@ const clearSearch = () => {
         <div v-show="shouldDisplayFilter('geral', 'situacao')" class="filter-section">
           <label class="filter-label">
             Situação RF
+            <i
+              class="pi pi-info-circle filter-info-icon"
+              role="img"
+              tabindex="0"
+              aria-label="Explicação do filtro Situação RF"
+              v-tooltip.right="filterTooltips.situacao"
+            />
             <button
               v-if="isFilterActive('selectedSituacao')"
               class="filter-clear-btn"
               @click="filterStore.selectedSituacao = FILTER_ALL_VALUE"
-              v-tooltip.right="'Limpar filtro'"
+              v-tooltip.right="filterTooltips.clear"
             >
               <i class="pi pi-eraser" />
             </button>
@@ -949,11 +1027,18 @@ const clearSearch = () => {
         <div v-show="shouldDisplayFilter('geral', 'ms')" class="filter-section">
           <label class="filter-label">
             Conexão MS
+            <i
+              class="pi pi-info-circle filter-info-icon"
+              role="img"
+              tabindex="0"
+              aria-label="Explicação do filtro Conexão MS"
+              v-tooltip.right="filterTooltips.ms"
+            />
             <button
               v-if="isFilterActive('selectedMS')"
               class="filter-clear-btn"
               @click="filterStore.selectedMS = FILTER_ALL_VALUE"
-              v-tooltip.right="'Limpar filtro'"
+              v-tooltip.right="filterTooltips.clear"
             >
               <i class="pi pi-eraser" />
             </button>
@@ -972,11 +1057,18 @@ const clearSearch = () => {
         <div v-show="shouldDisplayFilter('geral', 'porte')" class="filter-section">
           <label class="filter-label">
             Porte CNPJ
+            <i
+              class="pi pi-info-circle filter-info-icon"
+              role="img"
+              tabindex="0"
+              aria-label="Explicação do filtro Porte CNPJ"
+              v-tooltip.right="filterTooltips.porte"
+            />
             <button
               v-if="isFilterActive('selectedPorte')"
               class="filter-clear-btn"
               @click="filterStore.selectedPorte = FILTER_ALL_VALUE"
-              v-tooltip.right="'Limpar filtro'"
+              v-tooltip.right="filterTooltips.clear"
             >
               <i class="pi pi-eraser" />
             </button>
@@ -992,11 +1084,18 @@ const clearSearch = () => {
         <div v-show="shouldDisplayFilter('geral', 'grandeRede')" class="filter-section">
           <label class="filter-label">
             Grande Rede
+            <i
+              class="pi pi-info-circle filter-info-icon"
+              role="img"
+              tabindex="0"
+              aria-label="Explicação do filtro Grande Rede"
+              v-tooltip.right="filterTooltips.grandeRede"
+            />
             <button
               v-if="isFilterActive('selectedGrandeRede')"
               class="filter-clear-btn"
               @click="filterStore.selectedGrandeRede = FILTER_ALL_VALUE"
-              v-tooltip.right="'Limpar filtro'"
+              v-tooltip.right="filterTooltips.clear"
             >
               <i class="pi pi-eraser" />
             </button>
@@ -1019,22 +1118,17 @@ const clearSearch = () => {
         <label class="filter-label">
           Estabelecimento
           <i
-            class="pi pi-info-circle"
-            style="
-              font-size: 0.7rem;
-              margin-left: 4px;
-              opacity: 0.6;
-              cursor: default;
-            "
-            v-tooltip.right="
-              'Digite o CNPJ (completo ou raiz de 8 dígitos) ou parte da razão social. CNPJ completo filtra o estabelecimento exato; raiz filtra toda a rede; texto livre filtra por razão social.'
-            "
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Estabelecimento"
+            v-tooltip.right="filterTooltips.establishment"
           />
           <button
             v-if="isFilterActive('selectedCnpjRaiz')"
             class="filter-clear-btn"
             @click="filterStore.selectedCnpjRaiz = ''"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1074,6 +1168,13 @@ const clearSearch = () => {
       >
         <label class="filter-label">
           % de não comprovação
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro de percentual de não comprovação"
+            v-tooltip.right="filterTooltips.percentual"
+          />
           <button
             v-if="isFilterActive('percentualNaoComprovacaoRange')"
             class="filter-clear-btn"
@@ -1083,7 +1184,7 @@ const clearSearch = () => {
                 applyPercentualNaoComprovacao();
               }
             "
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1177,11 +1278,18 @@ const clearSearch = () => {
       >
         <label class="filter-label" style="pointer-events: auto">
           Período de Análise
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Período de Análise"
+            v-tooltip.right="filterTooltips.periodo"
+          />
           <button
             v-if="isFilterActive('sliderValue')"
             class="filter-clear-btn"
             @click="clearPeriodFilter"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1274,6 +1382,13 @@ const clearSearch = () => {
       >
         <label class="filter-label">
           Valor mínimo sem comprovação
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Valor mínimo sem comprovação"
+            v-tooltip.right="filterTooltips.valorMin"
+          />
           <button
             v-if="isFilterActive('valorMinSemComp')"
             class="filter-clear-btn"
@@ -1283,7 +1398,7 @@ const clearSearch = () => {
                 applyValorMinSemComp();
               }
             "
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1347,7 +1462,7 @@ const clearSearch = () => {
                 v-if="isFilterActive('searchTarget')"
                 class="filter-clear-btn"
                 @click="filterStore.searchTarget = ''"
-                v-tooltip.right="'Limpar filtro'"
+                v-tooltip.right="filterTooltips.clear"
               >
                 <i class="pi pi-eraser" />
               </button>
@@ -1366,7 +1481,7 @@ const clearSearch = () => {
                 v-if="isFilterActive('clusterSelection')"
                 class="filter-clear-btn"
                 @click="filterStore.clusterSelection = FILTER_ALL_VALUE"
-                v-tooltip.right="'Limpar filtro'"
+                v-tooltip.right="filterTooltips.clear"
               >
                 <i class="pi pi-eraser" />
               </button>
@@ -1386,7 +1501,7 @@ const clearSearch = () => {
                 v-if="isFilterActive('rfaSelection')"
                 class="filter-clear-btn"
                 @click="filterStore.rfaSelection = FILTER_ALL_VALUE"
-                v-tooltip.right="'Limpar filtro'"
+                v-tooltip.right="filterTooltips.clear"
               >
                 <i class="pi pi-eraser" />
               </button>
@@ -1409,7 +1524,7 @@ const clearSearch = () => {
                 v-if="isFilterActive('searchTarget')"
                 class="filter-clear-btn"
                 @click="filterStore.searchTarget = ''"
-                v-tooltip.right="'Limpar filtro'"
+                v-tooltip.right="filterTooltips.clear"
               >
                 <i class="pi pi-eraser" />
               </button>
@@ -1448,13 +1563,13 @@ const clearSearch = () => {
           CNPJs com PAR
           <i
             class="pi pi-info-circle filter-info-icon"
-            v-tooltip.right="{ value: parTeiaTooltip, showDelay: 120, hideDelay: 80 }"
+            v-tooltip.right="filterTooltips.parTeia"
           />
           <button
             v-if="isFilterActive('selectedParTeia')"
             class="filter-clear-btn"
             @click="filterStore.selectedParTeia = FILTER_ALL_VALUE"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1479,13 +1594,13 @@ const clearSearch = () => {
           CNPJ com CNAE Incompatível
           <i
             class="pi pi-info-circle filter-info-icon"
-            v-tooltip.right="{ value: cnaeIncompativelTooltip, showDelay: 120, hideDelay: 80 }"
+            v-tooltip.right="filterTooltips.cnaeIncompativel"
           />
           <button
             v-if="isFilterActive('selectedCnaeIncompativel')"
             class="filter-clear-btn"
             @click="filterStore.selectedCnaeIncompativel = false"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1511,13 +1626,13 @@ const clearSearch = () => {
           Sócio &lt; 21 anos ou &gt; 80 anos
           <i
             class="pi pi-info-circle filter-info-icon"
-            v-tooltip.right="{ value: socioIdadeAtipicaTooltip, showDelay: 120, hideDelay: 80 }"
+            v-tooltip.right="filterTooltips.socioIdadeAtipica"
           />
           <button
             v-if="isFilterActive('selectedSocioIdadeAtipica')"
             class="filter-clear-btn"
             @click="filterStore.selectedSocioIdadeAtipica = false"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1543,13 +1658,13 @@ const clearSearch = () => {
           Sócio ativo falecido
           <i
             class="pi pi-info-circle filter-info-icon"
-            v-tooltip.right="{ value: socioFalecidoTooltip, showDelay: 120, hideDelay: 80 }"
+            v-tooltip.right="filterTooltips.socioFalecido"
           />
           <button
             v-if="isFilterActive('selectedSocioFalecido')"
             class="filter-clear-btn"
             @click="filterStore.selectedSocioFalecido = false"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1575,13 +1690,13 @@ const clearSearch = () => {
           Sócio no CadÚnico/Defeso
           <i
             class="pi pi-info-circle filter-info-icon"
-            v-tooltip.right="{ value: socioBeneficioTooltip, showDelay: 120, hideDelay: 80 }"
+            v-tooltip.right="filterTooltips.socioBeneficio"
           />
           <button
             v-if="isFilterActive('selectedSocioBeneficio')"
             class="filter-clear-btn"
             @click="filterStore.selectedSocioBeneficio = FILTER_ALL_VALUE"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1606,13 +1721,13 @@ const clearSearch = () => {
           Sócio com vínculo eSocial
           <i
             class="pi pi-info-circle filter-info-icon"
-            v-tooltip.right="{ value: socioEsocialTooltip, showDelay: 120, hideDelay: 80 }"
+            v-tooltip.right="filterTooltips.socioEsocial"
           />
           <button
             v-if="isFilterActive('selectedSocioEsocial')"
             class="filter-clear-btn"
             @click="filterStore.selectedSocioEsocial = FILTER_ALL_VALUE"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1637,13 +1752,13 @@ const clearSearch = () => {
           Vendas para UFs sem fronteira
           <i
             class="pi pi-info-circle filter-info-icon"
-            v-tooltip.right="{ value: dispersaoUfSemFronteiraTooltip, showDelay: 120, hideDelay: 80 }"
+            v-tooltip.right="filterTooltips.dispersaoUfSemFronteira"
           />
           <button
             v-if="isFilterActive('dispersaoUfSemFronteiraEnabled')"
             class="filter-clear-btn"
             @click="clearDispersaoUfSemFronteira"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -1714,13 +1829,13 @@ const clearSearch = () => {
           Aumento Semestral Atípico
           <i
             class="pi pi-info-circle filter-info-icon"
-            v-tooltip.right="'Filtra estabelecimentos com crescimento percentual atípico e aumento absoluto mínimo de R$ 10.000 em relação ao semestre anterior.'"
+            v-tooltip.right="filterTooltips.volumeAtipico"
           />
           <button
             v-if="isFilterActive('volumeAtipicoEnabled')"
             class="filter-clear-btn"
             @click="clearVolumeAtipico"
-            v-tooltip.right="'Limpar filtro'"
+            v-tooltip.right="filterTooltips.clear"
           >
             <i class="pi pi-eraser" />
           </button>
@@ -2140,7 +2255,9 @@ const clearSearch = () => {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 0 0 32px;
   height: 32px;
+  min-height: 32px;
   margin: 0.5rem 0.5rem 0.4rem;
   padding: 0 1rem 0 2.4rem;
   background: var(--sidebar-input-bg);

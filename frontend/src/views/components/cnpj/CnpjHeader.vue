@@ -13,6 +13,10 @@ import { useRouter } from "vue-router";
 import { extractCnpjRaiz } from "@/composables/useParsing";
 import { MONTH_LABELS } from "@/config/constants";
 import { integrityAlertTooltip } from "@/config/integrityAlertTooltipConfig";
+import {
+  cnpjHeroTextTooltip,
+  cnpjHeroTooltip,
+} from "@/config/cnpjHeroTooltipConfig";
 import ObservationDialog from "./ObservationDialog.vue";
 import IntegrityAlertsDialog from "./IntegrityAlertsDialog.vue";
 import CnpjCadastroDialog from "./CnpjCadastroDialog.vue";
@@ -166,6 +170,26 @@ const subtituloTooltip = computed(() => {
   return nome && nome.length > 60 ? nome : null;
 });
 
+const nomeCompletoHtmlTooltip = computed(() =>
+  tituloTooltip.value
+    ? cnpjHeroTextTooltip(
+        "Nome do estabelecimento",
+        "Nome fantasia completo registrado para o estabelecimento.",
+        tituloTooltip.value,
+      )
+    : null,
+);
+
+const razaoSocialCompletaHtmlTooltip = computed(() =>
+  subtituloTooltip.value
+    ? cnpjHeroTextTooltip(
+        "Razão social",
+        "Razão social completa registrada para o estabelecimento.",
+        subtituloTooltip.value,
+      )
+    : null,
+);
+
 const formatRank = (rank) => {
   if (rank == null) return "—";
   return `${rank}º`;
@@ -217,10 +241,25 @@ const redeDialogCnpjRaiz = computed(() =>
   extractCnpjRaiz(props.cnpj ?? "")
 );
 
-const redeBadgeTooltip = computed(() =>
-  (props.cnpjData?.qtd_estabelecimentos_rede ?? 0) > 1
-    ? "Clique para ver todos os estabelecimentos desta rede"
-    : "Esta farmácia é a única da rede"
+const redeBadgeHtmlTooltip = computed(() => {
+  const quantidade = props.cnpjData?.qtd_estabelecimentos_rede ?? 0;
+  return cnpjHeroTooltip("rede", {
+    detail: quantidade > 1
+      ? `Ação disponível: consultar os ${quantidade} estabelecimentos identificados.`
+      : "Ação disponível: nenhum outro estabelecimento foi identificado na rede.",
+  });
+});
+
+const ministerioSaudeHtmlTooltip = computed(() =>
+  cnpjHeroTooltip("ministerioSaude", {
+    detail: `Conexão: ${props.cnpjData?.is_conexao_ativa ? "Ativa" : "Inativa"}.`,
+  }),
+);
+
+const receitaFederalHtmlTooltip = computed(() =>
+  cnpjHeroTooltip("receitaFederal", {
+    detail: `Situação cadastral: ${props.cnpjData?.situacao_rf ?? "Não informada"}.`,
+  }),
 );
 
 const showObsDialog = ref(false);
@@ -321,6 +360,38 @@ const pdfTooltip = computed(() => {
   }
   return props.pdfReadinessError || "Relatório PDF indisponível";
 });
+
+const pdfHtmlTooltip = computed(() =>
+  cnpjHeroTooltip("pdf", { detail: pdfTooltip.value }),
+);
+
+const noteHtmlTooltip = computed(() =>
+  cnpjHeroTooltip("notaTecnica", { detail: noteTooltip.value }),
+);
+
+const interesseHtmlTooltip = computed(() =>
+  cnpjHeroTooltip("listaInteresse", {
+    detail: farmaciaLists.isInteresse(props.cnpj)
+      ? "Remover este estabelecimento da lista."
+      : "Adicionar este estabelecimento à lista.",
+  }),
+);
+
+const observacaoHtmlTooltip = computed(() =>
+  cnpjHeroTooltip("observacao", {
+    detail: hasObservacao.value
+      ? "Editar a observação registrada."
+      : "Adicionar uma observação ao estabelecimento.",
+  }),
+);
+
+const heroTooltips = Object.freeze({
+  back: cnpjHeroTooltip("back"),
+  copyCnpj: cnpjHeroTooltip("copyCnpj"),
+  cadastro: cnpjHeroTooltip("cadastro"),
+  rankRegiao: cnpjHeroTooltip("rankRegiao"),
+  rankMunicipio: cnpjHeroTooltip("rankMunicipio"),
+});
 </script>
 
 <template>
@@ -334,16 +405,16 @@ const pdfTooltip = computed(() => {
               <button
                 class="back-btn"
                 @click="router.back()"
-                v-tooltip.bottom="'Voltar'"
+                v-tooltip.bottom="heroTooltips.back"
               >
                 <i class="pi pi-arrow-left" />
               </button>
-              <h1 class="razao-social-new" v-tooltip.bottom="tituloTooltip">
+              <h1 class="razao-social-new" v-tooltip.bottom="nomeCompletoHtmlTooltip">
                 {{ tituloDisplay }}
               </h1>
               <div
                 class="cnpj-copy-wrap-new"
-                v-tooltip.bottom="'Copiar CNPJ'"
+                v-tooltip.bottom="heroTooltips.copyCnpj"
                 @click="copyCnpj"
               >
                 <span class="cnpj-text">{{ formatCnpj(props.cnpj) }}</span>
@@ -359,7 +430,7 @@ const pdfTooltip = computed(() => {
                 type="button"
                 class="cnpj-cadastro-btn-new"
                 @click="openCadastroDialog"
-                v-tooltip.bottom="'Dados Cadastrais'"
+                v-tooltip.bottom="heroTooltips.cadastro"
                 aria-label="Dados Cadastrais"
               >
                 <i class="pi pi-id-card" />
@@ -368,7 +439,7 @@ const pdfTooltip = computed(() => {
             <span
               v-if="subtituloDisplay"
               class="razao-social-sub"
-              v-tooltip.bottom="subtituloTooltip"
+              v-tooltip.bottom="razaoSocialCompletaHtmlTooltip"
             >
               {{ subtituloDisplay }}
             </span>
@@ -402,7 +473,7 @@ const pdfTooltip = computed(() => {
             v-if="cnpjData.qtd_estabelecimentos_rede >= 1"
             class="institution-chip status-info"
             :class="{ 'clickable-badge': cnpjData.qtd_estabelecimentos_rede > 1 }"
-            v-tooltip.bottom-right="redeBadgeTooltip"
+            v-tooltip.bottom-right="redeBadgeHtmlTooltip"
             @click="openRedeDialog"
           >
             <span class="institution-label">Estabelecimentos</span>
@@ -415,7 +486,7 @@ const pdfTooltip = computed(() => {
           <div
             class="institution-chip"
             :class="conexaoMsClassComp"
-            v-tooltip.bottom="'Conexão com o Ministério da Saúde'"
+            v-tooltip.bottom="ministerioSaudeHtmlTooltip"
           >
             <span class="institution-label">Ministério da Saúde</span>
             <span class="institution-value">{{
@@ -427,7 +498,7 @@ const pdfTooltip = computed(() => {
           <div
             class="institution-chip"
             :class="situacaoRfClassComp"
-            v-tooltip.bottom="'Situação na Receita Federal'"
+            v-tooltip.bottom="receitaFederalHtmlTooltip"
           >
             <span class="institution-label">Receita Federal</span>
             <span class="institution-value">{{
@@ -610,7 +681,7 @@ const pdfTooltip = computed(() => {
         <div
           class="rank-stat rank-stat--clickable"
           v-if="cnpjData.total_regiao_saude != null"
-          v-tooltip.top="'Ver ranking completo da Região de Saúde'"
+          v-tooltip.top="heroTooltips.rankRegiao"
           @click="cnpjNav.navigateToRegiao(null)"
         >
           <i
@@ -625,7 +696,7 @@ const pdfTooltip = computed(() => {
         <div
           class="rank-stat rank-stat--clickable"
           v-if="cnpjData.total_municipio != null"
-          v-tooltip.top="'Ver ranking do município na Região de Saúde'"
+          v-tooltip.top="heroTooltips.rankMunicipio"
           @click="
             cnpjNav.navigateToRegiao(
               {
@@ -657,7 +728,7 @@ const pdfTooltip = computed(() => {
             :class="{ 'list-btn--loading': isExporting || isPreparingPdf }"
             @click="emit('export')"
             :disabled="isPdfButtonDisabled"
-            v-tooltip.bottom="pdfTooltip"
+            v-tooltip.bottom="pdfHtmlTooltip"
           >
             <i :class="(isExporting || isPreparingPdf || pdfReadinessLoading) ? 'pi pi-spin pi-spinner' : 'pi pi-file-pdf'" />
           </button>
@@ -666,7 +737,7 @@ const pdfTooltip = computed(() => {
             :class="{ 'list-btn--loading': isGeneratingNote || isPreparingNote }"
             @click="emit('generateNote')"
             :disabled="isNoteButtonDisabled"
-            v-tooltip.bottom="noteTooltip"
+            v-tooltip.bottom="noteHtmlTooltip"
           >
             <i :class="(isGeneratingNote || isPreparingNote || noteReadinessLoading) ? 'pi pi-spin pi-spinner' : 'pi pi-book'" />
           </button>
@@ -674,7 +745,7 @@ const pdfTooltip = computed(() => {
             class="list-btn list-btn--icon-only"
             :class="farmaciaLists.isInteresse(cnpj) ? 'list-btn--interesse-active' : 'list-btn--interesse'"
             @click="farmaciaLists.toggleInteresse(cnpj, cnpjData.razao_social)"
-            v-tooltip.bottom="farmaciaLists.isInteresse(cnpj) ? 'Remover da Lista de Interesse' : 'Adicionar à Lista de Interesse'"
+            v-tooltip.bottom="interesseHtmlTooltip"
           >
             <i :class="farmaciaLists.isInteresse(cnpj) ? 'pi pi-star-fill' : 'pi pi-star'" />
           </button>
@@ -683,7 +754,7 @@ const pdfTooltip = computed(() => {
             class="list-btn list-btn--icon-only list-btn--obs"
             :class="{ 'list-btn--obs-active': hasObservacao }"
             @click="openObsDialog"
-            v-tooltip.bottom="hasObservacao ? 'Editar Observação' : 'Adicionar Observação'"
+            v-tooltip.bottom="observacaoHtmlTooltip"
           >
             <i :class="hasObservacao ? 'pi pi-comment' : 'pi pi-pencil'" />
           </button>

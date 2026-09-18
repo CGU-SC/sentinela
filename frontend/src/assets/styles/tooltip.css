@@ -26,6 +26,91 @@
   white-space: normal;
 }
 
+/* Tooltips HTML dos filtros da sidebar. */
+.p-tooltip.sentinela-tooltip.filter-info-tooltip {
+  max-width: min(380px, calc(100vw - 2rem));
+  width: auto;
+}
+
+.p-tooltip.sentinela-tooltip.filter-info-tooltip .p-tooltip-text {
+  width: 100%;
+  padding: 0;
+  white-space: normal;
+}
+
+.filter-tooltip-content {
+  display: flex;
+  width: min(350px, calc(100vw - 2rem));
+  flex-direction: column;
+  gap: 0.58rem;
+  padding: 0.72rem 0.82rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.filter-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: var(--text-color-85);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.018em;
+}
+
+.filter-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--primary-color);
+  font-size: 0.78rem;
+}
+
+.filter-tooltip-body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.71rem;
+}
+
+.filter-tooltip-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.58rem;
+}
+
+.filter-tooltip-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--tabs-border);
+}
+
+.filter-tooltip-section-label {
+  color: var(--primary-color);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.filter-tooltip-section p,
+.filter-tooltip-section ul {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.filter-tooltip-section ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  padding-left: 1rem;
+}
+
+.filter-tooltip-section li::marker {
+  color: var(--primary-color);
+}
+
 .p-tooltip.sentinela-tooltip.p-tooltip-right .p-tooltip-arrow {
   border-right-color: var(--tooltip-bg);
 }
@@ -156,4 +241,205 @@
   color: var(--text-color-85);
   font-size: 0.7rem;
   font-weight: 600;
+}
+
+/* Tooltips dos indicadores financeiros da aba de movimentação. */
+.p-tooltip.sentinela-tooltip.financial-movement-tooltip {
+  max-width: min(400px, calc(100vw - 2rem));
+  width: auto;
+}
+
+.p-tooltip.sentinela-tooltip.financial-movement-tooltip .p-tooltip-text {
+  width: 100%;
+  padding: 0;
+  white-space: normal;
+}
+
+.financial-tooltip-content {
+  display: flex;
+  width: min(370px, calc(100vw - 2rem));
+  flex-direction: column;
+  gap: 0.62rem;
+  padding: 0.75rem 0.85rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.financial-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-color-85);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.financial-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--primary-color);
+  font-size: 0.8rem;
+}
+
+.financial-tooltip-body,
+.financial-tooltip-section p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.financial-tooltip-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.financial-tooltip-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--tabs-border);
+}
+
+.financial-tooltip-section-label {
+  color: var(--primary-color);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+/* Tooltips HTML das ações e informações da hero do detalhe do CNPJ. */
+.p-tooltip.sentinela-tooltip.cnpj-hero-tooltip {
+  max-width: min(390px, calc(100vw - 2rem));
+  width: auto;
+}
+
+.p-tooltip.sentinela-tooltip.cnpj-hero-tooltip .p-tooltip-text {
+  width: 100%;
+  padding: 0;
+  white-space: normal;
+}
+
+.cnpj-hero-tooltip-content {
+  display: flex;
+  width: min(360px, calc(100vw - 2rem));
+  flex-direction: column;
+  gap: 0.58rem;
+  padding: 0.72rem 0.82rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.cnpj-hero-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: var(--text-color-85);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.018em;
+}
+
+.cnpj-hero-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--primary-color);
+  font-size: 0.78rem;
+}
+
+.cnpj-hero-tooltip-body,
+.cnpj-hero-tooltip-detail p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.71rem;
+}
+
+.cnpj-hero-tooltip-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--tabs-border);
+}
+
+.cnpj-hero-tooltip-detail strong {
+  color: var(--primary-color);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+/* Tooltips HTML informativos da página inicial. */
+.p-tooltip.sentinela-tooltip.home-info-tooltip {
+  max-width: min(390px, calc(100vw - 2rem));
+  width: auto;
+}
+
+.p-tooltip.sentinela-tooltip.home-info-tooltip .p-tooltip-text {
+  width: 100%;
+  padding: 0;
+  white-space: normal;
+}
+
+.home-tooltip-content {
+  display: flex;
+  width: min(360px, calc(100vw - 2rem));
+  flex-direction: column;
+  gap: 0.58rem;
+  padding: 0.72rem 0.82rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.home-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: var(--text-color-85);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.018em;
+}
+
+.home-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--primary-color);
+  font-size: 0.78rem;
+}
+
+.home-tooltip-body,
+.home-tooltip-detail p,
+.home-tooltip-section p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.71rem;
+}
+
+.home-tooltip-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.58rem;
+}
+
+.home-tooltip-section,
+.home-tooltip-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--tabs-border);
+}
+
+.home-tooltip-section-label,
+.home-tooltip-detail strong {
+  color: var(--primary-color);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
 }

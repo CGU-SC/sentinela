@@ -166,6 +166,43 @@ export const INTEGRITY_ALERT_TOOLTIP_COPY = Object.freeze({
   },
 });
 
+const PANORAMA_ALERT_TOOLTIP_COPY = Object.freeze({
+  volume_atipico: INTEGRITY_ALERT_TOOLTIP_COPY.volume_atipico,
+  cnpj_dispersao_uf_nao_vizinha: INTEGRITY_ALERT_TOOLTIP_COPY.cnpj_dispersao_uf_nao_vizinha,
+  cnpj_cnae_farmacia_ausente: INTEGRITY_ALERT_TOOLTIP_COPY.cnpj_cnae_farmacia_ausente,
+  socio_falecido: INTEGRITY_ALERT_TOOLTIP_COPY.socio_falecido,
+  socio_esocial: INTEGRITY_ALERT_TOOLTIP_COPY.socio_esocial,
+  par_teia_n2: INTEGRITY_ALERT_TOOLTIP_COPY.par_teia_n2,
+  socio_beneficio_social: {
+    title: 'Sócio inscrito no CadÚnico ou beneficiário do Seguro Defeso',
+    intro: 'Identifica sócio pessoa física com vínculo societário ativo localizado no CadÚnico ou nas bases do Seguro Defeso.',
+    sections: [
+      {
+        label: 'Critério',
+        text: 'O alerta ocorre quando o CPF de sócio ativo é encontrado no CadÚnico ou atende aos critérios de situação e pagamento do Seguro Defeso.',
+      },
+      {
+        label: 'Como interpretar',
+        text: 'O registro isolado em uma base de benefício social não comprova irregularidade e deve ser analisado com as demais informações do estabelecimento.',
+      },
+    ],
+  },
+  socio_idade_atipica: {
+    title: 'Sócio com idade atípica',
+    intro: 'Identifica sócio pessoa física com vínculo societário ativo e idade inferior a 21 anos ou superior a 80 anos na data de processamento.',
+    sections: [
+      {
+        label: 'Critério',
+        formula: 'Idade calculada < 21 anos ou > 80 anos',
+      },
+      {
+        label: 'Como interpretar',
+        text: 'Sinaliza uma situação cadastral que deve ser confrontada com os documentos societários e de identificação. Pessoas com exatamente 21 ou 80 anos não entram nesta regra.',
+      },
+    ],
+  },
+});
+
 function escapeTooltipHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
@@ -222,6 +259,42 @@ function createIntegrityAlertHtmlTooltip(copy) {
     showDelay: 120,
     hideDelay: 80,
   };
+}
+
+export function panoramaAlertTooltip(alerta, { aumentoMinimo } = {}) {
+  const tipo = alerta?.tipo;
+  const baseCopy = PANORAMA_ALERT_TOOLTIP_COPY[tipo];
+  const quantidade = Number(alerta?.qtd_cnpjs);
+
+  if (!baseCopy) {
+    throw new Error(`Texto de tooltip do panorama não encontrado: ${tipo}`);
+  }
+  if (!Number.isFinite(quantidade) || quantidade < 0) {
+    throw new Error(`Quantidade de estabelecimentos inválida no alerta: ${tipo}`);
+  }
+  if (tipo === 'volume_atipico' && !aumentoMinimo) {
+    throw new Error('Valor mínimo de aumento não informado para o alerta de volume atípico.');
+  }
+
+  const sections = baseCopy.sections.map((section) => {
+    if (tipo === 'volume_atipico' && section.label === 'Critério') {
+      return {
+        ...section,
+        text: section.text.replace('R$ 10.000,00', aumentoMinimo),
+      };
+    }
+    return section;
+  });
+
+  sections.push({
+    label: 'Abrangência',
+    text: `${new Intl.NumberFormat('pt-BR').format(quantidade)} ${quantidade === 1 ? 'estabelecimento apresenta' : 'estabelecimentos apresentam'} este alerta no recorte atual.`,
+  });
+
+  return createIntegrityAlertHtmlTooltip({
+    ...baseCopy,
+    sections,
+  });
 }
 
 export function integrityAlertTooltip(alert) {

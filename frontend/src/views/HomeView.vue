@@ -13,6 +13,8 @@ import TopUfRiskChart from './components/charts/TopUfRiskChart.vue';
 import SemesterProductionChart from './components/charts/SemesterProductionChart.vue';
 import { getAppVersionLabel, APP_RUNTIME, getAppRuntimeLabel } from '@/config/appInfo';
 import { useSystemUpdateStore } from '@/stores/systemUpdate';
+import { homeTooltip } from '@/config/homeTooltipConfig';
+import { panoramaAlertTooltip } from '@/config/integrityAlertTooltipConfig';
 
 const analyticsStore = useAnalyticsStore();
 const filterStore = useFilterStore();
@@ -52,34 +54,11 @@ const monthFormatter = new Intl.DateTimeFormat('pt-BR', {
   year: 'numeric',
 });
 
-const integerFormatter = new Intl.NumberFormat('pt-BR', {
-  maximumFractionDigits: 0,
-});
-
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
   maximumFractionDigits: 0,
 });
-
-const alertTooltipTemplates = {
-  volume_atipico:
-    '{qtd} estabelecimentos apresentaram crescimento semestral superior a 50%, com aumento absoluto mínimo de {aumento_minimo}, em pelo menos um semestre comparável no período selecionado.',
-  cnpj_dispersao_uf_nao_vizinha:
-    '{qtd} estabelecimentos tiveram mais de 10% do valor autorizado associado a beneficiários residentes em UFs que não fazem fronteira com a UF da farmácia, no período selecionado.',
-  cnpj_cnae_farmacia_ausente:
-    '{qtd} estabelecimentos possuem CNAE principal e secundários sem identificação de atividade farmacêutica compatível.',
-  socio_falecido:
-    '{qtd} estabelecimentos possuem ao menos um sócio pessoa física com vínculo societário ativo identificado como falecido na base de óbitos.',
-  socio_beneficio_social:
-    '{qtd} estabelecimentos possuem ao menos um sócio direto com vínculo ativo identificado no CadÚnico ou como beneficiário do Seguro Defeso.',
-  socio_idade_atipica:
-    '{qtd} estabelecimentos possuem ao menos um sócio pessoa física com vínculo ativo e idade inferior a 21 anos ou superior a 80 anos na data de referência do período selecionado.',
-  socio_esocial:
-    '{qtd} estabelecimentos possuem sócios ativos que possuem vínculos em outros CNPJs em funções não gerenciais, conforme registros do eSocial.',
-  par_teia_n2:
-    '{qtd} estabelecimentos possuem ao menos um CNPJ vinculado no nível 2 da teia societária com registro em Processo Administrativo de Responsabilização (PAR).',
-};
 
 const SOCIO_BENEFICIO_DIRETO = 'direto';
 const SOCIO_ESOCIAL_DIRETO = 'direto';
@@ -132,6 +111,20 @@ function getKpiValue(labelPart) {
   )?.value ?? '-';
 }
 
+const cacheModules = computed(() =>
+  Object.entries(cacheStatus.value?.modules || {}).map(([key, module]) => ({
+    key,
+    label: module.label,
+    status: module.status,
+    loaded: Boolean(module.loaded),
+    exists: Boolean(module.exists),
+  }))
+);
+
+const pendingCacheModules = computed(() =>
+  cacheModules.value.filter((module) => !module.loaded)
+);
+
 const statusInfo = computed(() => {
   if (error.value) {
     return {
@@ -149,10 +142,16 @@ const statusInfo = computed(() => {
       tone: 'loading',
     };
   }
-  if (cacheStatus.value && cacheStatus.value.is_ready === false) {
+  if (
+    cacheStatus.value?.is_ready === false
+    || pendingCacheModules.value.length > 0
+  ) {
+    const pendingCount = pendingCacheModules.value.length;
     return {
       label: 'Atenção',
-      detail: 'Há módulos de cache pendentes',
+      detail: pendingCount === 1
+        ? '1 módulo pendente de carregamento'
+        : `${pendingCount} módulos pendentes de carregamento`,
       icon: 'pi pi-exclamation-triangle',
       tone: 'warning',
     };
@@ -171,6 +170,16 @@ const syncText = computed(() => {
 });
 
 const updateStore = useSystemUpdateStore();
+
+const updateStatusTooltip = computed(() =>
+  homeTooltip('updateStatus', {
+    detail: updateStore.checkedAtFormatted
+      ? `Última verificação: ${updateStore.checkedAtFormatted}`
+      : updateStore.message || 'Verificação pendente',
+  }),
+);
+
+const refreshUpdatesTooltip = homeTooltip('refreshUpdates');
 
 const appVersionLabel = computed(() => {
   const runtime = getAppRuntimeLabel();
@@ -209,16 +218,6 @@ const financialScopeMetric = computed(() => {
   return { label: 'Escopo', value: 'Brasil' };
 });
 
-const cacheModules = computed(() =>
-  Object.entries(cacheStatus.value?.modules || {}).map(([key, module]) => ({
-    key,
-    label: module.label,
-    status: module.status,
-    loaded: Boolean(module.loaded),
-    exists: Boolean(module.exists),
-  }))
-);
-
 const cacheSummaryText = computed(() => {
   if (!cacheStatus.value) return 'Verificando módulos';
   if (cacheStatus.value.modules_summary_label) return cacheStatus.value.modules_summary_label;
@@ -255,18 +254,11 @@ function getModuleTone(module) {
   return 'missing';
 }
 
-function getAlertaTooltip(alerta) {
-  const qtd = integerFormatter.format(Number(alerta?.qtd_cnpjs ?? 0));
+function getAlertaHtmlTooltip(alerta) {
   const aumentoMinimo = metodologiaConfig.loaded
     ? currencyFormatter.format(Number(metodologiaConfig.volumeAtipicoAumentoMinimo))
     : 'valor configurado';
-  const template = alertTooltipTemplates[alerta?.tipo];
-  if (!template) {
-    throw new Error(`Tooltip do alerta de integridade não configurado: ${alerta?.tipo}`);
-  }
-  return template
-    .replace('{qtd}', qtd)
-    .replace('{aumento_minimo}', aumentoMinimo);
+  return panoramaAlertTooltip(alerta, { aumentoMinimo });
 }
 
 const displayAlertasPanorama = computed(() => {
@@ -352,6 +344,11 @@ function handleRefreshCheck(event) {
             <div class="system-stat">
               <span class="system-stat__label">Status</span>
               <strong class="system-stat__value" :class="`system-stat__value--${statusInfo.tone}`">
+                <span
+                  v-if="statusInfo.tone === 'warning'"
+                  class="system-status-dot"
+                  aria-hidden="true"
+                />
                 {{ statusInfo.label }}
               </strong>
             </div>
@@ -369,9 +366,7 @@ function handleRefreshCheck(event) {
               @click="handleUpdateClick"
               @keydown.enter="handleUpdateClick"
               @keydown.space.prevent="handleUpdateClick"
-              v-tooltip.left="updateStore.checkedAtFormatted
-                ? `Última verificação: ${updateStore.checkedAtFormatted}`
-                : updateStore.message || 'Verificação pendente'"
+              v-tooltip.left="updateStatusTooltip"
             >
               <span class="system-stat__label">
                 Atualização
@@ -380,7 +375,7 @@ function handleRefreshCheck(event) {
                   class="update-check-btn"
                   :disabled="updateStore.loading"
                   @click="handleRefreshCheck"
-                  v-tooltip.right="'Verificar atualizações agora'"
+                  v-tooltip.right="refreshUpdatesTooltip"
                   aria-label="Verificar atualizações"
                 >
                   <i :class="updateStore.loading ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'" />
@@ -441,7 +436,7 @@ function handleRefreshCheck(event) {
               <span class="alert-cell__count">
                 {{ alerta.qtd_cnpjs }}
                 <i
-                  v-tooltip.top="getAlertaTooltip(alerta)"
+                  v-tooltip.top="getAlertaHtmlTooltip(alerta)"
                   class="pi pi-info-circle alert-cell__info"
                   :aria-label="`Critério do alerta ${alerta.titulo}`"
                 />
@@ -1011,6 +1006,16 @@ function handleRefreshCheck(event) {
 
 .system-stat__value--warning {
   color: var(--risk-medium);
+}
+
+.system-status-dot {
+  display: inline-block;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin: 0 0.3rem 0.08rem 0;
+  border-radius: 50%;
+  background: var(--risk-medium);
+  vertical-align: middle;
 }
 
 .system-stat__value--loading {

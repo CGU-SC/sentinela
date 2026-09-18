@@ -39,7 +39,6 @@ watch([enrichedKpis, isLoading], ([newKpis, loading]) => {
         :key="kpi.label" 
         class="kpi-card"
         :style="{
-          borderBottom: `3px solid color-mix(in srgb, ${kpi.color} 50%, transparent)`,
           background: `linear-gradient(to top, color-mix(in srgb, ${kpi.color} 6%, var(--card-bg)) 0%, var(--card-bg) 60%)`
         }"
       >

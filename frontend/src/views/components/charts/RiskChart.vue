@@ -4,6 +4,7 @@ import { useAnalyticsStore } from '@/stores/analytics';
 import { useFormatting } from '@/composables/useFormatting';
 import { useChartTheme } from '@/config/chartTheme';
 import { CHART_TOOLTIP_SHADOW } from '@/config/colors.js';
+import { homeTooltip } from '@/config/homeTooltipConfig';
 import { storeToRefs } from 'pinia';
 import Button from 'primevue/button';
 
@@ -26,6 +27,7 @@ const analyticsStore = useAnalyticsStore();
 const { fatorRisco, fatorRiscoLoading } = storeToRefs(analyticsStore);
 const { formatBRL, formatCurrencyFull, formatNumberFull } = useFormatting();
 const { chartTheme, chartDataColors, chartRiskAccents } = useChartTheme();
+const riskChartInfoTooltip = homeTooltip('riskDistribution');
 
 // ── Cache de Dados para Transição Suave (Flicker-Free) ──────────────────
 // Mantém os dados anteriores visíveis para o ECharts animar a transição
@@ -191,7 +193,7 @@ const chartOption = computed(() => {
       <div class="spacer"></div>
       <i
         class="pi pi-info-circle info-icon"
-        v-tooltip.top="'Este gráfico segmenta os estabelecimentos por faixas de não-comprovação...'"
+        v-tooltip.top="riskChartInfoTooltip"
       />
     </div>
     <div class="chart-wrapper">

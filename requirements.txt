@@ -1,4 +1,5 @@
 pandas>=2.0.0               # Manipulação de dados e Excel
+pyarrow                      # Conversão entre pandas e Polars e suporte a Parquet
 pyodbc>=5.0.0               # Conexão com bancos de dados ODBC
 Pillow>=10.0.0              # Processamento de imagens (PIL)
 matplotlib>=3.8.0           # Geracao de graficos estaticos para documentos

@@ -9,6 +9,7 @@ import { useFormatting } from '@/composables/useFormatting';
 import { useChartTheme } from '@/config/chartTheme';
 import { RISK_THRESHOLDS, AUDIT_THRESHOLDS } from '@/config/riskConfig';
 import { useFilterStore } from '@/stores/filters';
+import { financialMovementTooltip } from '@/config/financialMovementTooltipConfig';
 
 import VChart from 'vue-echarts';
 import { use } from 'echarts/core';
@@ -86,6 +87,14 @@ const REPASSES_SCOPE_TOOLTIP =
   'Repasses consolidados do Programa Farmácia Popular (escopo total). '
   + 'Não correspondem à movimentação analisada pelo Sentinela, que exclui itens como fraldas e absorventes. '
   + 'Os pagamentos costumam ocorrer com defasagem em relação à produção.';
+
+const financialMovementTooltips = Object.freeze({
+  totalVendas: financialMovementTooltip('totalVendas'),
+  ordensRecebidas: financialMovementTooltip('ordensRecebidas'),
+  numeroOrdens: financialMovementTooltip('numeroOrdens'),
+  maiorOrdem: financialMovementTooltip('maiorOrdem'),
+  ultimaOrdem: financialMovementTooltip('ultimaOrdem'),
+});
 
 const repassesResumo = computed(() => cachedRepassesData.value?.resumo ?? null);
 const repassesMensal = computed(() => cachedRepassesData.value?.mensal ?? []);
@@ -1121,25 +1130,70 @@ const exportMensalCard = () => {
 
         <div v-else-if="repassesResumo" class="repasses-kpi-grid">
           <div class="repasses-kpi-item">
-            <span class="repasses-kpi-label">Total de Vendas</span>
+            <span class="repasses-kpi-label">
+              Total de Vendas
+              <i
+                class="pi pi-info-circle repasses-kpi-info"
+                role="img"
+                tabindex="0"
+                aria-label="Explicação sobre Total de Vendas"
+                v-tooltip.right="financialMovementTooltips.totalVendas"
+              />
+            </span>
             <span class="repasses-kpi-value">{{ formatCurrencyFull(cnpjDetailStore.bootstrapPeriodSummary?.totalMov ?? 0) }}</span>
           </div>
           <div class="repasses-kpi-item">
-            <span class="repasses-kpi-label">Ordens Bancárias Recebidas</span>
+            <span class="repasses-kpi-label">
+              Ordens Bancárias Recebidas
+              <i
+                class="pi pi-info-circle repasses-kpi-info"
+                role="img"
+                tabindex="0"
+                aria-label="Explicação sobre Ordens Bancárias Recebidas"
+                v-tooltip.top="financialMovementTooltips.ordensRecebidas"
+              />
+            </span>
             <span class="repasses-kpi-value">{{ formatCurrencyFull(repassesResumo.total_repassado) }}</span>
           </div>
           <div class="repasses-kpi-item">
-            <span class="repasses-kpi-label">Número de Órdens Bancárias</span>
+            <span class="repasses-kpi-label">
+              Número de Ordens Bancárias
+              <i
+                class="pi pi-info-circle repasses-kpi-info"
+                role="img"
+                tabindex="0"
+                aria-label="Explicação sobre Número de Ordens Bancárias"
+                v-tooltip.top="financialMovementTooltips.numeroOrdens"
+              />
+            </span>
             <span class="repasses-kpi-value">{{ repassesResumo.qtd_ordens ?? 0 }}</span>
           </div>
           <div class="repasses-kpi-item">
-            <span class="repasses-kpi-label">Maior Ordem Bancária Recebida</span>
+            <span class="repasses-kpi-label">
+              Maior Ordem Bancária Recebida
+              <i
+                class="pi pi-info-circle repasses-kpi-info"
+                role="img"
+                tabindex="0"
+                aria-label="Explicação sobre Maior Ordem Bancária Recebida"
+                v-tooltip.top="financialMovementTooltips.maiorOrdem"
+              />
+            </span>
             <span class="repasses-kpi-value">
               {{ formatCurrencyFull(repassesResumo.maior_repasse) }}
             </span>
           </div>
           <div class="repasses-kpi-item">
-            <span class="repasses-kpi-label">Última Ordem Bancária Recebida</span>
+            <span class="repasses-kpi-label">
+              Última Ordem Bancária Recebida
+              <i
+                class="pi pi-info-circle repasses-kpi-info"
+                role="img"
+                tabindex="0"
+                aria-label="Explicação sobre Última Ordem Bancária Recebida"
+                v-tooltip.left="financialMovementTooltips.ultimaOrdem"
+              />
+            </span>
             <span class="repasses-kpi-value repasses-kpi-last">
               <template v-if="repassesResumo.ultimo_repasse_data">
                 {{ formatarData(repassesResumo.ultimo_repasse_data) }}
@@ -1663,11 +1717,26 @@ const exportMensalCard = () => {
 }
 
 .repasses-kpi-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.repasses-kpi-info {
+  color: var(--primary-color);
+  cursor: help;
+  font-size: 0.68rem;
+  opacity: 0.7;
+}
+
+.repasses-kpi-info:hover,
+.repasses-kpi-info:focus-visible {
+  opacity: 1;
 }
 
 .repasses-kpi-value {
