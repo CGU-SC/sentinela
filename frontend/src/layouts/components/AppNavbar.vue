@@ -23,7 +23,7 @@ const tabs = [
   { label: 'Home', path: '/' },
   { label: 'Municípios', path: '/municipios' },
   { label: 'Estabelecimentos', path: '/estabelecimentos' },
-  { label: 'Análises', path: '/analises' },
+  { label: 'Análises', path: '/analises', disabled: true },
   // { label: 'Alvos', path: '/alvos' },
 ];
 
@@ -75,15 +75,24 @@ function onNavSelect(event) {
       <div class="nav-divider"></div>
 
       <div class="nav-tabs">
-        <router-link
-          v-for="tab in tabs"
-          :key="tab.path"
-          :to="tab.path"
-          class="nav-tab"
-          :class="{ active: tab.path === '/analises' ? route.path.startsWith('/analises') : route.path === tab.path }"
-        >
-          {{ tab.label }}
-        </router-link>
+        <template v-for="tab in tabs" :key="tab.path">
+          <span
+            v-if="tab.disabled"
+            class="nav-tab nav-tab--disabled"
+            aria-disabled="true"
+            v-tooltip.bottom="'Em breve...'"
+          >
+            {{ tab.label }}
+          </span>
+          <router-link
+            v-else
+            :to="tab.path"
+            class="nav-tab"
+            :class="{ active: route.path === tab.path }"
+          >
+            {{ tab.label }}
+          </router-link>
+        </template>
 
         <!-- Atalho: último CNPJ analisado -->
         <div v-if="recentCnpj" class="nav-recent-wrapper">
@@ -307,6 +316,20 @@ function onNavSelect(event) {
 
 .nav-tab:hover {
   color: var(--text-color-85);
+}
+
+.nav-tab--disabled {
+  cursor: not-allowed;
+  color: var(--text-muted);
+  opacity: 0.48;
+}
+
+.nav-tab--disabled:hover {
+  color: var(--text-muted);
+}
+
+.nav-tab--disabled::after {
+  display: none;
 }
 
 .nav-tab:hover::after {

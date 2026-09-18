@@ -959,8 +959,9 @@ def generate_nota_tecnica(
         h2,
         1,
         'De acordo com informações contidas no site do Ministério da Saúde a respeito do Programa Farmácia Popular do Brasil: '
-        'https://www.gov.br/saude/pt-br/composicao/sectics/farmacia-popular/legislacao '
-        f'(acessado em {date.today().strftime("%d.%m.%Y")}).',
+        'Legislação — Ministério da Saúde (acessado em 01.09.2026).',
+        hyperlink_text='Legislação — Ministério da Saúde',
+        hyperlink_url='https://www.gov.br/saude/pt-br/composicao/sectics/farmacia-popular/legislacao',
     )
     p_ref_intro = doc.add_paragraph()
     _run(p_ref_intro, 'As principais referências normativas e técnicas utilizadas nesta análise incluem:', color='0F172A', size=12)
@@ -970,10 +971,10 @@ def generate_nota_tecnica(
         'Portaria GM/MS nº 491, de 09.03.2006, que habilitou farmácias e drogarias privadas;',
         'Portaria GM/MS nº 184, de 03.02.2011, que estabeleceu normas operacionais do Programa;',
         'Portaria de Consolidação GM/MS nº 5, de 28.09.2017, marco regulatório atual do Programa Farmácia Popular do Brasil;',
-        'Portaria GM/MS nº 2.898, de 03.11.2021, que ampliou para dez anos o prazo de guarda da documentação comprobatória das dispensações;',
         'Portaria GM/MS nº 1.053, de 12.05.2022, que regulamentou o procedimento de averiguação de fatos relacionados a indícios ou notícias de irregularidades no âmbito do PFPB;',
         'Relatório de Apuração CGU nº 823121, publicado em 04.01.2024;',
         'Portaria GM/MS nº 6.613, de 13.02.2025, que extinguiu a modalidade de copagamento do Programa.',
+        'Portaria GM/MS nº 12.091, de 11.08.2026, que reduziu novamente o prazo de guarda da documentação comprobatória das dispensações para 05 anos.',
     ]
     for ref in ref_list:
         p_ref = doc.add_paragraph(style='List Bullet')
@@ -1060,8 +1061,8 @@ def generate_nota_tecnica(
         'do custo), que foi extinta após a edição da Portaria GM/MS nº 6.613, de 13.02.2025.'
     )
     nota_pfpb_6 = (
-        'A Portaria GM/MS nº 111/2016, substituída pela Portaria GM/MS nº 2.898/2021, determinava, em seu art. 22, '
-        'que o estabelecimento deveria manter a documentação comprobatória por cinco anos.'
+        'A Portaria GM/MS nº 2.898, de 03.11.2021, determinava, em seu art. 22, '
+        'que o estabelecimento deveria manter a documentação comprobatória por dez anos.'
     )
 
     # ── 7. Seção 4.1: Sobre o Programa ─────────────────────────────────────
@@ -1113,9 +1114,9 @@ def generate_nota_tecnica(
         if not run.font.superscript:
             run.font.size = Pt(12)
 
-    p_sav = doc.add_paragraph('As informações sobre as dispensações são encaminhadas mensalmente pelas drogarias credenciadas ao MS por meio do (SAV), conforme disposto na Portaria de Consolidação GM/MS nº 5, de 28.09.2017, e normas anteriores. Por sua vez, o art. 22 da Portaria GM/MS nº 2.898, de 03.11.2021, dispõe que o estabelecimento deve manter por 10 (dez) anos')
+    p_sav = doc.add_paragraph('As informações sobre as dispensações são encaminhadas mensalmente pelas drogarias credenciadas ao MS por meio do (SAV), conforme disposto na Portaria de Consolidação GM/MS nº 5, de 28.09.2017, e normas anteriores. Por sua vez, o art. 25 da Portaria GM/MS nº 12.091, de 11.08.2026, dispõe que a farmácia deverá manter, pelo prazo de 5 (cinco) anos, os documentos e registros das operações realizadas no âmbito do PFPB')
     _footnote_ref(doc, p_sav, 6, nota_pfpb_6)
-    p_sav.add_run(', em ordem cronológica de emissão, duas cópias mantidas em locais distintos, uma em meio físico e outra em arquivo digitalizado, dos cupons vinculados assinados, dos documentos fiscais, das prescrições, dos laudos ou atestados médicos e dos documentos de identidade oficial apresentados no ato da compra e, ainda, dos documentos fiscais de aquisição dos respectivos medicamentos e/ou fraldas geriátricas dispensados no âmbito do PFPB.')
+    p_sav.add_run('.')
     for run in p_sav.runs:
         if not run.font.superscript:
             run.font.size = Pt(12)
@@ -1165,7 +1166,7 @@ def generate_nota_tecnica(
     _run(p_cutoff, ', estimando o estoque inicial como a soma das duas últimas compras anteriores à primeira venda registrada de cada medicamento. A partir desse ponto, o algoritmo realiza um balanço diário de entradas e saídas, considerando apenas as vendas do PFPB como débito no estoque e ignorando vendas privadas para o público geral, o que gera um saldo “virtual” favorável à farmácia. Em outras palavras, o conservadorismo da metodologia da CGU se ampara no fato de considerar, para os cálculos de estoque, que todos os medicamentos adquiridos pela farmácia que fazem parte do rol do PFPB foram vendidos somente para clientes que fizeram uso do Programa. Assim, a metodologia não leva em conta a possibilidade real de que parte desses medicamentos tenha sido vendida para clientes comuns, que desembolsaram recursos próprios para suas aquisições.', color='0F172A', size=12)
 
     p_gtin = doc.add_paragraph()
-    _run(p_gtin, 'Juridicamente, o controle sustenta-se na Portaria de Consolidação GM/MS nº 5/2017, que obriga a guarda das notas fiscais de aquisição por dez anos, e no Ajuste SINIEF nº 16/2010, que exige a identificação do produto pelo código ', color='0F172A', size=12)
+    _run(p_gtin, 'Juridicamente, o controle sustenta-se na Portaria de Consolidação GM/MS nº 5/2017 (alterada pela Portaria GM/MS nº 12.091/2026), que obriga a guarda de documentos e registros das operações realizadas por cinco anos, e no Ajuste SINIEF nº 16/2010, que exige a identificação do produto pelo código ', color='0F172A', size=12)
     _run(p_gtin, 'GTIN/EAN', color='334155', size=12, underline=True)
     _run(p_gtin, '. Nesse sentido, reforça-se que a descrição textual do produto é insuficiente para a liquidação da despesa, sendo o código de barras a única chave capaz de vincular com precisão o medicamento comprado ao preço de referência pago pelo governo.', color='0F172A', size=12)
     p_42_fim1 = doc.add_paragraph()

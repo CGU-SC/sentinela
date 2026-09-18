@@ -5,6 +5,17 @@ Todas as mudanças relevantes do Sentinela serão registradas neste arquivo.
 O versionamento segue o padrão SemVer: `MAJOR.MINOR.PATCH`.
 
 
+## [1.6.13] - 2026-09-17
+
+### Alterado
+- **Referências normativas da Nota Técnica atualizadas.** A seção de referências passou a destacar a Portaria GM/MS nº 12.091, de 11.08.2026, que reduziu para cinco anos o prazo de guarda da documentação comprobatória das dispensações.
+- **Seções 4.1 e 4.2 da Nota Técnica revisadas.** Os textos passaram a refletir a regra vigente de cinco anos prevista na Portaria GM/MS nº 12.091/2026, preservando a referência histórica à Portaria GM/MS nº 2.898/2021 e a identificação sublinhada de GTIN/EAN.
+- **Nota de rodapé da Nota Técnica ajustada.** A data de acesso foi fixada em 01.09.2026 e o texto "Legislação — Ministério da Saúde" passou a ser um link clicável para a página oficial.
+- **Item "Análises" temporariamente desabilitado na navegação.** A rota permanece preservada, mas o item agora informa "Em breve..." por tooltip e não permite navegação enquanto a funcionalidade estiver em preparação.
+
+### Corrigido
+- **Validação do release alinhada à nova versão.** O manifesto de atualização foi atualizado para apontar para a versão 1.6.13 e para os respectivos endereços de download e notas de release.
+
 ## [1.6.12] - 2026-09-16
 
 ### Alterado

@@ -441,7 +441,62 @@ def _get_or_add_footnotes_part(doc):
         return part
 
 
-def _ensure_footnote(doc, number: int, text: str):
+def _append_footnote_text_run(paragraph, text: str):
+    if not text:
+        return
+    r_text = OxmlElement('w:r')
+    r_text_pr = OxmlElement('w:rPr')
+    r_text_size = OxmlElement('w:sz')
+    r_text_size.set(qn('w:val'), '16')
+    r_text_pr.append(r_text_size)
+    r_text.append(r_text_pr)
+    t = OxmlElement('w:t')
+    if text.startswith(' ') or text.endswith(' '):
+        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+    t.text = text
+    r_text.append(t)
+    paragraph.append(r_text)
+
+
+def _append_footnote_hyperlink(footnotes_part, paragraph, text: str, url: str):
+    if not text or not url:
+        raise RuntimeError("Texto e URL obrigatorios para hyperlink de nota de rodape.")
+
+    relationship_id = footnotes_part.relate_to(url, RT.HYPERLINK, is_external=True)
+    hyperlink = OxmlElement('w:hyperlink')
+    hyperlink.set(qn('r:id'), relationship_id)
+    hyperlink.set(qn('w:history'), '1')
+
+    run = OxmlElement('w:r')
+    r_pr = OxmlElement('w:rPr')
+    color = OxmlElement('w:color')
+    color.set(qn('w:val'), '2563EB')
+    r_pr.append(color)
+    underline = OxmlElement('w:u')
+    underline.set(qn('w:val'), 'single')
+    r_pr.append(underline)
+    size = OxmlElement('w:sz')
+    size.set(qn('w:val'), '16')
+    r_pr.append(size)
+    run.append(r_pr)
+
+    text_element = OxmlElement('w:t')
+    if text.startswith(' ') or text.endswith(' '):
+        text_element.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+    text_element.text = text
+    run.append(text_element)
+    hyperlink.append(run)
+    paragraph.append(hyperlink)
+
+
+def _ensure_footnote(
+    doc,
+    number: int,
+    text: str,
+    *,
+    hyperlink_text: str | None = None,
+    hyperlink_url: str | None = None,
+):
     """Garante a existencia de uma nota de rodape numerada."""
     part = _get_or_add_footnotes_part(doc)
     footnotes = part.element
@@ -480,25 +535,39 @@ def _ensure_footnote(doc, number: int, text: str):
     r_ref.append(r_ref_note)
     p.append(r_ref)
 
-    r_text = OxmlElement('w:r')
-    r_text_pr = OxmlElement('w:rPr')
-    r_text_size = OxmlElement('w:sz')
-    r_text_size.set(qn('w:val'), '16')
-    r_text_pr.append(r_text_size)
-    r_text.append(r_text_pr)
-    t = OxmlElement('w:t')
-    t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-    t.text = f' {text}'
-    r_text.append(t)
-    p.append(r_text)
+    if hyperlink_text is None:
+        _append_footnote_text_run(p, f' {text}')
+    else:
+        if not hyperlink_url:
+            raise RuntimeError("URL obrigatoria quando a nota de rodape possui hyperlink.")
+        marker_index = text.find(hyperlink_text)
+        if marker_index < 0:
+            raise RuntimeError("Texto do hyperlink nao encontrado no conteudo da nota de rodape.")
+        _append_footnote_text_run(p, f' {text[:marker_index]}')
+        _append_footnote_hyperlink(part, p, hyperlink_text, hyperlink_url)
+        _append_footnote_text_run(p, text[marker_index + len(hyperlink_text):])
 
     footnote.append(p)
     footnotes.append(footnote)
 
 
-def _footnote_ref(doc, para, number: int, text: str):
+def _footnote_ref(
+    doc,
+    para,
+    number: int,
+    text: str,
+    *,
+    hyperlink_text: str | None = None,
+    hyperlink_url: str | None = None,
+):
     """Insere referencia de footnote real e garante seu texto."""
-    _ensure_footnote(doc, number, text)
+    _ensure_footnote(
+        doc,
+        number,
+        text,
+        hyperlink_text=hyperlink_text,
+        hyperlink_url=hyperlink_url,
+    )
     run = para.add_run()
     r = run._r
     r_pr = r.get_or_add_rPr()
