@@ -67,7 +67,7 @@ def get_crm_prescricoes_analise(
     dispersao_uf_sem_fronteira: bool = Query(False),
     dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
 ):
-    """Retorna o P95 da taxa diária de prescrições por UF/município e o ranking de médicos."""
+    """Retorna o percentual mensal de CRMs anômalos por UF/município e o ranking de médicos."""
     return AnalyticsService.get_crm_prescricoes_analise(
         map_level=map_level,
         data_inicio=data_inicio,

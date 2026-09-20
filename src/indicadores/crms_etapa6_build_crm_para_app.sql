@@ -91,9 +91,123 @@ BEGIN
     RAISERROR('Tabela fp.build_crm_prescricoes_estabelecimento_mes nao encontrada.', 16, 1);
     RETURN;
 END;
-IF OBJECT_ID('fp.build_crm_prescricoes_gerencial_mes', 'U') IS NULL
+IF OBJECT_ID('fp.build_crm_prescricoes_gerencial', 'U') IS NULL
 BEGIN
-    RAISERROR('Tabela fp.build_crm_prescricoes_gerencial_mes nao encontrada.', 16, 1);
+    RAISERROR('Tabela fp.build_crm_prescricoes_gerencial nao encontrada.', 16, 1);
+    RETURN;
+END;
+IF COL_LENGTH('fp.build_crm_prescricoes_gerencial', 'nivel') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_gerencial', 'id_geografico') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_gerencial', 'competencia') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_gerencial', 'nu_prescricoes_total') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_gerencial', 'qtd_crms_ativos') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_gerencial', 'qtd_crms_anomalos') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_gerencial', 'percentual_crms_anomalos') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_gerencial', 'media_prescricoes_dia') IS NULL
+BEGIN
+    RAISERROR(
+        'Tabela fp.build_crm_prescricoes_gerencial sem o schema mensal obrigatorio.',
+        16,
+        1
+    );
+    RETURN;
+END;
+IF NOT EXISTS (SELECT 1 FROM fp.build_crm_prescricoes_gerencial)
+BEGIN
+    RAISERROR('Tabela fp.build_crm_prescricoes_gerencial esta vazia.', 16, 1);
+    RETURN;
+END;
+IF EXISTS (
+    SELECT
+        nivel,
+        id_geografico,
+        competencia
+    FROM fp.build_crm_prescricoes_gerencial
+    GROUP BY
+        nivel,
+        id_geografico,
+        competencia
+    HAVING COUNT_BIG(*) > 1
+)
+BEGIN
+    RAISERROR(
+        'Tabela fp.build_crm_prescricoes_gerencial possui chaves duplicadas.',
+        16,
+        1
+    );
+    RETURN;
+END;
+IF EXISTS (
+    SELECT 1
+    FROM fp.build_crm_prescricoes_gerencial
+    WHERE nivel NOT IN ('municipio', 'uf', 'regiao_saude')
+       OR NULLIF(LTRIM(RTRIM(id_geografico)), '') IS NULL
+       OR competencia < 190001
+       OR competencia > 999912
+       OR competencia % 100 NOT BETWEEN 1 AND 12
+       OR nu_prescricoes_total < 0
+       OR qtd_crms_ativos < 0
+       OR qtd_crms_anomalos < 0
+       OR qtd_crms_anomalos > qtd_crms_ativos
+       OR percentual_crms_anomalos < 0
+       OR percentual_crms_anomalos > 100
+       OR media_prescricoes_dia < 0
+       OR (
+           qtd_crms_ativos = 0
+           AND (
+               nu_prescricoes_total <> 0
+               OR qtd_crms_anomalos <> 0
+               OR percentual_crms_anomalos IS NOT NULL
+               OR media_prescricoes_dia IS NOT NULL
+           )
+       )
+       OR (
+           qtd_crms_ativos > 0
+           AND (
+               percentual_crms_anomalos IS NULL
+               OR media_prescricoes_dia IS NULL
+           )
+       )
+)
+BEGIN
+    RAISERROR(
+        'Tabela fp.build_crm_prescricoes_gerencial possui valores invalidos ou incoerentes.',
+        16,
+        1
+    );
+    RETURN;
+END;
+IF (SELECT COUNT(DISTINCT nivel) FROM fp.build_crm_prescricoes_gerencial) <> 3
+BEGIN
+    RAISERROR(
+        'Tabela fp.build_crm_prescricoes_gerencial nao possui os tres niveis geograficos.',
+        16,
+        1
+    );
+    RETURN;
+END;
+
+DECLARE @qtd_competencias_gerencial INT = (
+    SELECT COUNT(DISTINCT competencia)
+    FROM fp.build_crm_prescricoes_gerencial
+);
+
+IF EXISTS (
+    SELECT
+        nivel,
+        id_geografico
+    FROM fp.build_crm_prescricoes_gerencial
+    GROUP BY
+        nivel,
+        id_geografico
+    HAVING COUNT_BIG(*) <> @qtd_competencias_gerencial
+)
+BEGIN
+    RAISERROR(
+        'Tabela fp.build_crm_prescricoes_gerencial possui localidades com competencias ausentes.',
+        16,
+        1
+    );
     RETURN;
 END;
 IF OBJECT_ID('fp.build_crm_timeline_dia', 'U') IS NULL
@@ -162,8 +276,8 @@ BEGIN TRY
     IF OBJECT_ID('fp.app_crm_prescricoes_estabelecimento_mes', 'U') IS NOT NULL DROP TABLE fp.app_crm_prescricoes_estabelecimento_mes;
     EXEC sp_rename 'fp.build_crm_prescricoes_estabelecimento_mes', 'app_crm_prescricoes_estabelecimento_mes';
 
-    IF OBJECT_ID('fp.app_crm_prescricoes_gerencial_mes', 'U') IS NOT NULL DROP TABLE fp.app_crm_prescricoes_gerencial_mes;
-    EXEC sp_rename 'fp.build_crm_prescricoes_gerencial_mes', 'app_crm_prescricoes_gerencial_mes';
+    IF OBJECT_ID('fp.app_crm_prescricoes_gerencial', 'U') IS NOT NULL DROP TABLE fp.app_crm_prescricoes_gerencial;
+    EXEC sp_rename 'fp.build_crm_prescricoes_gerencial', 'app_crm_prescricoes_gerencial';
 
     IF OBJECT_ID('fp.app_crm_timeline_dia', 'U') IS NOT NULL DROP TABLE fp.app_crm_timeline_dia;
     EXEC sp_rename 'fp.build_crm_timeline_dia', 'app_crm_timeline_dia';

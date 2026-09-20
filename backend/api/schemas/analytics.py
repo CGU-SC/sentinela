@@ -524,10 +524,11 @@ class CrmPrescricoesMapaItemSchema(BaseModel):
     uf: str
     id_ibge7: Optional[int] = None
     id_regiao_saude: Optional[str] = None
-    p95_prescricoes_dia: float
-    mediana_prescricoes_dia: float
-    maior_prescricoes_dia: float
-    qtd_medicos: int
+    nu_prescricoes_total: int
+    qtd_crms_ativos: int
+    qtd_crms_anomalos: int
+    percentual_crms_anomalos: Optional[float] = None
+    media_prescricoes_dia: Optional[float] = None
 
 
 class CrmPrescricoesRankingItemSchema(BaseModel):

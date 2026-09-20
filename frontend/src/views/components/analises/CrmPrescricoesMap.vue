@@ -40,7 +40,7 @@ let resizeObserver = null;
 
 const isNational = computed(() => props.mapLevel === 'uf');
 const mapTitle = computed(() => isNational.value ? 'Brasil' : props.mapLevel === 'regiao' ? 'Região de Saúde' : `Municípios de ${props.uf}`);
-const mapSubtitle = computed(() => `P95 da taxa de prescrições por dia · ${props.escopo}`);
+const mapSubtitle = computed(() => `Percentual mensal de CRM-meses acima de 22 prescrições/dia · ${props.escopo}`);
 const backLabel = computed(() => props.mapLevel === 'regiao' ? `Voltar à UF ${props.uf}` : 'Voltar ao Brasil');
 const activeScale = computed(() => CRM_PRESCRICOES_SCALE[themeStore.isDark ? 'dark' : 'light']);
 const mapAreaColor = computed(() => themeStore.isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)');
@@ -75,20 +75,20 @@ const dataByMunicipio = computed(() => new Map(
     .map((row) => [Number(row.id_ibge7), row])
 ));
 
-const maxP95 = computed(() => Math.max(
+const maxPercentualAnomalia = computed(() => Math.max(
   1,
-  ...props.mapData.map((row) => Number(row.p95_prescricoes_dia) || 0),
+  ...props.mapData.map((row) => Number(row.percentual_crms_anomalos) || 0),
 ));
-const maximumObservedP95 = computed(() => Math.max(
+const maximumObservedPercentual = computed(() => Math.max(
   0,
-  ...props.mapData.map((row) => Number(row.p95_prescricoes_dia) || 0),
+  ...props.mapData.map((row) => Number(row.percentual_crms_anomalos) || 0),
 ));
 
 const mapSeriesData = computed(() => {
   if (isNational.value) {
     return props.mapData.map((row) => ({
       name: row.nome,
-      value: Number(row.p95_prescricoes_dia),
+      value: row.percentual_crms_anomalos == null ? null : Number(row.percentual_crms_anomalos),
       row,
       itemStyle: { borderColor: mapBorderColor.value, borderWidth: 1 },
     }));
@@ -99,7 +99,7 @@ const mapSeriesData = computed(() => {
     const row = dataByMunicipio.value.get(idIbge7);
     return {
       name: feature.properties?.name,
-      value: row ? Number(row.p95_prescricoes_dia) : null,
+      value: row && row.percentual_crms_anomalos != null ? Number(row.percentual_crms_anomalos) : null,
       idIbge7,
       row,
       itemStyle: {
@@ -164,17 +164,17 @@ const chartOption = computed(() => {
         }
         return `<div style="min-width: 210px; color: ${c.tooltipText}">
           <div style="font-weight: 600; margin-bottom: 9px; border-bottom: 1px solid ${c.tooltipBorder}; padding-bottom: 7px">${label}</div>
-          <div style="display:flex; justify-content:space-between; gap:20px; margin:4px 0"><span style="opacity:.72">P95 da taxa diária</span><strong>${Number(row.p95_prescricoes_dia).toFixed(2).replace('.', ',')}</strong></div>
-          <div style="display:flex; justify-content:space-between; gap:20px; margin:4px 0"><span style="opacity:.72">Mediana</span><span>${Number(row.mediana_prescricoes_dia).toFixed(2).replace('.', ',')}</span></div>
-          <div style="display:flex; justify-content:space-between; gap:20px; margin:4px 0"><span style="opacity:.72">Maior taxa</span><span>${Number(row.maior_prescricoes_dia).toFixed(2).replace('.', ',')}</span></div>
-          <div style="display:flex; justify-content:space-between; gap:20px; margin:4px 0"><span style="opacity:.72">Médicos</span><span>${row.qtd_medicos}</span></div>
+          <div style="display:flex; justify-content:space-between; gap:20px; margin:4px 0"><span style="opacity:.72">CRMs anômalos</span><strong>${row.percentual_crms_anomalos == null ? '—' : `${Number(row.percentual_crms_anomalos).toFixed(2).replace('.', ',')}%`}</strong></div>
+          <div style="display:flex; justify-content:space-between; gap:20px; margin:4px 0"><span style="opacity:.72">CRM-meses anômalos / ativos</span><span>${row.qtd_crms_anomalos} / ${row.qtd_crms_ativos}</span></div>
+          <div style="display:flex; justify-content:space-between; gap:20px; margin:4px 0"><span style="opacity:.72">Prescrições</span><span>${Number(row.nu_prescricoes_total).toLocaleString('pt-BR')}</span></div>
+          <div style="display:flex; justify-content:space-between; gap:20px; margin:4px 0"><span style="opacity:.72">Média por dia</span><span>${row.media_prescricoes_dia == null ? '—' : Number(row.media_prescricoes_dia).toFixed(2).replace('.', ',')}</span></div>
         </div>`;
       },
     },
     visualMap: {
       show: false,
       min: 0,
-      max: maxP95.value,
+      max: maxPercentualAnomalia.value,
       inRange: { color: activeScale.value },
       outOfRange: { color: [mapAreaColor.value] },
     },
@@ -255,7 +255,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
     <header class="crm-map-header">
       <i class="pi pi-map" />
       <div class="crm-map-heading">
-        <h2>Taxa diária de prescrições por médico</h2>
+        <h2>CRMs com taxa diária anômala</h2>
         <span>{{ mapTitle }} · {{ mapSubtitle }}</span>
       </div>
       <button v-if="!isNational" type="button" class="map-back-button" @click="emit('back')">
@@ -269,7 +269,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
         </div>
         <div class="map-summary-item map-summary-item--accent">
           <span>Critério de cor</span>
-          <strong>P95</strong>
+          <strong>% anômalo</strong>
         </div>
       </div>
     </header>
@@ -296,14 +296,14 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
       </template>
     </div>
     <footer v-if="error && !isLoading" class="map-legend map-legend--unavailable">
-      <span>Escala de cores e P95 serão exibidos após a sincronização dos dados.</span>
+      <span>Escala de cores e percentual de CRMs anômalos serão exibidos após a sincronização dos dados.</span>
     </footer>
     <footer v-else class="map-legend">
-      <span class="legend-title">Cor: P95 da taxa diária</span>
-      <div class="legend-scale" aria-label="Escala de menor para maior taxa diária">
+      <span class="legend-title">Cor: percentual mensal de CRM-meses anômalos</span>
+      <div class="legend-scale" aria-label="Escala de menor para maior percentual mensal de CRM-meses anômalos">
         <span>Menor</span>
         <i v-for="color in activeScale" :key="color" class="legend-swatch" :style="{ backgroundColor: color }" />
-        <span>Maior{{ maximumObservedP95 ? ` · ${maximumObservedP95.toFixed(2).replace('.', ',')}` : '' }}</span>
+        <span>Maior{{ maximumObservedPercentual ? ` · ${maximumObservedPercentual.toFixed(2).replace('.', ',')}%` : '' }}</span>
       </div>
     </footer>
   </section>

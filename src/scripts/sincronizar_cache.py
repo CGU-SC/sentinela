@@ -30,7 +30,7 @@ from data_cache import (
     _sync_crm_prescritores_global,
     _sync_crm_prescricoes_brasil_semestre,
     _sync_crm_prescricoes_estabelecimento_mes,
-    _sync_crm_prescricoes_gerencial_mes,
+    _sync_crm_prescricoes_gerencial,
     _sync_crm_raiox_tx_global,
     _sync_pagamentos_consolidados_farmacia_popular,
     _sync_dados_farmacia,
@@ -347,7 +347,7 @@ MODULOS = sorted([
     {"id": 16, "name": "CRM Raio-X global", "func": _sync_crm_raiox_tx_global, "peso": "muito pesado", "ordem": 16},
     {"id": 43, "name": "Pagamentos FP global", "func": _sync_pagamentos_consolidados_farmacia_popular, "peso": "muito pesado", "ordem": 43},
     {"id": 44, "name": "CRM Prescricoes estab./mes", "func": _sync_crm_prescricoes_estabelecimento_mes, "peso": "muito pesado", "ordem": 44},
-    {"id": 45, "name": "CRM Prescricoes gerencial/mes", "func": _sync_crm_prescricoes_gerencial_mes, "peso": "pesado", "ordem": 45},
+    {"id": 45, "name": "CRM Prescricoes gerencial/mensal", "func": _sync_crm_prescricoes_gerencial, "peso": "muito pesado", "ordem": 45},
     {"id": 17, "name": "Farmacias e CNAEs", "func": _sync_dados_farmacia, "peso": "medio", "ordem": 17},
     {"id": 18, "name": "Perfil estab.", "func": _sync_perfil_estabelecimento, "peso": "medio", "ordem": 18},
     {"id": 19, "name": "Movimentacao", "func": _sync_movimentacao, "peso": "muito pesado", "ordem": 19},
@@ -379,9 +379,10 @@ MODULOS = sorted([
 
 DEPENDENCIAS_MODULOS = {
     8: {7},
-    9: {7, 8, 16, 34, 35, 36, 37, 38, 39},
+    9: {7, 8, 16, 34, 35, 36, 37, 38, 39, 44, 45},
     21: {20},
     23: {22},
+    45: {44},
 }
 
 

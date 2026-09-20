@@ -19,9 +19,9 @@
 --      Totais nacionais por (id_medico, competencia), equivalentes ao antigo
 --      #prescricoes_todos_estabelecimentos.
 --
---   4. temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes
---      Totais por (id_medico, competencia e localidade), destinados ao mapa
---      e ao ranking gerencial de prescricoes por dia.
+--   4. temp_CGUSC.fp.build_crm_prescricoes_gerencial
+--      Indicadores mensais por nivel geografico, destinados ao mapa gerencial
+--      de prescricoes por dia.
 --
 -- Observacao:
 --   build_alertas_crm_geografico e benchmarks dependem de build_dados_crm_detalhado
@@ -32,10 +32,11 @@ SET NOCOUNT ON;
 
 DECLARE @DataInicio DATE = '2015-07-01';
 DECLARE @DataFim    DATE = '2024-12-31';
+DECLARE @LimitePrescricoesDia DECIMAL(19, 6) = 22.000000;
 DECLARE @t0         DATETIME = GETDATE();
 DECLARE @t1         DATETIME;
 DECLARE @pipeline_nome   VARCHAR(80) = 'crms_detalhado_pre_global';
-DECLARE @pipeline_versao VARCHAR(40) = 'v3_2026_09_17';
+DECLARE @pipeline_versao VARCHAR(40) = 'v5_2026_09_19';
 DECLARE @nu_registros BIGINT;
 
 IF OBJECT_ID('db_FarmaciaPopular.dbo.Relatorio_movimentacaoFP') IS NULL
@@ -249,59 +250,140 @@ PRINT '   temp_CGUSC.fp.build_dados_medico concluida em: ' + CONVERT(VARCHAR(20)
 -- ============================================================================
 -- Preserva o grain do fluxo atual:
 --   1. conta autorizacoes por (cnpj, medico, competencia);
---   2. soma esses totais para (medico, competencia);
---   3. conta quantos estabelecimentos tiveram registro do medico no mes.
+--   2. soma esses totais para (medico, competencia e municipio);
+--   3. expande os dados para UF e regiao de saude;
+--   4. materializa os indicadores mensais do mapa.
 -- Tambem materializa a relacao completa por estabelecimento, medico e mes,
 -- que sera usada por analises globais com os filtros da aplicacao.
 -- ============================================================================
 PRINT '>> Passo 2: Criando caches de prescricoes por estabelecimento e nacionais...';
 SET @t1 = GETDATE();
 
+IF OBJECT_ID('temp_CGUSC.fp.dados_farmacia', 'U') IS NULL
+BEGIN
+    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia nao encontrada.', 16, 1);
+END;
+
+IF COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'id') IS NULL
+   OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'cnpj') IS NULL
+   OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'codibge') IS NULL
+   OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'uf') IS NULL
+   OR COL_LENGTH('temp_CGUSC.fp.dados_farmacia', 'id_regiao_saude') IS NULL
+BEGIN
+    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia sem as colunas obrigatorias.', 16, 1);
+END;
+
+DROP TABLE IF EXISTS #base_crm_cnpj;
+
+SELECT
+    CAST(M.cnpj AS CHAR(14)) AS nu_cnpj,
+    CAST(CAST(M.crm AS VARCHAR(10)) + '/' + M.crm_uf AS VARCHAR(13)) AS id_medico,
+    YEAR(M.data_hora) * 100 + MONTH(M.data_hora) AS competencia,
+    COUNT(DISTINCT M.num_autorizacao) AS nu_prescricoes_medico
+INTO #base_crm_cnpj
+FROM (
+    SELECT cnpj, crm, crm_uf, data_hora, num_autorizacao, valor_pago, qnt_autorizada, codigo_barra
+    FROM db_FarmaciaPopular.dbo.Relatorio_movimentacaoFP
+    UNION ALL
+    SELECT cnpj, crm, crm_uf, data_hora, num_autorizacao, valor_pago, qnt_autorizada, codigo_barra
+    FROM db_FarmaciaPopular.carga_2024.relatorio_movimentacaoFP_2021_2024
+) M
+WHERE M.crm_uf IS NOT NULL
+  AND M.crm IS NOT NULL
+  AND M.crm_uf <> 'BR'
+  AND M.data_hora >= @DataInicio
+  AND M.data_hora < DATEADD(DAY, 1, @DataFim)
+  AND M.num_autorizacao IS NOT NULL
+  AND M.qnt_autorizada IS NOT NULL
+  AND EXISTS (
+      SELECT 1
+      FROM temp_CGUSC.fp.medicamentos_patologia PAT
+      WHERE PAT.codigo_barra = M.codigo_barra
+        AND TRY_CAST(PAT.qnt_comprimidos_caixa AS DECIMAL(10,0)) IS NOT NULL
+        AND TRY_CAST(PAT.qnt_comprimidos_caixa AS DECIMAL(10,0)) <> 0
+        AND (M.qnt_autorizada / TRY_CAST(PAT.qnt_comprimidos_caixa AS DECIMAL(10,0))) <> 0
+  )
+GROUP BY
+    M.cnpj,
+    M.crm,
+    M.crm_uf,
+    YEAR(M.data_hora),
+    MONTH(M.data_hora);
+
+CREATE CLUSTERED INDEX IDX_BaseCrmCnpj
+    ON #base_crm_cnpj(nu_cnpj, id_medico, competencia);
+
+IF NOT EXISTS (SELECT 1 FROM #base_crm_cnpj)
+BEGIN
+    RAISERROR('Nenhuma prescricao CRM valida foi encontrada no periodo informado.', 16, 1);
+END;
+
+IF EXISTS (
+    SELECT F.id
+    FROM temp_CGUSC.fp.dados_farmacia F
+    GROUP BY F.id
+    HAVING COUNT_BIG(*) > 1
+)
+BEGIN
+    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia possui IDs duplicados.', 16, 1);
+END;
+
+IF EXISTS (
+    SELECT F.cnpj
+    FROM temp_CGUSC.fp.dados_farmacia F
+    WHERE F.cnpj IS NOT NULL
+    GROUP BY F.cnpj
+    HAVING COUNT_BIG(*) > 1
+)
+BEGIN
+    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia possui CNPJs duplicados.', 16, 1);
+END;
+
+IF EXISTS (
+    SELECT 1
+    FROM temp_CGUSC.fp.dados_farmacia F
+    WHERE F.id IS NULL
+       OR F.cnpj IS NULL
+       OR F.codibge IS NULL
+       OR NULLIF(LTRIM(RTRIM(CAST(F.uf AS VARCHAR(2)))), '') IS NULL
+       OR F.id_regiao_saude IS NULL
+)
+BEGIN
+    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia possui valores obrigatorios nulos.', 16, 1);
+END;
+
+IF EXISTS (
+    SELECT F.codibge
+    FROM temp_CGUSC.fp.dados_farmacia F
+    GROUP BY F.codibge
+    HAVING COUNT(DISTINCT UPPER(LTRIM(RTRIM(CAST(F.uf AS VARCHAR(2)))))) > 1
+        OR COUNT(DISTINCT CAST(F.id_regiao_saude AS VARCHAR(20))) > 1
+)
+BEGIN
+    RAISERROR('Tabela temp_CGUSC.fp.dados_farmacia possui geografia inconsistente para o mesmo municipio.', 16, 1);
+END;
+
+IF EXISTS (
+    SELECT 1
+    FROM #base_crm_cnpj B
+    LEFT JOIN temp_CGUSC.fp.dados_farmacia F
+        ON F.cnpj = B.nu_cnpj
+    WHERE F.id IS NULL
+)
+BEGIN
+    RAISERROR('Existem CNPJs com prescricoes sem correspondencia em temp_CGUSC.fp.dados_farmacia.', 16, 1);
+END;
+
 DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes;
 DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos;
-DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes;
 
-;WITH base_crm_cnpj AS (
-    SELECT
-        CAST(M.cnpj AS CHAR(14)) AS nu_cnpj,
-        CAST(CAST(M.crm AS VARCHAR(10)) + '/' + M.crm_uf AS VARCHAR(13)) AS id_medico,
-        YEAR(M.data_hora) * 100 + MONTH(M.data_hora) AS competencia,
-        COUNT(DISTINCT M.num_autorizacao) AS nu_prescricoes_medico
-    FROM (
-        SELECT cnpj, crm, crm_uf, data_hora, num_autorizacao, valor_pago, qnt_autorizada, codigo_barra
-        FROM db_FarmaciaPopular.dbo.Relatorio_movimentacaoFP
-        UNION ALL
-        SELECT cnpj, crm, crm_uf, data_hora, num_autorizacao, valor_pago, qnt_autorizada, codigo_barra
-        FROM db_FarmaciaPopular.carga_2024.relatorio_movimentacaoFP_2021_2024
-    ) M
-    WHERE M.crm_uf IS NOT NULL
-      AND M.crm IS NOT NULL
-      AND M.crm_uf <> 'BR'
-      AND M.data_hora >= @DataInicio
-      AND M.data_hora < DATEADD(DAY, 1, @DataFim)
-      AND M.qnt_autorizada IS NOT NULL
-      AND EXISTS (
-          SELECT 1
-          FROM temp_CGUSC.fp.medicamentos_patologia PAT
-          WHERE PAT.codigo_barra = M.codigo_barra
-            AND TRY_CAST(PAT.qnt_comprimidos_caixa AS DECIMAL(10,0)) IS NOT NULL
-            AND TRY_CAST(PAT.qnt_comprimidos_caixa AS DECIMAL(10,0)) <> 0
-            AND (M.qnt_autorizada / TRY_CAST(PAT.qnt_comprimidos_caixa AS DECIMAL(10,0))) <> 0
-      )
-    GROUP BY
-        M.cnpj,
-        M.crm,
-        M.crm_uf,
-        YEAR(M.data_hora),
-        MONTH(M.data_hora)
-)
 SELECT
     CAST(F.id AS INT) AS id_cnpj,
     B.id_medico,
     B.competencia,
-    CAST(B.nu_prescricoes_medico AS INT) AS nu_prescricoes_mes
+    CAST(B.nu_prescricoes_medico AS SMALLINT) AS nu_prescricoes_mes
 INTO temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes
-FROM base_crm_cnpj B
+FROM #base_crm_cnpj B
 INNER JOIN temp_CGUSC.fp.dados_farmacia F
     ON F.cnpj = B.nu_cnpj;
 
@@ -311,48 +393,229 @@ CREATE CLUSTERED INDEX IDX_CrmPrescEstabMes_Key
 CREATE NONCLUSTERED INDEX IDX_CrmPrescEstabMes_Medico
     ON temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes(id_medico, competencia, id_cnpj);
 
+DROP TABLE IF EXISTS #crm_prescricoes_medico_municipio_mes;
+DROP TABLE IF EXISTS #crm_competencias;
+DROP TABLE IF EXISTS #crm_nivel_mensal;
+DROP TABLE IF EXISTS #crm_agregado_mensal;
+DROP TABLE IF EXISTS #crm_geografias;
+
 SELECT
     P.id_medico,
     P.competencia,
-    CAST(F.uf AS CHAR(2)) AS uf,
-    CAST(F.id_regiao_saude AS VARCHAR(20)) AS id_regiao_saude,
     CAST(F.codibge AS INT) AS id_ibge7,
-    CAST(F.municipio AS VARCHAR(100)) AS no_municipio,
-    CAST(SUM(CAST(P.nu_prescricoes_mes AS BIGINT)) AS BIGINT) AS nu_prescricoes_mes,
-    CAST(COUNT(DISTINCT P.id_cnpj) AS INT) AS nu_estabelecimentos_mes
-INTO temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes
+    CAST(UPPER(LTRIM(RTRIM(F.uf))) AS VARCHAR(20)) AS uf,
+    CAST(F.id_regiao_saude AS INT) AS id_regiao_saude,
+    CAST(SUM(CAST(P.nu_prescricoes_mes AS BIGINT)) AS BIGINT)
+        AS nu_prescricoes_mes
+INTO #crm_prescricoes_medico_municipio_mes
 FROM temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes P
 INNER JOIN temp_CGUSC.fp.dados_farmacia F
     ON F.id = P.id_cnpj
 GROUP BY
     P.id_medico,
     P.competencia,
-    F.uf,
-    F.id_regiao_saude,
     F.codibge,
-    F.municipio;
+    F.uf,
+    F.id_regiao_saude;
 
-CREATE CLUSTERED INDEX IDX_CrmPrescGerencialMes_Localidade
-    ON temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes(
-        competencia,
-        uf,
-        id_regiao_saude,
-        id_ibge7,
-        id_medico
-    );
+CREATE CLUSTERED INDEX IDX_CrmPrescGerencialBase
+    ON #crm_prescricoes_medico_municipio_mes (competencia, id_medico, id_ibge7);
 
-CREATE NONCLUSTERED INDEX IDX_CrmPrescGerencialMes_Medico
-    ON temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes(id_medico, competencia)
-    INCLUDE (
-        uf,
-        id_regiao_saude,
-        id_ibge7,
-        no_municipio,
-        nu_prescricoes_mes,
-        nu_estabelecimentos_mes
-    );
+CREATE TABLE #crm_competencias (
+    competencia INT NOT NULL,
+    competencia_data DATE NOT NULL,
+    dias_mes TINYINT NOT NULL,
+    PRIMARY KEY CLUSTERED (competencia)
+);
 
-PRINT '   temp_CGUSC.fp.build_crm_prescricoes_gerencial_mes concluida em: ' + CONVERT(VARCHAR(20), GETDATE() - @t1, 114);
+;WITH Meses AS (
+    SELECT DATEFROMPARTS(YEAR(@DataInicio), MONTH(@DataInicio), 1)
+        AS competencia_data
+
+    UNION ALL
+
+    SELECT DATEADD(MONTH, 1, competencia_data)
+    FROM Meses
+    WHERE competencia_data <
+        DATEFROMPARTS(YEAR(@DataFim), MONTH(@DataFim), 1)
+)
+INSERT INTO #crm_competencias (
+    competencia,
+    competencia_data,
+    dias_mes
+)
+SELECT
+    YEAR(competencia_data) * 100 + MONTH(competencia_data),
+    competencia_data,
+    DAY(EOMONTH(competencia_data))
+FROM Meses
+OPTION (MAXRECURSION 0);
+
+CREATE TABLE #crm_nivel_mensal (
+    nivel VARCHAR(16) NOT NULL,
+    id_geografico VARCHAR(20) NOT NULL,
+    id_medico VARCHAR(50) NOT NULL,
+    competencia INT NOT NULL,
+    nu_prescricoes_mes BIGINT NOT NULL
+);
+
+INSERT INTO #crm_nivel_mensal (
+    nivel,
+    id_geografico,
+    id_medico,
+    competencia,
+    nu_prescricoes_mes
+)
+SELECT
+    'municipio',
+    CAST(B.id_ibge7 AS VARCHAR(20)),
+    B.id_medico,
+    B.competencia,
+    B.nu_prescricoes_mes
+FROM #crm_prescricoes_medico_municipio_mes B
+
+UNION ALL
+
+SELECT
+    'uf',
+    B.uf,
+    B.id_medico,
+    B.competencia,
+    SUM(B.nu_prescricoes_mes)
+FROM #crm_prescricoes_medico_municipio_mes B
+GROUP BY
+    B.uf,
+    B.id_medico,
+    B.competencia
+
+UNION ALL
+
+SELECT
+    'regiao_saude',
+    CAST(B.id_regiao_saude AS VARCHAR(20)),
+    B.id_medico,
+    B.competencia,
+    SUM(B.nu_prescricoes_mes)
+FROM #crm_prescricoes_medico_municipio_mes B
+GROUP BY
+    B.id_regiao_saude,
+    B.id_medico,
+    B.competencia;
+
+CREATE CLUSTERED INDEX IDX_CrmPrescNivelMensal
+    ON #crm_nivel_mensal (nivel, competencia, id_geografico, id_medico);
+
+SELECT
+    N.nivel,
+    N.id_geografico,
+    N.competencia,
+    CAST(SUM(N.nu_prescricoes_mes) AS BIGINT) AS nu_prescricoes_total,
+    COUNT_BIG(*) AS qtd_crms_ativos,
+    SUM(
+        CASE
+            WHEN N.nu_prescricoes_mes /
+                NULLIF(CAST(C.dias_mes AS DECIMAL(19, 6)), 0)
+                > @LimitePrescricoesDia
+            THEN CAST(1 AS BIGINT)
+            ELSE CAST(0 AS BIGINT)
+        END
+    ) AS qtd_crms_anomalos
+INTO #crm_agregado_mensal
+FROM #crm_nivel_mensal N
+INNER JOIN #crm_competencias C
+    ON C.competencia = N.competencia
+GROUP BY
+    N.nivel,
+    N.id_geografico,
+    N.competencia;
+
+CREATE CLUSTERED INDEX IDX_CrmAgregadoMensal
+    ON #crm_agregado_mensal (nivel, id_geografico, competencia);
+
+CREATE TABLE #crm_geografias (
+    nivel VARCHAR(16) NOT NULL,
+    id_geografico VARCHAR(20) NOT NULL,
+    PRIMARY KEY CLUSTERED (nivel, id_geografico)
+);
+
+INSERT INTO #crm_geografias (nivel, id_geografico)
+SELECT DISTINCT 'municipio', CAST(F.codibge AS VARCHAR(20))
+FROM temp_CGUSC.fp.dados_farmacia F;
+
+INSERT INTO #crm_geografias (nivel, id_geografico)
+SELECT DISTINCT 'uf', CAST(UPPER(LTRIM(RTRIM(F.uf))) AS VARCHAR(20))
+FROM temp_CGUSC.fp.dados_farmacia F;
+
+INSERT INTO #crm_geografias (nivel, id_geografico)
+SELECT DISTINCT 'regiao_saude', CAST(F.id_regiao_saude AS VARCHAR(20))
+FROM temp_CGUSC.fp.dados_farmacia F;
+
+BEGIN TRANSACTION;
+
+DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_gerencial;
+
+CREATE TABLE temp_CGUSC.fp.build_crm_prescricoes_gerencial (
+    nivel VARCHAR(16) NOT NULL,
+    id_geografico VARCHAR(20) NOT NULL,
+    competencia INT NOT NULL,
+    nu_prescricoes_total BIGINT NOT NULL,
+    qtd_crms_ativos INT NOT NULL,
+    qtd_crms_anomalos INT NOT NULL,
+    percentual_crms_anomalos DECIMAL(19, 6) NULL,
+    media_prescricoes_dia DECIMAL(19, 6) NULL,
+    CONSTRAINT PK_CrmPrescricoesGerencial PRIMARY KEY CLUSTERED (
+        nivel,
+        id_geografico,
+        competencia
+    )
+);
+
+INSERT INTO temp_CGUSC.fp.build_crm_prescricoes_gerencial (
+    nivel,
+    id_geografico,
+    competencia,
+    nu_prescricoes_total,
+    qtd_crms_ativos,
+    qtd_crms_anomalos,
+    percentual_crms_anomalos,
+    media_prescricoes_dia
+)
+SELECT
+    G.nivel,
+    G.id_geografico,
+    C.competencia,
+    COALESCE(A.nu_prescricoes_total, 0),
+    COALESCE(CAST(A.qtd_crms_ativos AS INT), 0),
+    COALESCE(CAST(A.qtd_crms_anomalos AS INT), 0),
+    CASE
+        WHEN COALESCE(A.qtd_crms_ativos, 0) = 0 THEN NULL
+        ELSE CAST(
+            100.0 * A.qtd_crms_anomalos /
+            NULLIF(A.qtd_crms_ativos, 0)
+            AS DECIMAL(19, 6)
+        )
+    END,
+    CASE
+        WHEN COALESCE(A.qtd_crms_ativos, 0) = 0 THEN NULL
+        ELSE CAST(
+            A.nu_prescricoes_total /
+            NULLIF(
+                CAST(C.dias_mes AS DECIMAL(19, 6)) * A.qtd_crms_ativos,
+                0
+            )
+            AS DECIMAL(19, 6)
+        )
+    END
+FROM #crm_geografias G
+CROSS JOIN #crm_competencias C
+LEFT JOIN #crm_agregado_mensal A
+    ON A.nivel = G.nivel
+   AND A.id_geografico = G.id_geografico
+   AND A.competencia = C.competencia;
+
+COMMIT TRANSACTION;
+
+PRINT '   temp_CGUSC.fp.build_crm_prescricoes_gerencial mensal concluida em: ' + CONVERT(VARCHAR(20), GETDATE() - @t1, 114);
 
 SELECT
     id_medico,
@@ -430,6 +693,9 @@ ORDER BY nu_prescricoes_medico_em_todos_estabelecimentos DESC;
 
 END TRY
 BEGIN CATCH
+    IF XACT_STATE() <> 0
+        ROLLBACK TRANSACTION;
+
     DECLARE @mensagem_erro NVARCHAR(4000);
 
     SET @mensagem_erro = CONCAT(

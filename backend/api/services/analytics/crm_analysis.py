@@ -1,6 +1,6 @@
 """Dados agregados para a análise geográfica de prescrições por médico."""
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 import polars as pl
@@ -8,8 +8,9 @@ from fastapi import HTTPException
 
 from data_cache import (
     get_df,
+    get_localidades_df,
     get_df_perfil_estabelecimento,
-    scan_crm_prescricoes_gerencial_mes,
+    scan_crm_prescricoes_gerencial,
     scan_crm_prescricoes_estabelecimento_mes,
     scan_dados_medico,
 )
@@ -25,6 +26,7 @@ from .dispersao_uf import get_dispersao_uf_sem_fronteira_id_cnpjs_df
 
 MIN_DATA = date(2015, 7, 1)
 MAX_DATA = date(2024, 12, 31)
+CRM_PRESCRICOES_ANOMALIA_LIMITE = 22.0
 CRM_ANALYSIS_REQUIRED_PROFILE_COLUMNS = {
     "id_cnpj",
     "cnpj",
@@ -56,14 +58,26 @@ CRM_ANALYSIS_REQUIRED_MONTHLY_COLUMNS = {
     "no_municipio",
 }
 CRM_ANALYSIS_REQUIRED_MANAGER_COLUMNS = {
-    "id_medico",
+    "nivel",
+    "id_geografico",
     "competencia",
+    "nu_prescricoes_total",
+    "qtd_crms_ativos",
+    "qtd_crms_anomalos",
+    "percentual_crms_anomalos",
+    "media_prescricoes_dia",
+}
+CRM_ANALYSIS_REQUIRED_LOCALIDADES_COLUMNS = {
+    "id_ibge7",
+    "sg_uf",
+    "id_regiao_saude",
+    "no_municipio",
+}
+CRM_ANALYSIS_REQUIRED_LOCATION_COLUMNS = {
     "uf",
     "id_regiao_saude",
     "id_ibge7",
     "no_municipio",
-    "nu_prescricoes_mes",
-    "nu_estabelecimentos_mes",
 }
 CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS = {
     "id_medico",
@@ -87,6 +101,17 @@ def _period_bounds(data_inicio: Optional[date], data_fim: Optional[date]) -> tup
     fim = data_fim or MAX_DATA
     if inicio > fim:
         raise HTTPException(status_code=422, detail="Período inválido: data_inicio posterior à data_fim.")
+    proximo_mes = (
+        date(fim.year + 1, 1, 1)
+        if fim.month == 12
+        else date(fim.year, fim.month + 1, 1)
+    )
+    ultimo_dia_mes = proximo_mes - timedelta(days=1)
+    if inicio.day != 1 or fim != ultimo_dia_mes:
+        raise HTTPException(
+            status_code=422,
+            detail="A análise de prescrições CRM exige meses completos.",
+        )
     return inicio, fim
 
 
@@ -267,6 +292,180 @@ def _perfil_filtrado(
     return perfil.join(cnpj_ok.select("id_cnpj"), on="id_cnpj", how="inner")
 
 
+def _map_items_from_summary(summary: pl.DataFrame, map_level: str) -> list[CrmPrescricoesMapaItemSchema]:
+    """Converte o resumo mensal/gerencial no contrato consumido pelo mapa."""
+    if summary.is_empty():
+        return []
+
+    items = []
+    for row in summary.iter_rows(named=True):
+        percentual = row.get("percentual_crms_anomalos")
+        media = row.get("media_prescricoes_dia")
+        if map_level == "uf":
+            uf = str(row["uf"])
+            items.append(
+                CrmPrescricoesMapaItemSchema(
+                    nivel="uf",
+                    identificador=uf,
+                    nome=uf,
+                    uf=uf,
+                    nu_prescricoes_total=int(row["nu_prescricoes_total"]),
+                    qtd_crms_ativos=int(row["qtd_crms_ativos"]),
+                    qtd_crms_anomalos=int(row["qtd_crms_anomalos"]),
+                    percentual_crms_anomalos=float(percentual) if percentual is not None else None,
+                    media_prescricoes_dia=float(media) if media is not None else None,
+                )
+            )
+        else:
+            items.append(
+                CrmPrescricoesMapaItemSchema(
+                    nivel="municipio",
+                    identificador=str(row["id_ibge7"]),
+                    nome=str(row["no_municipio"]),
+                    uf=str(row["uf"]),
+                    id_ibge7=int(row["id_ibge7"]),
+                    id_regiao_saude=str(row["id_regiao_saude"]),
+                    nu_prescricoes_total=int(row["nu_prescricoes_total"]),
+                    qtd_crms_ativos=int(row["qtd_crms_ativos"]),
+                    qtd_crms_anomalos=int(row["qtd_crms_anomalos"]),
+                    percentual_crms_anomalos=float(percentual) if percentual is not None else None,
+                    media_prescricoes_dia=float(media) if media is not None else None,
+                )
+            )
+    return items
+
+
+def _build_manager_map(
+    *,
+    map_level: str,
+    inicio: date,
+    fim: date,
+    uf: Optional[str],
+    regiao_id: Optional[int],
+    id_ibge7: Optional[int],
+) -> list[CrmPrescricoesMapaItemSchema]:
+    """Agrega a tabela mensal gerencial para o período exibido no mapa."""
+    manager = scan_crm_prescricoes_gerencial()
+    manager_columns = set(manager.collect_schema().names())
+    missing = sorted(CRM_ANALYSIS_REQUIRED_MANAGER_COLUMNS.difference(manager_columns))
+    if missing:
+        raise HTTPException(
+            status_code=503,
+            detail="Cache gerencial de prescricoes sem colunas obrigatorias: " + ", ".join(missing) + ".",
+        )
+
+    manager = (
+        manager
+        .filter(pl.col("competencia").is_between(_competencia(inicio), _competencia(fim)))
+        .with_columns([
+            pl.col("id_geografico").cast(pl.Utf8),
+            pl.col("competencia").cast(pl.Int32),
+            pl.col("nu_prescricoes_total").cast(pl.Int64),
+            pl.col("qtd_crms_ativos").cast(pl.Int64),
+            pl.col("qtd_crms_anomalos").cast(pl.Int64),
+        ])
+        .with_columns([
+            _dias_do_mes_expr().cast(pl.Int64).alias("dias_mes"),
+        ])
+    )
+
+    if map_level == "uf":
+        if uf and uf != "Todos":
+            manager = manager.filter(pl.col("id_geografico") == uf)
+        summary = (
+            manager
+            .filter(pl.col("nivel") == "uf")
+            .with_columns(pl.col("id_geografico").alias("uf"))
+            .group_by("uf")
+            .agg([
+                pl.sum("nu_prescricoes_total").cast(pl.Int64).alias("nu_prescricoes_total"),
+                pl.sum("qtd_crms_ativos").cast(pl.Int64).alias("qtd_crms_ativos"),
+                pl.sum("qtd_crms_anomalos").cast(pl.Int64).alias("qtd_crms_anomalos"),
+                (pl.col("qtd_crms_ativos") * pl.col("dias_mes"))
+                .cast(pl.Int64)
+                .sum()
+                .alias("crm_dias"),
+            ])
+            .with_columns([
+                pl.when(pl.col("qtd_crms_ativos") > 0)
+                .then(pl.col("qtd_crms_anomalos") / pl.col("qtd_crms_ativos") * 100)
+                .otherwise(None)
+                .alias("percentual_crms_anomalos"),
+                pl.when(pl.col("crm_dias") > 0)
+                .then(pl.col("nu_prescricoes_total") / pl.col("crm_dias"))
+                .otherwise(None)
+                .alias("media_prescricoes_dia"),
+            ])
+            .sort("percentual_crms_anomalos", descending=True, nulls_last=True)
+            .collect()
+        )
+        return _map_items_from_summary(summary, map_level)
+
+    localidades = get_localidades_df()
+    _require_columns(localidades, CRM_ANALYSIS_REQUIRED_LOCALIDADES_COLUMNS, "Localidades")
+    geo = (
+        localidades
+        .select(["id_ibge7", "sg_uf", "id_regiao_saude", "no_municipio"])
+        .with_columns([
+            pl.col("id_ibge7").cast(pl.Int64),
+            pl.col("sg_uf").cast(pl.Utf8).alias("uf"),
+            pl.col("id_regiao_saude").cast(pl.Utf8),
+            pl.col("no_municipio").cast(pl.Utf8),
+        ])
+        .select(["id_ibge7", "uf", "id_regiao_saude", "no_municipio"])
+    )
+    if geo.filter(pl.col("id_ibge7").is_null()).height:
+        raise HTTPException(
+            status_code=503,
+            detail="Cache de localidades possui id_ibge7 nulo para a analise de CRMs.",
+        )
+    duplicate_geo = geo.group_by("id_ibge7").len().filter(pl.col("len") > 1)
+    if duplicate_geo.height:
+        raise HTTPException(
+            status_code=503,
+            detail="Cache de localidades possui mais de uma linha para o mesmo id_ibge7.",
+        )
+    scoped = (
+        manager
+        .filter(pl.col("nivel") == "municipio")
+        .with_columns(pl.col("id_geografico").cast(pl.Int64).alias("id_ibge7"))
+        .join(geo.lazy(), on="id_ibge7", how="inner")
+    )
+    if uf and uf != "Todos":
+        scoped = scoped.filter(pl.col("uf") == uf)
+    if regiao_id is not None:
+        scoped = scoped.filter(pl.col("id_regiao_saude") == str(regiao_id))
+    if id_ibge7 is not None:
+        scoped = scoped.filter(pl.col("id_ibge7") == id_ibge7)
+
+    summary = (
+        scoped
+        .group_by(["id_ibge7", "uf", "id_regiao_saude", "no_municipio"])
+        .agg([
+            pl.sum("nu_prescricoes_total").cast(pl.Int64).alias("nu_prescricoes_total"),
+            pl.sum("qtd_crms_ativos").cast(pl.Int64).alias("qtd_crms_ativos"),
+            pl.sum("qtd_crms_anomalos").cast(pl.Int64).alias("qtd_crms_anomalos"),
+            (pl.col("qtd_crms_ativos") * pl.col("dias_mes"))
+            .cast(pl.Int64)
+            .sum()
+            .alias("crm_dias"),
+        ])
+        .with_columns([
+            pl.when(pl.col("qtd_crms_ativos") > 0)
+            .then(pl.col("qtd_crms_anomalos") / pl.col("qtd_crms_ativos") * 100)
+            .otherwise(None)
+            .alias("percentual_crms_anomalos"),
+            pl.when(pl.col("crm_dias") > 0)
+            .then(pl.col("nu_prescricoes_total") / pl.col("crm_dias"))
+            .otherwise(None)
+            .alias("media_prescricoes_dia"),
+        ])
+        .sort("percentual_crms_anomalos", descending=True, nulls_last=True)
+        .collect()
+    )
+    return _map_items_from_summary(summary, map_level)
+
+
 def _build_response(
     *,
     map_level: str,
@@ -274,26 +473,26 @@ def _build_response(
     inicio: date,
     fim: date,
     monthly: pl.DataFrame | pl.LazyFrame,
+    manager_map: Optional[list[CrmPrescricoesMapaItemSchema]] = None,
 ) -> CrmPrescricoesAnaliseResponse:
     monthly_lf = monthly if isinstance(monthly, pl.LazyFrame) else monthly.lazy()
     monthly_columns = set(monthly_lf.collect_schema().names())
-    if "id_cnpj" in monthly_columns:
-        _require_columns(
-            monthly_lf.limit(0).collect(),
-            CRM_ANALYSIS_REQUIRED_MONTHLY_COLUMNS,
-            "Prescricoes mensais",
+    _require_columns(
+        monthly_lf.limit(0).collect(),
+        CRM_ANALYSIS_REQUIRED_MONTHLY_COLUMNS,
+        "Prescricoes mensais",
+    )
+
+    missing_location = sorted(CRM_ANALYSIS_REQUIRED_LOCATION_COLUMNS.difference(monthly_columns))
+    if missing_location:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Dados geograficos das prescricoes sem colunas obrigatorias: "
+                + ", ".join(missing_location)
+                + "."
+            ),
         )
-    else:
-        missing_manager = sorted(CRM_ANALYSIS_REQUIRED_MANAGER_COLUMNS.difference(monthly_columns))
-        if missing_manager:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Cache gerencial de prescricoes sem colunas obrigatorias: "
-                    + ", ".join(missing_manager)
-                    + "."
-                ),
-            )
 
     if map_level == "uf":
         location_keys = ["uf"]
@@ -301,10 +500,7 @@ def _build_response(
         location_keys = ["uf", "id_regiao_saude", "id_ibge7", "no_municipio"]
 
     location_key_columns = location_keys + ["id_medico", "competencia"]
-    if "id_cnpj" in monthly_columns:
-        qtd_estab_expr = pl.n_unique("id_cnpj").alias("qtd_estabelecimentos_mes")
-    else:
-        qtd_estab_expr = pl.sum("nu_estabelecimentos_mes").alias("qtd_estabelecimentos_mes")
+    qtd_estab_expr = pl.n_unique("id_cnpj").alias("qtd_estabelecimentos_mes")
 
     doctor_month = (
         monthly_lf.group_by(location_key_columns)
@@ -314,6 +510,12 @@ def _build_response(
         ])
         .filter(pl.col("nu_prescricoes_mes") > 0)
         .with_columns(_dias_do_mes_expr().cast(pl.Int64).alias("dias_mes"))
+        .with_columns(
+            (
+                pl.col("nu_prescricoes_mes").cast(pl.Float64)
+                / pl.col("dias_mes").cast(pl.Float64)
+            ).alias("taxa_prescricoes_dia")
+        )
         .collect()
     )
     if doctor_month.is_empty():
@@ -323,15 +525,17 @@ def _build_response(
             periodo_inicio=inicio,
             periodo_fim=fim,
             qtd_medicos=0,
-            mapa=[],
+            mapa=manager_map or [],
             ranking=[],
         )
+    dias_intervalo = (fim - inicio).days + 1
+
     doctor_scope = (
         doctor_month.group_by(location_keys + ["id_medico"])
-        .agg([
-            pl.sum("nu_prescricoes_mes").alias("nu_prescricoes"),
-            pl.sum("dias_mes").alias("dias_calendario"),
-        ])
+        .agg(pl.sum("nu_prescricoes_mes").alias("nu_prescricoes"))
+        .with_columns(
+            pl.lit(dias_intervalo).cast(pl.Int64).alias("dias_calendario")
+        )
         .with_columns(
             (
                 pl.col("nu_prescricoes").cast(pl.Float64)
@@ -340,125 +544,69 @@ def _build_response(
         )
     )
 
-    if "id_cnpj" in monthly_columns:
-        qtd_estab = (
-            monthly_lf.group_by(location_keys + ["id_medico"])
-            .agg(pl.n_unique("id_cnpj").alias("qtd_estabelecimentos"))
-            .collect()
-        )
-    else:
-        qtd_estab = (
-            doctor_month
-            .group_by(location_keys + ["id_medico", "competencia"])
-            .agg(pl.sum("qtd_estabelecimentos_mes").alias("qtd_estabelecimentos_mes"))
-            .group_by(location_keys + ["id_medico"])
-            .agg(pl.max("qtd_estabelecimentos_mes").alias("qtd_estabelecimentos"))
-        )
+    qtd_estab = (
+        monthly_lf.group_by(location_keys + ["id_medico"])
+        .agg(pl.n_unique("id_cnpj").alias("qtd_estabelecimentos"))
+        .collect()
+    )
     doctor_scope = doctor_scope.join(qtd_estab, on=location_keys + ["id_medico"], how="left")
 
     map_summary = (
-        doctor_scope.group_by(location_keys)
+        doctor_month.group_by(location_keys)
         .agg([
-            pl.col("taxa_prescricoes_dia").quantile(0.95, interpolation="linear").alias("p95_prescricoes_dia"),
-            pl.col("taxa_prescricoes_dia").median().alias("mediana_prescricoes_dia"),
-            pl.col("taxa_prescricoes_dia").max().alias("maior_prescricoes_dia"),
-            pl.n_unique("id_medico").alias("qtd_medicos"),
+            pl.sum("nu_prescricoes_mes").cast(pl.Int64).alias("nu_prescricoes_total"),
+            pl.len().cast(pl.Int64).alias("qtd_crms_ativos"),
+            pl.when(pl.col("taxa_prescricoes_dia") > CRM_PRESCRICOES_ANOMALIA_LIMITE)
+            .then(1)
+            .otherwise(0)
+            .sum()
+            .cast(pl.Int64)
+            .alias("qtd_crms_anomalos"),
+            pl.sum("dias_mes").cast(pl.Int64).alias("crm_dias"),
         ])
-        .sort("p95_prescricoes_dia", descending=True)
+        .with_columns([
+            pl.when(pl.col("qtd_crms_ativos") > 0)
+            .then(pl.col("qtd_crms_anomalos") / pl.col("qtd_crms_ativos") * 100)
+            .otherwise(None)
+            .alias("percentual_crms_anomalos"),
+            pl.when(pl.col("crm_dias") > 0)
+            .then(pl.col("nu_prescricoes_total") / pl.col("crm_dias"))
+            .otherwise(None)
+            .alias("media_prescricoes_dia"),
+        ])
+        .sort("percentual_crms_anomalos", descending=True, nulls_last=True)
     )
 
-    if map_level == "uf":
-        mapa = [
-            CrmPrescricoesMapaItemSchema(
-                nivel="uf",
-                identificador=str(row["uf"]),
-                nome=str(row["uf"]),
-                uf=str(row["uf"]),
-                p95_prescricoes_dia=float(row["p95_prescricoes_dia"]),
-                mediana_prescricoes_dia=float(row["mediana_prescricoes_dia"]),
-                maior_prescricoes_dia=float(row["maior_prescricoes_dia"]),
-                qtd_medicos=int(row["qtd_medicos"]),
-            )
-            for row in map_summary.iter_rows(named=True)
-        ]
-    else:
-        mapa = [
-            CrmPrescricoesMapaItemSchema(
-                nivel="municipio",
-                identificador=str(row["id_ibge7"]),
-                nome=str(row["no_municipio"]),
-                uf=str(row["uf"]),
-                id_ibge7=int(row["id_ibge7"]),
-                id_regiao_saude=str(row["id_regiao_saude"]),
-                p95_prescricoes_dia=float(row["p95_prescricoes_dia"]),
-                mediana_prescricoes_dia=float(row["mediana_prescricoes_dia"]),
-                maior_prescricoes_dia=float(row["maior_prescricoes_dia"]),
-                qtd_medicos=int(row["qtd_medicos"]),
-            )
-            for row in map_summary.iter_rows(named=True)
-        ]
+    mapa = manager_map if manager_map is not None else _map_items_from_summary(map_summary, map_level)
 
-    if "id_cnpj" in monthly_columns:
-        ranking_scope = (
-            monthly_lf.group_by(["id_medico", "competencia"])
-            .agg(pl.sum("nu_prescricoes_mes").cast(pl.Int64).alias("nu_prescricoes_mes"))
-            .filter(pl.col("nu_prescricoes_mes") > 0)
-            .with_columns(_dias_do_mes_expr().cast(pl.Int64).alias("dias_mes"))
-            .group_by("id_medico")
-            .agg([
-                pl.sum("nu_prescricoes_mes").alias("nu_prescricoes"),
-                pl.sum("dias_mes").alias("dias_calendario"),
-            ])
-            .with_columns(
-                (
-                    pl.col("nu_prescricoes").cast(pl.Float64)
-                    / pl.col("dias_calendario").cast(pl.Float64)
-                ).alias("taxa_prescricoes_dia")
-            )
-            .sort(["taxa_prescricoes_dia", "nu_prescricoes"], descending=[True, True])
-            .head(100)
-            .with_row_index("rank")
-            .with_columns((pl.col("rank") + 1).cast(pl.Int64))
-            .collect()
+    ranking_scope = (
+        monthly_lf.group_by(["id_medico", "competencia"])
+        .agg(pl.sum("nu_prescricoes_mes").cast(pl.Int64).alias("nu_prescricoes_mes"))
+        .filter(pl.col("nu_prescricoes_mes") > 0)
+        .group_by("id_medico")
+        .agg(pl.sum("nu_prescricoes_mes").alias("nu_prescricoes"))
+        .with_columns(
+            pl.lit(dias_intervalo).cast(pl.Int64).alias("dias_calendario")
         )
-        ranking_qtd_estab = (
-            monthly_lf
-            .group_by("id_medico")
-            .agg(pl.n_unique("id_cnpj").alias("qtd_estabelecimentos"))
-            .collect()
+        .with_columns(
+            (
+                pl.col("nu_prescricoes").cast(pl.Float64)
+                / pl.col("dias_calendario").cast(pl.Float64)
+            ).alias("taxa_prescricoes_dia")
         )
-    else:
-        ranking_scope = (
-            doctor_month
-            .group_by(["id_medico", "competencia"])
-            .agg([
-                pl.sum("nu_prescricoes_mes").cast(pl.Int64).alias("nu_prescricoes_mes"),
-                pl.sum("qtd_estabelecimentos_mes").alias("qtd_estabelecimentos_mes"),
-                pl.first("dias_mes").alias("dias_mes"),
-            ])
-            .filter(pl.col("nu_prescricoes_mes") > 0)
-            .group_by("id_medico")
-            .agg([
-                pl.sum("nu_prescricoes_mes").alias("nu_prescricoes"),
-                pl.sum("dias_mes").alias("dias_calendario"),
-                pl.max("qtd_estabelecimentos_mes").alias("qtd_estabelecimentos"),
-            ])
-            .with_columns(
-                (
-                    pl.col("nu_prescricoes").cast(pl.Float64)
-                    / pl.col("dias_calendario").cast(pl.Float64)
-                ).alias("taxa_prescricoes_dia")
-            )
-            .sort(["taxa_prescricoes_dia", "nu_prescricoes"], descending=[True, True])
-            .head(100)
-            .with_row_index("rank")
-            .with_columns((pl.col("rank") + 1).cast(pl.Int64))
-        )
-        ranking_qtd_estab = (
-            ranking_scope.select(["id_medico", "qtd_estabelecimentos"])
-        )
-    if "id_cnpj" in monthly_columns:
-        ranking_scope = ranking_scope.join(ranking_qtd_estab, on="id_medico", how="left")
+        .sort(["taxa_prescricoes_dia", "nu_prescricoes"], descending=[True, True])
+        .head(100)
+        .with_row_index("rank")
+        .with_columns((pl.col("rank") + 1).cast(pl.Int64))
+        .collect()
+    )
+    ranking_qtd_estab = (
+        monthly_lf
+        .group_by("id_medico")
+        .agg(pl.n_unique("id_cnpj").alias("qtd_estabelecimentos"))
+        .collect()
+    )
+    ranking_scope = ranking_scope.join(ranking_qtd_estab, on="id_medico", how="left")
 
     medico_ids = ranking_scope.select("id_medico")
     try:
@@ -527,7 +675,7 @@ def get_crm_prescricoes_analise(
 ) -> CrmPrescricoesAnaliseResponse:
     if map_level not in {"uf", "municipio", "regiao"}:
         raise HTTPException(status_code=422, detail="map_level deve ser uf, municipio ou regiao.")
-    if map_level == "municipio" and not uf:
+    if map_level == "municipio" and (not uf or uf == "Todos"):
         raise HTTPException(status_code=422, detail="O mapa municipal exige uma UF selecionada.")
     if map_level == "regiao" and regiao_id is None:
         raise HTTPException(status_code=422, detail="O mapa da região exige regiao_id.")
@@ -555,30 +703,52 @@ def get_crm_prescricoes_analise(
         dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
     )
 
+    manager_map = None
     if use_manager:
         try:
-            manager_filters = [
-                pl.col("competencia").is_between(_competencia(inicio), _competencia(fim)),
-            ]
+            manager_map = _build_manager_map(
+                map_level=map_level,
+                inicio=inicio,
+                fim=fim,
+                uf=uf,
+                regiao_id=regiao_id,
+                id_ibge7=id_ibge7,
+            )
+
+            perfil_df = get_df_perfil_estabelecimento()
+            _require_columns(perfil_df, CRM_ANALYSIS_REQUIRED_PROFILE_COLUMNS, "Perfil de estabelecimentos")
+            perfil_mask = pl.lit(True)
             if uf and uf != "Todos":
-                manager_filters.append(pl.col("uf") == uf)
+                perfil_mask = perfil_mask & (pl.col("uf") == uf)
             if regiao_id is not None:
-                manager_filters.append(pl.col("id_regiao_saude") == str(regiao_id))
+                perfil_mask = perfil_mask & (pl.col("id_regiao_saude") == str(regiao_id))
             if id_ibge7 is not None:
-                manager_filters.append(pl.col("id_ibge7") == id_ibge7)
+                perfil_mask = perfil_mask & (pl.col("id_ibge7") == id_ibge7)
+            perfil = perfil_df.filter(perfil_mask)
 
             monthly = (
-                scan_crm_prescricoes_gerencial_mes()
-                .filter(pl.all_horizontal(manager_filters))
+                scan_crm_prescricoes_estabelecimento_mes()
+                .filter(pl.col("competencia").is_between(_competencia(inicio), _competencia(fim)))
+                .join(
+                    perfil.select([
+                        "id_cnpj",
+                        "uf",
+                        "id_regiao_saude",
+                        "id_ibge7",
+                        "no_municipio",
+                    ]).unique("id_cnpj").lazy(),
+                    on="id_cnpj",
+                    how="inner",
+                )
                 .select([
+                    "id_cnpj",
                     "id_medico",
                     "competencia",
+                    "nu_prescricoes_mes",
                     "uf",
                     "id_regiao_saude",
                     "id_ibge7",
                     "no_municipio",
-                    "nu_prescricoes_mes",
-                    "nu_estabelecimentos_mes",
                 ])
             )
         except HTTPException:
@@ -654,7 +824,7 @@ def get_crm_prescricoes_analise(
                 detail=f"Cache de prescrições por estabelecimento/mês indisponível: {exc}",
             ) from exc
 
-    escopo = "Brasil" if map_level == "uf" and not uf else f"UF {uf}"
+    escopo = "Brasil" if map_level == "uf" and (not uf or uf == "Todos") else f"UF {uf}"
     if map_level == "regiao":
         escopo = f"Região de Saúde {regiao_id}"
     return _build_response(
@@ -663,4 +833,5 @@ def get_crm_prescricoes_analise(
         inicio=inicio,
         fim=fim,
         monthly=monthly,
+        manager_map=manager_map,
     )
