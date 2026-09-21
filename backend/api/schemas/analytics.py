@@ -551,6 +551,8 @@ class CrmPrescricoesAnaliseResponse(BaseModel):
     periodo_inicio: date
     periodo_fim: date
     qtd_medicos: int
+    ranking_page: int
+    ranking_page_size: int
     mapa: List[CrmPrescricoesMapaItemSchema]
     ranking: List[CrmPrescricoesRankingItemSchema]
 

@@ -18,6 +18,7 @@
       - UF, id_regiao_saude e nome do municipio devem ser resolvidos pelo
         modulo de localidades a partir de id_ibge7.
       - dias_mes e taxa_prescricoes_dia sao calculados na consulta gerencial.
+      - nu_prescricoes_mes e SMALLINT; a soma intermediaria permanece BIGINT.
 */
 
 SET NOCOUNT ON;
@@ -122,29 +123,25 @@ BEGIN TRY
     BEGIN TRANSACTION;
 
     DROP TABLE IF EXISTS temp_CGUSC.fp.tmp_crm_prescricoes_medico_municipio_mes;
+    DROP TABLE IF EXISTS #crm_prescricoes_medico_municipio_mes_agregado;
 
     CREATE TABLE temp_CGUSC.fp.tmp_crm_prescricoes_medico_municipio_mes (
         id_medico varchar(50) NOT NULL,
         competencia int NOT NULL,
         id_ibge7 int NOT NULL,
-        nu_prescricoes_mes bigint NOT NULL,
+        nu_prescricoes_mes smallint NOT NULL,
         CONSTRAINT PK_tmp_crm_prescricoes_medico_municipio_mes
             PRIMARY KEY CLUSTERED (competencia, id_medico, id_ibge7)
     );
 
     DECLARE @InsertedRows bigint;
 
-    INSERT INTO temp_CGUSC.fp.tmp_crm_prescricoes_medico_municipio_mes (
-        id_medico,
-        competencia,
-        id_ibge7,
-        nu_prescricoes_mes
-    )
     SELECT
         P.id_medico,
         P.competencia,
         M.id_ibge7,
         SUM(CONVERT(bigint, P.nu_prescricoes_mes)) AS nu_prescricoes_mes
+    INTO #crm_prescricoes_medico_municipio_mes_agregado
     FROM temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes P
     INNER JOIN #FarmaciaMunicipio M
         ON M.id = P.id_cnpj
@@ -153,10 +150,32 @@ BEGIN TRY
         P.competencia,
         M.id_ibge7;
 
+    IF EXISTS (
+        SELECT 1
+        FROM #crm_prescricoes_medico_municipio_mes_agregado
+        WHERE nu_prescricoes_mes > 32767
+    )
+        THROW 51010, 'A tabela medico/municipio/mes ultrapassa o limite do SMALLINT (32767).', 1;
+
+    INSERT INTO temp_CGUSC.fp.tmp_crm_prescricoes_medico_municipio_mes (
+        id_medico,
+        competencia,
+        id_ibge7,
+        nu_prescricoes_mes
+    )
+    SELECT
+        id_medico,
+        competencia,
+        id_ibge7,
+        CONVERT(smallint, nu_prescricoes_mes)
+    FROM #crm_prescricoes_medico_municipio_mes_agregado;
+
     SET @InsertedRows = @@ROWCOUNT;
 
     IF @InsertedRows = 0
         THROW 51009, 'A tabela gerencial temporaria foi criada sem registros.', 1;
+
+    DROP TABLE IF EXISTS #crm_prescricoes_medico_municipio_mes_agregado;
 
     CREATE NONCLUSTERED INDEX IX_tmp_crm_prescricoes_medico_municipio_mes_geo
         ON temp_CGUSC.fp.tmp_crm_prescricoes_medico_municipio_mes (
@@ -182,7 +201,7 @@ SELECT
     COUNT(DISTINCT id_medico) AS qtd_medicos,
     COUNT(DISTINCT id_ibge7) AS qtd_municipios,
     COUNT(DISTINCT competencia) AS qtd_competencias,
-    SUM(nu_prescricoes_mes) AS nu_prescricoes_total
+    SUM(CONVERT(bigint, nu_prescricoes_mes)) AS nu_prescricoes_total
 FROM temp_CGUSC.fp.tmp_crm_prescricoes_medico_municipio_mes;
 
 SELECT TOP (20)

@@ -1,14 +1,25 @@
 <script setup>
+import Paginator from 'primevue/paginator';
 import { useFormatting } from '@/composables/useFormatting';
 
 defineProps({
   rows: { type: Array, default: () => [] },
   isLoading: { type: Boolean, default: false },
+  isPageLoading: { type: Boolean, default: false },
   escopo: { type: String, default: 'Brasil' },
   error: { type: String, default: null },
+  pageError: { type: String, default: null },
+  totalRecords: { type: Number, default: 0 },
+  first: { type: Number, default: 0 },
+  pageSize: { type: Number, default: 25 },
 });
 
+const emit = defineEmits(['page']);
 const { formatNumberFull, formatTitleCase } = useFormatting();
+
+function onPage(event) {
+  emit('page', event);
+}
 
 function doctorLabel(row) {
   return row.no_medico ? formatTitleCase(row.no_medico) : 'Médico não localizado';
@@ -45,7 +56,12 @@ function crmLabel(row) {
       <i class="pi pi-info-circle" />
       <span>Nenhum médico encontrado para os filtros atuais.</span>
     </div>
-    <div v-else class="ranking-table-wrap">
+    <div
+      v-else
+      class="ranking-table-wrap"
+      :class="{ 'ranking-table-wrap--loading': isPageLoading }"
+      :aria-busy="isPageLoading"
+    >
       <table class="ranking-table">
         <thead>
           <tr>
@@ -73,7 +89,26 @@ function crmLabel(row) {
           </tr>
         </tbody>
       </table>
+      <div v-if="isPageLoading" class="ranking-table-loading">
+        <i class="pi pi-spin pi-spinner" />
+        <span>Carregando página...</span>
+      </div>
     </div>
+
+    <div v-if="pageError && rows.length" class="ranking-page-error">
+      <i class="pi pi-exclamation-circle" />
+      <span>{{ pageError }}</span>
+    </div>
+
+    <Paginator
+      v-if="rows.length && totalRecords > 0"
+      :first="first"
+      :rows="pageSize"
+      :total-records="totalRecords"
+      :rows-per-page-options="[25, 50, 100]"
+      class="crm-ranking-paginator"
+      @page="onPage"
+    />
   </section>
 </template>
 
@@ -89,7 +124,12 @@ function crmLabel(row) {
 .ranking-state--error strong, .ranking-state--error span { display: block; }
 .ranking-state--error strong { color: var(--text-color-85); font-size: .82rem; font-weight: 600; }
 .ranking-state--error span { margin-top: .25rem; font-size: .72rem; }
-.ranking-table-wrap { max-height: 520px; overflow: auto; }
+.ranking-table-wrap { position: relative; max-height: 520px; overflow: auto; }
+.ranking-table-wrap--loading { cursor: progress; }
+.ranking-table-wrap--loading .ranking-table { opacity: .58; }
+.ranking-table-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: .5rem; background: color-mix(in srgb, var(--card-bg) 72%, transparent); color: var(--text-muted); font-size: .76rem; pointer-events: none; }
+.ranking-page-error { display: flex; align-items: center; gap: .45rem; padding: .55rem 1rem; border-top: 1px solid color-mix(in srgb, var(--risk-high) 25%, var(--tabs-border)); color: var(--risk-high); font-size: .7rem; }
+.ranking-page-error i { flex-shrink: 0; }
 .ranking-table { width: 100%; border-collapse: collapse; color: var(--text-color-85); font-size: .76rem; }
 .ranking-table th { position: sticky; top: 0; z-index: 1; padding: .65rem .8rem; background: var(--table-header-bg); color: var(--text-muted); font-size: .62rem; font-weight: 600; letter-spacing: .04em; text-align: left; white-space: nowrap; }
 .ranking-table td { padding: .62rem .8rem; border-top: 1px solid var(--tabs-border); vertical-align: middle; }
@@ -100,4 +140,5 @@ function crmLabel(row) {
 .doctor-name { color: var(--text-color-85); font-weight: 600; }
 .doctor-crm { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
 .rate-cell { color: var(--primary-color); font-weight: 600; font-variant-numeric: tabular-nums; }
+:deep(.crm-ranking-paginator) { border: 0; border-top: 1px solid var(--tabs-border); border-radius: 0 0 12px 12px; background: var(--card-bg); color: var(--text-color-85); }
 </style>

@@ -436,11 +436,18 @@ def _build_response(
     inicio: date,
     fim: date,
     monthly: pl.DataFrame | pl.LazyFrame,
+    page: int = 1,
+    page_size: int = 25,
     uf: Optional[str] = None,
     regiao_id: Optional[int] = None,
     id_ibge7: Optional[int] = None,
     manager_map: Optional[list[CrmPrescricoesMapaItemSchema]] = None,
 ) -> CrmPrescricoesAnaliseResponse:
+    if page < 1:
+        raise HTTPException(status_code=422, detail="page deve ser maior ou igual a 1.")
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(status_code=422, detail="page_size deve estar entre 1 e 100.")
+
     monthly_lf = monthly if isinstance(monthly, pl.LazyFrame) else monthly.lazy()
     _require_columns(
         monthly_lf.limit(0).collect(),
@@ -538,13 +545,16 @@ def _build_response(
             periodo_inicio=inicio,
             periodo_fim=fim,
             qtd_medicos=0,
+            ranking_page=page,
+            ranking_page_size=page_size,
             mapa=manager_map or [],
             ranking=[],
         )
+    ranking_offset = (page - 1) * page_size
     ranking_scope = (
-        ranking_all.head(100)
+        ranking_all.slice(ranking_offset, page_size)
         .with_row_index("rank")
-        .with_columns((pl.col("rank") + 1).cast(pl.Int64))
+        .with_columns((pl.col("rank") + ranking_offset + 1).cast(pl.Int64))
     )
     mapa = manager_map or []
 
@@ -584,6 +594,8 @@ def _build_response(
         periodo_inicio=inicio,
         periodo_fim=fim,
         qtd_medicos=ranking_all.height,
+        ranking_page=page,
+        ranking_page_size=page_size,
         mapa=mapa,
         ranking=ranking,
     )
@@ -592,6 +604,9 @@ def _build_response(
 def get_crm_prescricoes_analise(
     *,
     map_level: str = "uf",
+    page: int = 1,
+    page_size: int = 25,
+    include_map: bool = True,
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
     perc_min: Optional[float] = None,
@@ -619,6 +634,11 @@ def get_crm_prescricoes_analise(
     dispersao_uf_sem_fronteira: bool = False,
     dispersao_uf_sem_fronteira_limite: Optional[float] = None,
 ) -> CrmPrescricoesAnaliseResponse:
+    if page < 1:
+        raise HTTPException(status_code=422, detail="page deve ser maior ou igual a 1.")
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(status_code=422, detail="page_size deve estar entre 1 e 100.")
+
     if map_level not in {"uf", "municipio", "regiao"}:
         raise HTTPException(status_code=422, detail="map_level deve ser uf, municipio ou regiao.")
     if map_level == "municipio" and (not uf or uf == "Todos"):
@@ -658,13 +678,17 @@ def get_crm_prescricoes_analise(
         )
 
     try:
-        manager_map = _build_manager_map(
-            map_level=map_level,
-            inicio=inicio,
-            fim=fim,
-            uf=uf,
-            regiao_id=regiao_id,
-            id_ibge7=id_ibge7,
+        manager_map = (
+            _build_manager_map(
+                map_level=map_level,
+                inicio=inicio,
+                fim=fim,
+                uf=uf,
+                regiao_id=regiao_id,
+                id_ibge7=id_ibge7,
+            )
+            if include_map
+            else None
         )
         monthly = scan_crm_prescricoes_medico_municipio_mes().filter(
             pl.col("competencia").is_between(_competencia(inicio), _competencia(fim))
@@ -689,6 +713,8 @@ def get_crm_prescricoes_analise(
         inicio=inicio,
         fim=fim,
         monthly=monthly,
+        page=page,
+        page_size=page_size,
         uf=uf,
         regiao_id=regiao_id,
         id_ibge7=id_ibge7,

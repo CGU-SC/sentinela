@@ -22,12 +22,23 @@ function levelForFilters() {
 
 const mapLevel = ref(levelForFilters());
 const navigationError = ref(null);
-const { data, isLoading, error } = useCrmPrescricoesAnalysis(mapLevel);
+const {
+  data,
+  isLoading,
+  isRankingLoading,
+  error,
+  rankingError,
+  rankingPage,
+  rankingPageSize,
+  fetchRankingPage,
+} = useCrmPrescricoesAnalysis(mapLevel);
 
 const selectedUf = computed(() => filterStore.selectedUF !== 'Todos' ? filterStore.selectedUF : null);
 const selectedRegiaoId = computed(() => filterStore.selectedRegiaoSaude !== 'Todos' ? filterStore.selectedRegiaoSaude : null);
 const mapData = computed(() => data.value?.mapa ?? []);
 const ranking = computed(() => data.value?.ranking ?? []);
+const rankingTotal = computed(() => data.value?.qtd_medicos ?? 0);
+const rankingFirst = computed(() => (rankingPage.value - 1) * rankingPageSize.value);
 
 watch(
   [() => filterStore.selectedUF, () => filterStore.selectedRegiaoSaude, () => filterStore.selectedMunicipio],
@@ -69,6 +80,13 @@ function goBack() {
   filterStore.selectedMunicipio = 'Todos';
   mapLevel.value = 'uf';
 }
+
+function onRankingPage(event) {
+  const rows = event.rows ?? rankingPageSize.value;
+  const first = event.first ?? 0;
+  const page = Math.floor(first / rows) + 1;
+  fetchRankingPage(page, rows);
+}
 </script>
 
 <template>
@@ -102,6 +120,12 @@ function goBack() {
             :escopo="data?.escopo ?? 'Brasil'"
             :is-loading="isLoading"
             :error="error"
+            :page-error="rankingError"
+            :is-page-loading="isRankingLoading"
+            :total-records="rankingTotal"
+            :first="rankingFirst"
+            :page-size="rankingPageSize"
+            @page="onRankingPage"
           />
         </main>
 

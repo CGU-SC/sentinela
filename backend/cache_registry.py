@@ -78,7 +78,7 @@ def _crm_prescricoes_medico_municipio_mes_schema() -> dict:
         "id_medico": pl.Utf8,
         "competencia": pl.Int32,
         "id_ibge7": pl.Int64,
-        "nu_prescricoes_mes": pl.Int64,
+        "nu_prescricoes_mes": pl.Int16,
     }
 
 

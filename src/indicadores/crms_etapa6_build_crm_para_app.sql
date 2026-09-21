@@ -108,6 +108,23 @@ BEGIN
     );
     RETURN;
 END;
+IF EXISTS (
+    SELECT 1
+    FROM sys.columns C
+    INNER JOIN sys.types T
+        ON T.user_type_id = C.user_type_id
+    WHERE C.object_id = OBJECT_ID('fp.build_crm_prescricoes_medico_municipio_mes', 'U')
+      AND C.name = 'nu_prescricoes_mes'
+      AND T.name <> 'smallint'
+)
+BEGIN
+    RAISERROR(
+        'A coluna nu_prescricoes_mes do modulo medico/municipio/mes deve ser SMALLINT.',
+        16,
+        1
+    );
+    RETURN;
+END;
 IF NOT EXISTS (SELECT 1 FROM fp.build_crm_prescricoes_medico_municipio_mes)
 BEGIN
     RAISERROR('Tabela fp.build_crm_prescricoes_medico_municipio_mes esta vazia.', 16, 1);
@@ -138,6 +155,7 @@ IF EXISTS (
        OR id_ibge7 <= 0
        OR nu_prescricoes_mes IS NULL
        OR nu_prescricoes_mes < 0
+       OR nu_prescricoes_mes > 32767
 )
 BEGIN
     RAISERROR(

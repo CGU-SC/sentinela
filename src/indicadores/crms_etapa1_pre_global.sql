@@ -36,7 +36,7 @@ DECLARE @LimitePrescricoesDia DECIMAL(19, 6) = 22.000000;
 DECLARE @t0         DATETIME = GETDATE();
 DECLARE @t1         DATETIME;
 DECLARE @pipeline_nome   VARCHAR(80) = 'crms_detalhado_pre_global';
-DECLARE @pipeline_versao VARCHAR(40) = 'v5_2026_09_19';
+DECLARE @pipeline_versao VARCHAR(40) = 'v6_2026_09_21';
 DECLARE @nu_registros BIGINT;
 
 IF OBJECT_ID('db_FarmaciaPopular.dbo.Relatorio_movimentacaoFP') IS NULL
@@ -408,6 +408,16 @@ GROUP BY
     P.competencia,
     F.codibge;
 
+IF EXISTS (
+    SELECT 1
+    FROM temp_CGUSC.fp.build_crm_prescricoes_medico_municipio_mes
+    WHERE nu_prescricoes_mes > 32767
+)
+    THROW 51010, 'A tabela medico/municipio/mes ultrapassa o limite do SMALLINT (32767).', 1;
+
+ALTER TABLE temp_CGUSC.fp.build_crm_prescricoes_medico_municipio_mes
+    ALTER COLUMN nu_prescricoes_mes SMALLINT NOT NULL;
+
 CREATE CLUSTERED INDEX IDX_CrmPrescMedicoMunicipioMes_Key
     ON temp_CGUSC.fp.build_crm_prescricoes_medico_municipio_mes(competencia, id_medico, id_ibge7);
 
@@ -504,7 +514,7 @@ SELECT
     B.uf,
     B.id_medico,
     B.competencia,
-    SUM(B.nu_prescricoes_mes)
+    SUM(CAST(B.nu_prescricoes_mes AS BIGINT))
 FROM #crm_prescricoes_medico_municipio_mes B
 GROUP BY
     B.uf,
@@ -518,7 +528,7 @@ SELECT
     CAST(B.id_regiao_saude AS VARCHAR(20)),
     B.id_medico,
     B.competencia,
-    SUM(B.nu_prescricoes_mes)
+    SUM(CAST(B.nu_prescricoes_mes AS BIGINT))
 FROM #crm_prescricoes_medico_municipio_mes B
 GROUP BY
     B.id_regiao_saude,

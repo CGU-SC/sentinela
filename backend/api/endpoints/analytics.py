@@ -39,6 +39,9 @@ router = APIRouter()
 
 @router.get("/crm-prescricoes-analise", response_model=CrmPrescricoesAnaliseResponse)
 def get_crm_prescricoes_analise(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    include_map: bool = Query(True),
     map_level: str = Query("uf", description="Nível do mapa: uf, municipio ou regiao."),
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
@@ -69,6 +72,9 @@ def get_crm_prescricoes_analise(
 ):
     """Retorna o percentual mensal de CRMs anômalos por UF/município e o ranking de médicos."""
     return AnalyticsService.get_crm_prescricoes_analise(
+        page=page,
+        page_size=page_size,
+        include_map=include_map,
         map_level=map_level,
         data_inicio=data_inicio,
         data_fim=data_fim,

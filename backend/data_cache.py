@@ -492,6 +492,7 @@ _df_matriz_risco: pl.DataFrame | None = None
 _df_bench_crm_uf: pl.DataFrame | None = None
 _df_bench_crm_regiao: pl.DataFrame | None = None
 _df_bench_crm_br: pl.DataFrame | None = None
+_df_crm_prescricoes_gerencial: pl.DataFrame | None = None
 _df_dados_farmacia: pl.DataFrame | None = None
 _df_dados_farmacia_cnaes_secundarios: pl.DataFrame | None = None
 _df_perfil_estabelecimento: pl.DataFrame | None = None
@@ -4057,7 +4058,7 @@ def _sync_crm_prescricoes_medico_municipio_mes(engine, progress_callback=None):
                         pl.col("id_medico").cast(pl.Utf8),
                         pl.col("competencia").cast(pl.Int32),
                         pl.col("id_ibge7").cast(pl.Int64),
-                        pl.col("nu_prescricoes_mes").cast(pl.Int64),
+                        pl.col("nu_prescricoes_mes").cast(pl.Int16),
                     ])
                 )
             if not chunks:
@@ -4108,6 +4109,7 @@ def _sync_crm_prescricoes_medico_municipio_mes(engine, progress_callback=None):
 
 def _sync_crm_prescricoes_gerencial(engine, progress_callback=None):
     """Sincroniza os indicadores pre-calculados do mapa gerencial de CRMs."""
+    global _df_crm_prescricoes_gerencial
     print("Sincronizando prescricoes gerenciais por nivel e mes...")
     schema = _GLOBAL_PARQUET_SCHEMAS["crm_prescricoes_gerencial"]
     final_path = _CRM_PRESCRICOES_GERENCIAL_PATH
@@ -4252,7 +4254,8 @@ def _sync_crm_prescricoes_gerencial(engine, progress_callback=None):
     manifest["final_rows"] = sum(int(info.get("rows", 0)) for info in parts.values())
     manifest["final_file"] = os.path.basename(final_path)
     write_manifest(manifest)
-    _mark_on_demand_global_cache_ready("crm_prescricoes_gerencial", final_path)
+    _validate_parquet_schema("crm_prescricoes_gerencial", final_path)
+    _df_crm_prescricoes_gerencial = pl.read_parquet(final_path)
     if progress_callback:
         progress_callback(100)
 
@@ -4368,9 +4371,10 @@ def _sync_crm_parquets(engine, progress_callback=None, cnpjs: list[str] | None =
 # --- GERENCIADOR DE CACHE ---
 
 def load_cache(engine, force_refresh: bool = False) -> None:
-    global _df_movimentacao, _df_localidades, _df_rede, _df_matriz_risco, _df_bench_crm_uf, _df_bench_crm_regiao, _df_bench_crm_br, _df_dados_farmacia, _df_dados_farmacia_cnaes_secundarios, _df_perfil_estabelecimento, _df_dados_socios, _df_teia_fonte_nivel2, _df_teia_fonte_nivel3, _df_teia_fonte_nivel4, _df_medicamentos, _df_falecidos, _df_analise_gtin_inconsistencia_clinica, _df_analise_gtin_inconsistencia_clinica_municipio, _df_analise_gtin_inconsistencia_clinica_regiao, _df_dados_ibge_demografia, _df_volume_atipico_semestral, _df_esocial_cnpj_ano, _df_esocial_cnpj_trabalhador_ano, _df_esocial_cnpj_movimentacao_ano, _df_esocial_cnpj_ultima_movimentacao, _df_sentinela_metadados_base, _df_dados_par, _df_par_teia_alvos, _cache_progress, _cache_status, _cache_error_message, _cache_generation
+    global _df_movimentacao, _df_localidades, _df_rede, _df_matriz_risco, _df_bench_crm_uf, _df_bench_crm_regiao, _df_bench_crm_br, _df_crm_prescricoes_gerencial, _df_dados_farmacia, _df_dados_farmacia_cnaes_secundarios, _df_perfil_estabelecimento, _df_dados_socios, _df_teia_fonte_nivel2, _df_teia_fonte_nivel3, _df_teia_fonte_nivel4, _df_medicamentos, _df_falecidos, _df_analise_gtin_inconsistencia_clinica, _df_analise_gtin_inconsistencia_clinica_municipio, _df_analise_gtin_inconsistencia_clinica_regiao, _df_dados_ibge_demografia, _df_volume_atipico_semestral, _df_esocial_cnpj_ano, _df_esocial_cnpj_trabalhador_ano, _df_esocial_cnpj_movimentacao_ano, _df_esocial_cnpj_ultima_movimentacao, _df_sentinela_metadados_base, _df_dados_par, _df_par_teia_alvos, _cache_progress, _cache_status, _cache_error_message, _cache_generation
     import time
     _ON_DEMAND_GLOBAL_CACHE_READY.clear()
+    _df_crm_prescricoes_gerencial = None
 
     # 1. Boot Rápido (carrega cada Parquet individualmente)
     if not force_refresh:
@@ -4691,11 +4695,13 @@ def load_cache(engine, force_refresh: bool = False) -> None:
                 "qtd_empresas_par_qualquer",
             },
         }
-        def _try_load(name, path):
+        def _try_load(name, path, *, validate_schema: bool = False):
             if not os.path.exists(path):
                 missing.append(name)
                 return None
             try:
+                if validate_schema:
+                    _validate_parquet_schema(name, path)
                 df = pl.read_parquet(path)
                 required = required_columns.get(name)
                 if required and not required.issubset(set(df.columns)):
@@ -4749,7 +4755,11 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         if "crm_prescricoes_medico_municipio_mes" not in _DISABLED_BOOT_MODULES:
             _try_mark_on_demand("crm_prescricoes_medico_municipio_mes", _CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH)
         if "crm_prescricoes_gerencial" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand("crm_prescricoes_gerencial", _CRM_PRESCRICOES_GERENCIAL_PATH)
+            _df_crm_prescricoes_gerencial = _try_load(
+                "crm_prescricoes_gerencial",
+                _CRM_PRESCRICOES_GERENCIAL_PATH,
+                validate_schema=True,
+            )
         _try_mark_on_demand("dados_medico", _DADOS_MEDICO_PARQUET_PATH)
         _try_mark_on_demand("crm_prescritores_global", _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH)
         _try_mark_on_demand("memoria_calculo_global", _MEMORIA_CALCULO_GLOBAL_PARQUET_PATH)
@@ -4962,10 +4972,12 @@ def scan_crm_prescricoes_medico_municipio_mes() -> pl.LazyFrame:
 
 
 def scan_crm_prescricoes_gerencial() -> pl.LazyFrame:
-    return _scan_on_demand_global_parquet(
-        "crm_prescricoes_gerencial",
-        _CRM_PRESCRICOES_GERENCIAL_PATH,
-    )
+    if _df_crm_prescricoes_gerencial is None:
+        raise RuntimeError(
+            "Cache gerencial de prescricoes nao carregado em memoria. "
+            "Verifique a sincronizacao."
+        )
+    return _df_crm_prescricoes_gerencial.lazy()
 
 
 def scan_dados_medico() -> pl.LazyFrame:
@@ -5136,7 +5148,7 @@ def get_cache_status() -> dict:
         "crm_prescricoes_brasil_semestre": {"label": "CRM Brasil Semestral", "path": _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescricoes_brasil_semestre", _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH)},
         "crm_prescricoes_estabelecimento_mes": {"label": "CRM Prescricoes Estabelecimento/Mes", "path": _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescricoes_estabelecimento_mes", _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH)},
         "crm_prescricoes_medico_municipio_mes": {"label": "CRM Prescricoes Medico/Municipio/Mes", "path": _CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescricoes_medico_municipio_mes", _CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH)},
-        "crm_prescricoes_gerencial": {"label": "CRM Prescricoes Gerencial/Mensal", "path": _CRM_PRESCRICOES_GERENCIAL_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescricoes_gerencial", _CRM_PRESCRICOES_GERENCIAL_PATH)},
+        "crm_prescricoes_gerencial": {"label": "CRM Prescricoes Gerencial/Mensal", "path": _CRM_PRESCRICOES_GERENCIAL_PATH, "loaded": _df_crm_prescricoes_gerencial is not None},
         "dados_medico": {"label": "Dados Medico", "path": _DADOS_MEDICO_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("dados_medico", _DADOS_MEDICO_PARQUET_PATH)},
         "crm_prescritores_global": {"label": "CRM Prescritores Global", "path": _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescritores_global", _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH)},
         "memoria_calculo_global": {"label": "Memoria Calculo Global", "path": _MEMORIA_CALCULO_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("memoria_calculo_global", _MEMORIA_CALCULO_GLOBAL_PARQUET_PATH)},
