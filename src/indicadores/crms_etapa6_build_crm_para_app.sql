@@ -91,6 +91,62 @@ BEGIN
     RAISERROR('Tabela fp.build_crm_prescricoes_estabelecimento_mes nao encontrada.', 16, 1);
     RETURN;
 END;
+IF OBJECT_ID('fp.build_crm_prescricoes_medico_municipio_mes', 'U') IS NULL
+BEGIN
+    RAISERROR('Tabela fp.build_crm_prescricoes_medico_municipio_mes nao encontrada.', 16, 1);
+    RETURN;
+END;
+IF COL_LENGTH('fp.build_crm_prescricoes_medico_municipio_mes', 'id_medico') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_medico_municipio_mes', 'competencia') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_medico_municipio_mes', 'id_ibge7') IS NULL
+   OR COL_LENGTH('fp.build_crm_prescricoes_medico_municipio_mes', 'nu_prescricoes_mes') IS NULL
+BEGIN
+    RAISERROR(
+        'Tabela fp.build_crm_prescricoes_medico_municipio_mes sem o schema obrigatorio.',
+        16,
+        1
+    );
+    RETURN;
+END;
+IF NOT EXISTS (SELECT 1 FROM fp.build_crm_prescricoes_medico_municipio_mes)
+BEGIN
+    RAISERROR('Tabela fp.build_crm_prescricoes_medico_municipio_mes esta vazia.', 16, 1);
+    RETURN;
+END;
+IF EXISTS (
+    SELECT id_medico, competencia, id_ibge7
+    FROM fp.build_crm_prescricoes_medico_municipio_mes
+    GROUP BY id_medico, competencia, id_ibge7
+    HAVING COUNT_BIG(*) > 1
+)
+BEGIN
+    RAISERROR(
+        'Tabela fp.build_crm_prescricoes_medico_municipio_mes possui chaves duplicadas.',
+        16,
+        1
+    );
+    RETURN;
+END;
+IF EXISTS (
+    SELECT 1
+    FROM fp.build_crm_prescricoes_medico_municipio_mes
+    WHERE NULLIF(LTRIM(RTRIM(CAST(id_medico AS VARCHAR(100)))), '') IS NULL
+       OR competencia < 190001
+       OR competencia > 999912
+       OR competencia % 100 NOT BETWEEN 1 AND 12
+       OR id_ibge7 IS NULL
+       OR id_ibge7 <= 0
+       OR nu_prescricoes_mes IS NULL
+       OR nu_prescricoes_mes < 0
+)
+BEGIN
+    RAISERROR(
+        'Tabela fp.build_crm_prescricoes_medico_municipio_mes possui valores invalidos.',
+        16,
+        1
+    );
+    RETURN;
+END;
 IF OBJECT_ID('fp.build_crm_prescricoes_gerencial', 'U') IS NULL
 BEGIN
     RAISERROR('Tabela fp.build_crm_prescricoes_gerencial nao encontrada.', 16, 1);
@@ -275,6 +331,9 @@ BEGIN TRY
 
     IF OBJECT_ID('fp.app_crm_prescricoes_estabelecimento_mes', 'U') IS NOT NULL DROP TABLE fp.app_crm_prescricoes_estabelecimento_mes;
     EXEC sp_rename 'fp.build_crm_prescricoes_estabelecimento_mes', 'app_crm_prescricoes_estabelecimento_mes';
+
+    IF OBJECT_ID('fp.app_crm_prescricoes_medico_municipio_mes', 'U') IS NOT NULL DROP TABLE fp.app_crm_prescricoes_medico_municipio_mes;
+    EXEC sp_rename 'fp.build_crm_prescricoes_medico_municipio_mes', 'app_crm_prescricoes_medico_municipio_mes';
 
     IF OBJECT_ID('fp.app_crm_prescricoes_gerencial', 'U') IS NOT NULL DROP TABLE fp.app_crm_prescricoes_gerencial;
     EXEC sp_rename 'fp.build_crm_prescricoes_gerencial', 'app_crm_prescricoes_gerencial';

@@ -53,8 +53,9 @@ function crmLabel(row) {
             <th>MÉDICO / REGISTRO</th>
             <th>TAXA / DIA</th>
             <th>PRESCRIÇÕES</th>
-            <th>DIAS CONSIDERADOS</th>
-            <th>Nº ESTAB.</th>
+            <th>MESES ATIVOS</th>
+            <th>MESES ANÔMALOS</th>
+            <th>% MESES ANÔMALOS</th>
           </tr>
         </thead>
         <tbody>
@@ -66,8 +67,9 @@ function crmLabel(row) {
             </td>
             <td class="rate-cell">{{ Number(row.taxa_prescricoes_dia).toFixed(2).replace('.', ',') }}</td>
             <td>{{ formatNumberFull(row.nu_prescricoes) }}</td>
-            <td>{{ formatNumberFull(row.dias_calendario) }}</td>
-            <td>{{ formatNumberFull(row.qtd_estabelecimentos) }}</td>
+            <td>{{ formatNumberFull(row.qtd_meses_ativos) }}</td>
+            <td>{{ formatNumberFull(row.qtd_meses_anomalos) }}</td>
+            <td>{{ row.percentual_meses_anomalos == null ? '—' : `${Number(row.percentual_meses_anomalos).toFixed(1).replace('.', ',')}%` }}</td>
           </tr>
         </tbody>
       </table>

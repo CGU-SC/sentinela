@@ -69,7 +69,16 @@ def _crm_prescricoes_estabelecimento_mes_schema() -> dict:
         "id_cnpj": pl.Int32,
         "id_medico": pl.Utf8,
         "competencia": pl.Int32,
-        "nu_prescricoes_mes": pl.Int16,
+        "nu_prescricoes_mes": pl.Int32,
+    }
+
+
+def _crm_prescricoes_medico_municipio_mes_schema() -> dict:
+    return {
+        "id_medico": pl.Utf8,
+        "competencia": pl.Int32,
+        "id_ibge7": pl.Int64,
+        "nu_prescricoes_mes": pl.Int64,
     }
 
 
@@ -406,6 +415,7 @@ GLOBAL_CACHE_DEFINITIONS = (
     CacheDefinition("bench_crm_br", cache_files.BENCH_CRM_BR_PARQUET, "global"),
     CacheDefinition("crm_prescricoes_brasil_semestre", cache_files.CRM_PRESCRICOES_BRASIL_SEMESTRE_PARQUET, "global", _crm_prescricoes_brasil_semestre_schema()),
     CacheDefinition("crm_prescricoes_estabelecimento_mes", cache_files.CRM_PRESCRICOES_ESTABELECIMENTO_MES_PARQUET, "global", _crm_prescricoes_estabelecimento_mes_schema()),
+    CacheDefinition("crm_prescricoes_medico_municipio_mes", cache_files.CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PARQUET, "global", _crm_prescricoes_medico_municipio_mes_schema()),
     CacheDefinition("crm_prescricoes_gerencial", cache_files.CRM_PRESCRICOES_GERENCIAL_PARQUET, "global", _crm_prescricoes_gerencial_schema()),
     CacheDefinition("dados_medico", cache_files.DADOS_MEDICO_PARQUET, "global", _dados_medico_schema()),
     CacheDefinition("crm_prescritores_global", cache_files.CRM_PRESCRITORES_GLOBAL_PARQUET, "global", _crm_prescritores_schema(include_id_cnpj=True, include_no_medico=False)),

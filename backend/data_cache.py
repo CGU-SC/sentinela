@@ -9,6 +9,7 @@ import cache_registry
 from cache_files import (
     CRM_PRESCRICOES_GERENCIAL_CACHE_VERSION,
     CRM_PRESCRICOES_ESTABELECIMENTO_MES_CACHE_VERSION,
+    CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_CACHE_VERSION,
     CRM_PRESCRITORES_CACHE_VERSION,
     CRM_RAIOX_TX_CACHE_VERSION,
     MEMORIA_CALCULO_CACHE_VERSION,
@@ -357,6 +358,12 @@ _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
         "competencia",
         "nu_prescricoes_mes",
     },
+    "crm_prescricoes_medico_municipio_mes": {
+        "id_medico",
+        "competencia",
+        "id_ibge7",
+        "nu_prescricoes_mes",
+    },
     "crm_prescricoes_gerencial": {
         "nivel",
         "id_geografico",
@@ -431,6 +438,7 @@ _BENCH_CRM_REGIAO_PATH = _global_cache_path("bench_crm_regiao")
 _BENCH_CRM_BR_PATH = _global_cache_path("bench_crm_br")
 _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH = _global_cache_path("crm_prescricoes_brasil_semestre")
 _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH = _global_cache_path("crm_prescricoes_estabelecimento_mes")
+_CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH = _global_cache_path("crm_prescricoes_medico_municipio_mes")
 _CRM_PRESCRICOES_GERENCIAL_PATH = _global_cache_path("crm_prescricoes_gerencial")
 _DADOS_MEDICO_PARQUET_PATH = _global_cache_path("dados_medico")
 _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH = _global_cache_path("crm_prescritores_global")
@@ -3897,7 +3905,7 @@ def _sync_crm_prescricoes_estabelecimento_mes(engine, progress_callback=None):
                         pl.col("id_cnpj").cast(pl.Int32),
                         pl.col("id_medico").cast(pl.Utf8),
                         pl.col("competencia").cast(pl.Int32),
-                        pl.col("nu_prescricoes_mes").cast(pl.Int16),
+                        pl.col("nu_prescricoes_mes").cast(pl.Int32),
                     ])
                 )
             if not chunks:
@@ -3939,6 +3947,159 @@ def _sync_crm_prescricoes_estabelecimento_mes(engine, progress_callback=None):
     write_manifest(manifest)
     _mark_on_demand_global_cache_ready(
         "crm_prescricoes_estabelecimento_mes",
+        final_path,
+    )
+    if progress_callback:
+        progress_callback(100)
+
+
+def _sync_crm_prescricoes_medico_municipio_mes(engine, progress_callback=None):
+    """Sincroniza prescricoes agregadas por medico, municipio e mes."""
+    print("Sincronizando prescricoes por medico/municipio/mes...")
+    schema = _GLOBAL_PARQUET_SCHEMAS["crm_prescricoes_medico_municipio_mes"]
+    final_path = _CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH
+    parts_dir = Path(_CACHE_DIR) / ".parts" / "crm_prescricoes_medico_municipio_mes"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = parts_dir / "manifest.json"
+
+    def competencia_key(value: int) -> str:
+        return str(value)
+
+    def part_path(key: str) -> Path:
+        return parts_dir / f"{key}.smod.part"
+
+    def read_manifest() -> dict[str, Any]:
+        if not manifest_path.exists():
+            return {}
+        with manifest_path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def write_manifest(data: dict[str, Any]) -> None:
+        tmp_path = manifest_path.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        os.replace(tmp_path, manifest_path)
+
+    with engine.connect() as conn:
+        total_rows = _assert_fp_source_table(
+            engine,
+            "app_crm_prescricoes_medico_municipio_mes",
+            set(schema.keys()),
+        )
+        competencia_rows = conn.execute(text("""
+            SELECT DISTINCT competencia
+            FROM [temp_CGUSC].[fp].[app_crm_prescricoes_medico_municipio_mes]
+            WHERE competencia IS NOT NULL
+            ORDER BY competencia
+        """)).fetchall()
+        competencias = [int(row[0]) for row in competencia_rows]
+        if not competencias:
+            raise RuntimeError(
+                "A fonte temp_CGUSC.fp.app_crm_prescricoes_medico_municipio_mes "
+                "nao possui competencias para gerar o cache."
+            )
+
+        manifest = read_manifest()
+        manifest_valid = (
+            manifest.get("cache_key") == "crm_prescricoes_medico_municipio_mes"
+            and manifest.get("version") == CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_CACHE_VERSION
+            and manifest.get("start_competencia") == competencia_key(competencias[0])
+            and manifest.get("end_competencia") == competencia_key(competencias[-1])
+            and manifest.get("status") != "done"
+        )
+        if not manifest_valid:
+            manifest = {
+                "cache_key": "crm_prescricoes_medico_municipio_mes",
+                "version": CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_CACHE_VERSION,
+                "start_competencia": competencia_key(competencias[0]),
+                "end_competencia": competencia_key(competencias[-1]),
+                "parts": {},
+            }
+            write_manifest(manifest)
+
+        parts = manifest["parts"]
+        if not isinstance(parts, dict):
+            raise RuntimeError(
+                "manifesto de prescricoes por medico/municipio com campo parts invalido"
+            )
+
+        query = text("""
+            SELECT
+                id_medico,
+                competencia,
+                id_ibge7,
+                nu_prescricoes_mes
+            FROM [temp_CGUSC].[fp].[app_crm_prescricoes_medico_municipio_mes]
+            WHERE competencia = :competencia
+            ORDER BY id_medico, id_ibge7
+        """)
+
+        total_competencias = len(competencias)
+        for index, competencia in enumerate(competencias, 1):
+            key = competencia_key(competencia)
+            output_path = part_path(key)
+            info = parts.get(key, {})
+            if info.get("status") == "done" and output_path.exists():
+                if progress_callback:
+                    progress_callback(int((index / total_competencias) * 90))
+                continue
+
+            print(f"   -> Prescricoes por medico/municipio parte {index}/{total_competencias}: {key}")
+            chunks = []
+            for chunk in pd.read_sql(
+                query,
+                conn,
+                params={"competencia": competencia},
+                chunksize=100_000,
+            ):
+                chunks.append(
+                    pl.from_pandas(chunk).with_columns([
+                        pl.col("id_medico").cast(pl.Utf8),
+                        pl.col("competencia").cast(pl.Int32),
+                        pl.col("id_ibge7").cast(pl.Int64),
+                        pl.col("nu_prescricoes_mes").cast(pl.Int64),
+                    ])
+                )
+            if not chunks:
+                raise RuntimeError(
+                    "Fonte app_crm_prescricoes_medico_municipio_mes sem registros "
+                    f"para competencia {competencia}."
+                )
+
+            df_part = pl.concat(chunks).select(list(schema.keys()))
+            tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+            df_part.write_parquet(tmp_path, compression="zstd")
+            os.replace(tmp_path, output_path)
+            parts[key] = {
+                "status": "done",
+                "rows": df_part.height,
+                "file": output_path.name,
+            }
+            write_manifest(manifest)
+            if progress_callback:
+                progress_callback(int((index / total_competencias) * 90))
+
+    part_paths = [part_path(competencia_key(competencia)) for competencia in competencias]
+    missing_parts = [path.name for path in part_paths if not path.exists()]
+    if missing_parts:
+        raise RuntimeError(
+            "Partes pendentes para consolidar crm_prescricoes_medico_municipio_mes: "
+            + ", ".join(missing_parts)
+        )
+
+    print("   -> Consolidando prescricoes por medico/municipio...")
+    final_scan = pl.scan_parquet([str(path) for path in part_paths]).select(list(schema.keys()))
+    tmp_final = final_path + ".tmp"
+    final_scan.sink_parquet(tmp_final, compression="zstd")
+    os.replace(tmp_final, final_path)
+
+    manifest["status"] = "done"
+    manifest["source_rows"] = total_rows
+    manifest["final_rows"] = sum(int(info.get("rows", 0)) for info in parts.values())
+    manifest["final_file"] = os.path.basename(final_path)
+    write_manifest(manifest)
+    _mark_on_demand_global_cache_ready(
+        "crm_prescricoes_medico_municipio_mes",
         final_path,
     )
     if progress_callback:
@@ -4585,6 +4746,8 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         _try_mark_on_demand("crm_prescricoes_brasil_semestre", _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH)
         if "crm_prescricoes_estabelecimento_mes" not in _DISABLED_BOOT_MODULES:
             _try_mark_on_demand("crm_prescricoes_estabelecimento_mes", _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH)
+        if "crm_prescricoes_medico_municipio_mes" not in _DISABLED_BOOT_MODULES:
+            _try_mark_on_demand("crm_prescricoes_medico_municipio_mes", _CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH)
         if "crm_prescricoes_gerencial" not in _DISABLED_BOOT_MODULES:
             _try_mark_on_demand("crm_prescricoes_gerencial", _CRM_PRESCRICOES_GERENCIAL_PATH)
         _try_mark_on_demand("dados_medico", _DADOS_MEDICO_PARQUET_PATH)
@@ -4649,6 +4812,7 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         {"name": "Volume Atipico Semestral", "weight": 5, "func": lambda cb: _sync_volume_atipico_semestral(engine, cb)},
         {"name": "CRM Brasil Semestral",    "weight": 1,  "func": lambda cb: _sync_crm_prescricoes_brasil_semestre(engine, cb)},
         {"name": "CRM Prescricoes Estabelecimento/Mes", "weight": 5, "func": lambda cb: _sync_crm_prescricoes_estabelecimento_mes(engine, cb)},
+        {"name": "CRM Prescricoes Medico/Municipio/Mes", "weight": 3, "func": lambda cb: _sync_crm_prescricoes_medico_municipio_mes(engine, cb)},
         {"name": "CRM Prescricoes Gerencial", "weight": 2, "func": lambda cb: _sync_crm_prescricoes_gerencial(engine, cb)},
         {"name": "Dados Medico",            "weight": 1,  "func": lambda cb: _sync_dados_medico(engine, cb)},
         {"name": "Geografico Origem UF",  "weight": 2,  "func": lambda cb: _sync_geografico_origem_uf(engine, cb)},
@@ -4787,6 +4951,13 @@ def scan_crm_prescricoes_estabelecimento_mes() -> pl.LazyFrame:
     return _scan_on_demand_global_parquet(
         "crm_prescricoes_estabelecimento_mes",
         _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH,
+    )
+
+
+def scan_crm_prescricoes_medico_municipio_mes() -> pl.LazyFrame:
+    return _scan_on_demand_global_parquet(
+        "crm_prescricoes_medico_municipio_mes",
+        _CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH,
     )
 
 
@@ -4964,6 +5135,7 @@ def get_cache_status() -> dict:
         "bench_crm_br":    {"label": "Benchmark CRM (Brasil)", "path": _BENCH_CRM_BR_PATH,        "loaded": _df_bench_crm_br is not None},
         "crm_prescricoes_brasil_semestre": {"label": "CRM Brasil Semestral", "path": _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescricoes_brasil_semestre", _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH)},
         "crm_prescricoes_estabelecimento_mes": {"label": "CRM Prescricoes Estabelecimento/Mes", "path": _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescricoes_estabelecimento_mes", _CRM_PRESCRICOES_ESTABELECIMENTO_MES_PATH)},
+        "crm_prescricoes_medico_municipio_mes": {"label": "CRM Prescricoes Medico/Municipio/Mes", "path": _CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescricoes_medico_municipio_mes", _CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PATH)},
         "crm_prescricoes_gerencial": {"label": "CRM Prescricoes Gerencial/Mensal", "path": _CRM_PRESCRICOES_GERENCIAL_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescricoes_gerencial", _CRM_PRESCRICOES_GERENCIAL_PATH)},
         "dados_medico": {"label": "Dados Medico", "path": _DADOS_MEDICO_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("dados_medico", _DADOS_MEDICO_PARQUET_PATH)},
         "crm_prescritores_global": {"label": "CRM Prescritores Global", "path": _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescritores_global", _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH)},

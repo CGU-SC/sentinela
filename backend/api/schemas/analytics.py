@@ -540,7 +540,9 @@ class CrmPrescricoesRankingItemSchema(BaseModel):
     taxa_prescricoes_dia: float
     nu_prescricoes: int
     dias_calendario: int
-    qtd_estabelecimentos: int
+    qtd_meses_ativos: int
+    qtd_meses_anomalos: int
+    percentual_meses_anomalos: Optional[float] = None
 
 
 class CrmPrescricoesAnaliseResponse(BaseModel):

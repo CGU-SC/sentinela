@@ -375,13 +375,14 @@ BEGIN
 END;
 
 DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes;
+DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_medico_municipio_mes;
 DROP TABLE IF EXISTS temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos;
 
 SELECT
     CAST(F.id AS INT) AS id_cnpj,
     B.id_medico,
     B.competencia,
-    CAST(B.nu_prescricoes_medico AS SMALLINT) AS nu_prescricoes_mes
+    CAST(B.nu_prescricoes_medico AS INT) AS nu_prescricoes_mes
 INTO temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes
 FROM #base_crm_cnpj B
 INNER JOIN temp_CGUSC.fp.dados_farmacia F
@@ -393,6 +394,27 @@ CREATE CLUSTERED INDEX IDX_CrmPrescEstabMes_Key
 CREATE NONCLUSTERED INDEX IDX_CrmPrescEstabMes_Medico
     ON temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes(id_medico, competencia, id_cnpj);
 
+SELECT
+    P.id_medico,
+    P.competencia,
+    CAST(F.codibge AS BIGINT) AS id_ibge7,
+    SUM(CAST(P.nu_prescricoes_mes AS BIGINT)) AS nu_prescricoes_mes
+INTO temp_CGUSC.fp.build_crm_prescricoes_medico_municipio_mes
+FROM temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes P
+INNER JOIN temp_CGUSC.fp.dados_farmacia F
+    ON F.id = P.id_cnpj
+GROUP BY
+    P.id_medico,
+    P.competencia,
+    F.codibge;
+
+CREATE CLUSTERED INDEX IDX_CrmPrescMedicoMunicipioMes_Key
+    ON temp_CGUSC.fp.build_crm_prescricoes_medico_municipio_mes(competencia, id_medico, id_ibge7);
+
+CREATE NONCLUSTERED INDEX IDX_CrmPrescMedicoMunicipioMes_Municipio
+    ON temp_CGUSC.fp.build_crm_prescricoes_medico_municipio_mes(id_ibge7, competencia, id_medico)
+    INCLUDE (nu_prescricoes_mes);
+
 DROP TABLE IF EXISTS #crm_prescricoes_medico_municipio_mes;
 DROP TABLE IF EXISTS #crm_competencias;
 DROP TABLE IF EXISTS #crm_nivel_mensal;
@@ -402,21 +424,22 @@ DROP TABLE IF EXISTS #crm_geografias;
 SELECT
     P.id_medico,
     P.competencia,
-    CAST(F.codibge AS INT) AS id_ibge7,
-    CAST(UPPER(LTRIM(RTRIM(F.uf))) AS VARCHAR(20)) AS uf,
-    CAST(F.id_regiao_saude AS INT) AS id_regiao_saude,
-    CAST(SUM(CAST(P.nu_prescricoes_mes AS BIGINT)) AS BIGINT)
+    P.id_ibge7,
+    G.uf,
+    G.id_regiao_saude,
+    P.nu_prescricoes_mes
         AS nu_prescricoes_mes
 INTO #crm_prescricoes_medico_municipio_mes
-FROM temp_CGUSC.fp.build_crm_prescricoes_estabelecimento_mes P
-INNER JOIN temp_CGUSC.fp.dados_farmacia F
-    ON F.id = P.id_cnpj
-GROUP BY
-    P.id_medico,
-    P.competencia,
-    F.codibge,
-    F.uf,
-    F.id_regiao_saude;
+FROM temp_CGUSC.fp.build_crm_prescricoes_medico_municipio_mes P
+INNER JOIN (
+    SELECT
+        CAST(F.codibge AS BIGINT) AS id_ibge7,
+        CAST(MAX(UPPER(LTRIM(RTRIM(F.uf)))) AS VARCHAR(20)) AS uf,
+        CAST(MAX(F.id_regiao_saude) AS INT) AS id_regiao_saude
+    FROM temp_CGUSC.fp.dados_farmacia F
+    GROUP BY F.codibge
+) G
+    ON G.id_ibge7 = P.id_ibge7;
 
 CREATE CLUSTERED INDEX IDX_CrmPrescGerencialBase
     ON #crm_prescricoes_medico_municipio_mes (competencia, id_medico, id_ibge7);
