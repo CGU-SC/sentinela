@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.14] - 2026-09-22
+
+### Alterado
+- **Texto introdutório do Anexo II da Nota Técnica atualizado.** O texto passou a manter dinâmicos a farmácia, o CNPJ e o período analisado e a informar que o cálculo das vendas sem comprovação considera todo o período disponível no Sentinela, de 2015 a 2024, independentemente do período de escopo selecionado, refletindo a metodologia conservadora do estoque inicial.
+
 Todas as mudanças relevantes do Sentinela serão registradas neste arquivo.
 
 O versionamento segue o padrão SemVer: `MAJOR.MINOR.PATCH`.
