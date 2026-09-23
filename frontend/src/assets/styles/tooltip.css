@@ -26,6 +26,124 @@
   white-space: normal;
 }
 
+/* Tooltips HTML da barra de navegação. */
+.p-tooltip.sentinela-tooltip.navbar-info-tooltip {
+  max-width: min(300px, calc(100vw - 2rem));
+  width: auto;
+}
+
+.navbar-tooltip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.48rem;
+  width: min(275px, calc(100vw - 2rem));
+  padding: 0.68rem 0.78rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+}
+
+.navbar-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-color-85);
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+
+.navbar-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--primary-color);
+  font-size: 0.77rem;
+}
+
+.navbar-tooltip-body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.71rem;
+}
+
+.navbar-tooltip-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  padding-top: 0.48rem;
+  border-top: 1px solid var(--tabs-border);
+  overflow-wrap: anywhere;
+  font-size: 0.71rem;
+}
+
+.navbar-tooltip-detail strong {
+  color: var(--primary-color);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.navbar-tooltip-detail span {
+  color: var(--text-secondary);
+}
+
+/* Tooltips HTML da tabela de estabelecimentos. */
+.p-tooltip.sentinela-tooltip.establishment-table-info-tooltip {
+  max-width: min(320px, calc(100vw - 2rem));
+  width: auto;
+}
+
+.establishment-table-tooltip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.48rem;
+  width: min(290px, calc(100vw - 2rem));
+  padding: 0.68rem 0.78rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.establishment-table-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-color-85);
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+
+.establishment-table-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--primary-color);
+  font-size: 0.77rem;
+}
+
+.establishment-table-tooltip-body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.71rem;
+}
+
+.establishment-table-tooltip-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  padding-top: 0.48rem;
+  border-top: 1px solid var(--tabs-border);
+  font-size: 0.71rem;
+}
+
+.establishment-table-tooltip-detail strong {
+  color: var(--primary-color);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.establishment-table-tooltip-detail span {
+  color: var(--text-secondary);
+}
+
 /* Tooltips HTML dos filtros da sidebar. */
 .p-tooltip.sentinela-tooltip.filter-info-tooltip {
   max-width: min(380px, calc(100vw - 2rem));

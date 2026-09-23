@@ -1,10 +1,14 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useAnalyticsStore } from '@/stores/analytics';
 import { useChartTheme } from '@/config/chartTheme';
 import { useDelayedLoading } from '@/composables/useDelayedLoading';
 import { storeToRefs } from 'pinia';
 import Button from 'primevue/button';
+
+const props = defineProps({
+  hiddenLabels: { type: Array, default: () => [] },
+});
 
 const analyticsStore = useAnalyticsStore();
 const { enrichedKpis, isLoading, error } = storeToRefs(analyticsStore);
@@ -21,6 +25,12 @@ watch([enrichedKpis, isLoading], ([newKpis, loading]) => {
     cachedKpis.value = newKpis;
   }
 }, { immediate: true });
+
+const visibleKpis = computed(() =>
+  (cachedKpis.value || enrichedKpis.value).filter(
+    (kpi) => !props.hiddenLabels.includes(kpi.label)
+  )
+);
 </script>
 
 <template>
@@ -33,9 +43,13 @@ watch([enrichedKpis, isLoading], ([newKpis, loading]) => {
     </div>
 
     <!-- CARDS DE KPI -->
-    <div class="kpi-grid" :class="{ 'is-refreshing': showRefreshing }">
+    <div
+      class="kpi-grid"
+      :class="{ 'is-refreshing': showRefreshing }"
+      :style="{ gridTemplateColumns: visibleKpis.length ? `repeat(${visibleKpis.length}, minmax(0, 1fr))` : undefined }"
+    >
       <div 
-        v-for="kpi in (cachedKpis || enrichedKpis)" 
+        v-for="kpi in visibleKpis"
         :key="kpi.label" 
         class="kpi-card"
         :style="{

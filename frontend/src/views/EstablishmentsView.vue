@@ -7,6 +7,7 @@ import { useGeoStore } from '@/stores/geo';
 import { useFetchAnalytics } from '@/composables/useFetchAnalytics';
 import { useRiskIndicatorAnalysis } from '@/composables/useRiskIndicatorAnalysis';
 import { INDICATOR_GROUPS } from '@/config/riskConfig';
+import { ESTABLISHMENTS_HIDDEN_KPI_LABELS } from '@/config/constants';
 
 import RiskIndicatorSelector from './components/risk-indicators/RiskIndicatorSelector.vue';
 import EstablishmentRiskMap from './components/establishments/EstablishmentRiskMap.vue';
@@ -165,7 +166,7 @@ function onCnpjTableLazy(event) {
 <template>
   <div class="indicadores-page">
     <div class="indicadores-main">
-      <KpiSection />
+      <KpiSection :hidden-labels="ESTABLISHMENTS_HIDDEN_KPI_LABELS" />
 
     <div class="indicadores-layout">
 

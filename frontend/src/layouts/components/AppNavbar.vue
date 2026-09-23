@@ -7,7 +7,11 @@ import { useSyncManager } from '@/composables/useSyncManager';
 import { useThemeStore } from '@/stores/theme';
 import Button from 'primevue/button';
 import AutoComplete from 'primevue/autocomplete';
+import Dialog from 'primevue/dialog';
 import { useGeoStore } from '@/stores/geo';
+import { useSystemUpdateStore } from '@/stores/systemUpdate';
+import { APP_RUNTIME, getAppRuntimeLabel } from '@/config/appInfo';
+import { navbarTooltip } from '@/config/navbarTooltipConfig';
 
 const route = useRoute();
 const router = useRouter();
@@ -18,6 +22,22 @@ const totalListas = computed(() => farmaciaLists.interesse.length);
 const { showConfirmSync } = useSyncManager();
 const geoStore = useGeoStore();
 const themeStore = useThemeStore();
+const updateStore = useSystemUpdateStore();
+const updateDetailsVisible = ref(false);
+const isDesktop = () => getAppRuntimeLabel() === APP_RUNTIME.DESKTOP;
+
+function confirmUpdate() {
+  if (!updateStore.hasUpdate || updateStore.isDownloading || !updateStore.downloadUrl) return;
+
+  if (isDesktop()) {
+    updateDetailsVisible.value = false;
+    updateStore.startDownload();
+    return;
+  }
+
+  window.open(updateStore.downloadUrl, '_blank', 'noopener,noreferrer');
+  updateDetailsVisible.value = false;
+}
 
 const tabs = [
   { label: 'Home', path: '/' },
@@ -80,7 +100,7 @@ function onNavSelect(event) {
             v-if="tab.disabled"
             class="nav-tab nav-tab--disabled"
             aria-disabled="true"
-            v-tooltip.bottom="'Em breve...'"
+            v-tooltip.bottom="navbarTooltip('comingSoon')"
           >
             {{ tab.label }}
           </span>
@@ -100,12 +120,12 @@ function onNavSelect(event) {
             :to="`/estabelecimentos/${recentCnpj.cnpj}`"
             class="nav-tab nav-recent-cnpj"
             :class="{ active: route.path.startsWith('/estabelecimentos/') }"
-            v-tooltip.bottom="recentCnpj.razaoSocial"
+            v-tooltip.bottom="navbarTooltip('recentCnpj', recentCnpj.razaoSocial)"
           >
             <i class="pi pi-history" />
             {{ recentCnpj.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') }}
           </router-link>
-          <button class="nav-recent-clear" @click.prevent="recentCnpjStore.clear()" v-tooltip.bottom="'Limpar atalho'">
+          <button class="nav-recent-clear" aria-label="Limpar atalho" @click.prevent="recentCnpjStore.clear()" v-tooltip.bottom="navbarTooltip('clearRecentCnpj')">
             <i class="pi pi-times" />
           </button>
         </div>
@@ -113,6 +133,17 @@ function onNavSelect(event) {
     </div>
 
     <div class="nav-actions">
+      <button
+        v-if="updateStore.hasUpdate"
+        type="button"
+        class="nav-update-badge"
+        :aria-label="`Atualização disponível: versão ${updateStore.latestVersion}. Ver detalhes`"
+        @click="updateDetailsVisible = true"
+      >
+        <i class="pi pi-download" aria-hidden="true" />
+        <span class="nav-update-badge__label">Atualização disponível</span>
+        <span class="nav-update-badge__version">· v{{ updateStore.latestVersion }}</span>
+      </button>
       <div class="nav-cnpj-search">
         <i class="pi pi-search nav-cnpj-icon" />
         <AutoComplete
@@ -142,46 +173,73 @@ function onNavSelect(event) {
         href="https://cgu-sc.github.io/sentinela/"
         target="_blank"
         rel="noopener noreferrer"
-        class="docs-nav-btn"
-        v-tooltip.bottom="'Documentação do sistema'"
+        class="nav-icon-btn"
+        aria-label="Documentação do sistema"
+        v-tooltip.bottom="navbarTooltip('documentation')"
       >
         <i class="pi pi-book" />
       </a>
       <Button
         :icon="themeStore.isDark ? 'pi pi-sun' : 'pi pi-moon'"
         text
-        rounded
         severity="secondary"
-        v-tooltip.bottom="themeStore.isDark ? 'Modo claro' : 'Modo escuro'"
+        class="nav-icon-btn"
+        :aria-label="themeStore.isDark ? 'Modo claro' : 'Modo escuro'"
+        v-tooltip.bottom="navbarTooltip(themeStore.isDark ? 'lightTheme' : 'darkTheme')"
         @click="themeStore.toggleTheme()"
       />
       <Button
         icon="pi pi-cog"
         text
-        rounded
         severity="secondary"
-        v-tooltip.bottom="'Configurações do Sistema'"
+        aria-label="Configurações do Sistema"
+        v-tooltip.bottom="navbarTooltip('settings')"
         @click="router.push('/configuracoes')"
-        :class="{ 'active-nav-btn': $route.path === '/configuracoes' }"
+        :class="['nav-icon-btn', { 'active-nav-btn': $route.path === '/configuracoes' }]"
       />
-      <div
-        class="lists-nav-btn"
+      <button
+        type="button"
+        class="nav-icon-btn lists-nav-btn"
+        aria-label="Farmácias Monitoradas"
         @click="router.push('/listas')"
-        v-tooltip.bottom="'Farmácias Monitoradas'"
+        v-tooltip.bottom="navbarTooltip('monitoredPharmacies')"
       >
         <i class="pi pi-bookmark" />
         <span v-if="totalListas > 0" class="lists-nav-badge">{{ totalListas }}</span>
-      </div>
-      <Button
-        icon="pi pi-refresh"
-        text
-        rounded
-        severity="secondary"
-        disabled
-        v-tooltip.bottom="'Sincronização com CGUData temporariamente indisponível'"
-      />
+      </button>
     </div>
   </nav>
+
+  <Dialog
+    v-model:visible="updateDetailsVisible"
+    header="Atualização disponível"
+    modal
+    :draggable="false"
+    class="nav-update-dialog"
+  >
+    <div class="nav-update-dialog__content">
+      <p>Uma nova versão do Sentinela está disponível.</p>
+      <p>Versão atual: <strong>v{{ updateStore.currentVersion }}</strong> · Nova versão: <strong>v{{ updateStore.latestVersion }}</strong></p>
+      <a
+        v-if="updateStore.releaseNotesUrl"
+        :href="updateStore.releaseNotesUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+      >Notas da versão <i class="pi pi-external-link" aria-hidden="true" /></a>
+      <p v-if="!updateStore.downloadUrl" class="nav-update-dialog__error">
+        O link de download não está disponível. Tente verificar as atualizações novamente.
+      </p>
+    </div>
+    <template #footer>
+      <Button label="Mais tarde" text severity="secondary" @click="updateDetailsVisible = false" />
+      <Button
+        :label="isDesktop() ? 'Atualizar agora' : 'Abrir download'"
+        icon="pi pi-download"
+        :disabled="!updateStore.hasUpdate || updateStore.isDownloading || !updateStore.downloadUrl"
+        @click="confirmUpdate"
+      />
+    </template>
+  </Dialog>
 </template>
 
 <style scoped>
@@ -213,6 +271,97 @@ function onNavSelect(event) {
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+.nav-update-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 30px;
+  padding: 0 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--risk-medium) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--risk-medium) 12%, var(--navbar-bg));
+  color: var(--text-color-85);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: nav-update-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both,
+    nav-update-pulse 1s ease-in-out 10;
+}
+
+.nav-update-badge:hover {
+  background: color-mix(in srgb, var(--risk-medium) 20%, var(--navbar-bg));
+}
+
+.nav-update-badge:focus-visible {
+  outline: 2px solid var(--risk-medium);
+  outline-offset: 2px;
+}
+
+.nav-update-badge .pi {
+  color: var(--risk-indicator-warning);
+  font-size: 0.75rem;
+}
+
+.nav-update-badge__version {
+  color: var(--text-secondary);
+}
+
+@keyframes nav-update-enter {
+  from { opacity: 0.7; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes nav-update-pulse {
+  0%, 100% { border-color: color-mix(in srgb, var(--risk-medium) 45%, transparent); }
+  50% { border-color: color-mix(in srgb, var(--risk-medium) 95%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-update-badge { animation: none; }
+}
+
+@media (max-width: 1600px) {
+  .nav-update-badge__version { display: none; }
+}
+
+@media (max-width: 1500px) {
+  .nav-update-badge__label { display: none; }
+  .nav-update-badge { width: 30px; padding: 0; }
+}
+
+:deep(.nav-update-dialog) {
+  width: min(450px, 90vw);
+}
+
+.nav-update-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: var(--text-color-85);
+  font-size: 0.88rem;
+}
+
+.nav-update-dialog__content p {
+  margin: 0;
+}
+
+.nav-update-dialog__content strong {
+  font-weight: 600;
+}
+
+.nav-update-dialog__content a {
+  color: var(--primary-color);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.nav-update-dialog__error {
+  color: var(--risk-high);
 }
 
 .nav-actions :deep(.p-button:focus),
@@ -492,64 +641,39 @@ function onNavSelect(event) {
   opacity: 0.75;
 }
 
-.docs-nav-btn {
+.nav-icon-btn,
+.nav-actions :deep(.nav-icon-btn.p-button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 36px;
   width: 36px;
   height: 36px;
+  padding: 0;
+  border: 0;
   border-radius: 6px;
+  background: transparent;
   cursor: pointer;
   color: var(--text-secondary);
+  font-size: 1rem;
   text-decoration: none;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.docs-nav-btn:hover {
+.nav-icon-btn:hover,
+.nav-actions :deep(.nav-icon-btn.p-button:hover) {
   background: color-mix(in srgb, var(--text-color-85) 8%, transparent);
   color: var(--text-color-85);
 }
 
-.docs-nav-btn:focus-visible {
+.nav-icon-btn:focus-visible,
+.nav-actions :deep(.nav-icon-btn.p-button:focus-visible) {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-color-85) 16%, transparent);
-}
-
-.docs-nav-btn i {
-  font-size: 1rem;
 }
 
 .lists-nav-btn {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.15s ease;
-}
-
-.lists-nav-btn:focus,
-.lists-nav-btn:active {
-  outline: none;
-  box-shadow: none;
-}
-
-.lists-nav-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-color-85) 16%, transparent);
-}
-
-.lists-nav-btn:hover {
-  background: color-mix(in srgb, var(--text-color-85) 8%, transparent);
-  color: var(--text-color-85);
-}
-
-.lists-nav-btn i {
-  font-size: 1rem;
 }
 
 .lists-nav-badge {

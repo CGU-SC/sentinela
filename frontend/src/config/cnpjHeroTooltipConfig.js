@@ -139,7 +139,7 @@ export function cnpjHeroTooltip(key, overrides = {}) {
   return createCnpjHeroHtmlTooltip({ ...copy, ...overrides });
 }
 
-export function cnpjHeroTextTooltip(title, body, detail, detailLabel = "Valor completo") {
+export function cnpjHeroTextTooltip(title, body, detail, detailLabel = "Valor") {
   return createCnpjHeroHtmlTooltip({
     title,
     body,
