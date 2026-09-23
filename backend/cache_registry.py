@@ -88,6 +88,7 @@ def _crm_prescricoes_medico_brasil_mes_schema() -> dict:
         "id_medico": pl.Utf8,
         "competencia": pl.Int32,
         "nu_prescricoes_mes": pl.Int16,
+        "qtd_dias_com_prescricao_mes": pl.UInt8,
     }
 
 

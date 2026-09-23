@@ -63,9 +63,11 @@ _ON_DEMAND_GLOBAL_CACHE_READY: set[str] = set()
 # Assim, arquivos ainda nao distribuidos nao aparecem como cache incompleto.
 # Reativar quando a tela de analises de CRM estiver publicada.
 _DISABLED_BOOT_MODULES: frozenset[str] = frozenset({
+    "crm_prescricoes_estabelecimento_medico_mes",
     "crm_prescricoes_medico_brasil_mes",
     "crm_prescricoes_medico_municipio_mes",
     "crm_prescricoes_geografia_mes",
+    "crm_mapa_brasil_periodo",
 })
 
 _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
@@ -378,6 +380,7 @@ _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
         "id_medico",
         "competencia",
         "nu_prescricoes_mes",
+        "qtd_dias_com_prescricao_mes",
     },
     "crm_prescricoes_geografia_mes": {
         "nivel",
@@ -3899,7 +3902,8 @@ def _sync_crm_prescricoes_medico_brasil_mes(engine, progress_callback=None):
             SELECT
                 id_medico,
                 competencia,
-                nu_prescricoes_mes
+                nu_prescricoes_mes,
+                qtd_dias_com_prescricao_mes
             FROM [temp_CGUSC].[fp].[app_crm_prescricoes_medico_brasil_mes]
             WHERE competencia = :competencia
             ORDER BY id_medico
@@ -3928,6 +3932,7 @@ def _sync_crm_prescricoes_medico_brasil_mes(engine, progress_callback=None):
                         pl.col("id_medico").cast(pl.Utf8),
                         pl.col("competencia").cast(pl.Int32),
                         pl.col("nu_prescricoes_mes").cast(pl.Int16),
+                        pl.col("qtd_dias_com_prescricao_mes").cast(pl.UInt8),
                     ])
                 )
             if not chunks:

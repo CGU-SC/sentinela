@@ -350,7 +350,7 @@ MODULOS = sorted([
     {"id": 16, "name": "CRM Raio-X global", "func": _sync_crm_raiox_tx_global, "peso": "muito pesado", "ordem": 16},
     {"id": 43, "name": "Pagamentos FP global", "func": _sync_pagamentos_consolidados_farmacia_popular, "peso": "muito pesado", "ordem": 43},
     {"id": 44, "name": "CRM Prescricoes Estabelecimento/Medico/Mes (5 campos)", "func": _sync_crm_prescricoes_estabelecimento_medico_mes, "peso": "muito pesado", "ordem": 44},
-    {"id": 47, "name": "CRM Prescricoes medico/Brasil/mes", "func": _sync_crm_prescricoes_medico_brasil_mes, "peso": "pesado", "ordem": 47},
+    {"id": 47, "name": "CRM Prescricoes medico/Brasil/mes (4 campos)", "func": _sync_crm_prescricoes_medico_brasil_mes, "peso": "pesado", "ordem": 47},
     {"id": 46, "name": "CRM Prescricoes medico/municipio", "func": _sync_crm_prescricoes_medico_municipio_mes, "peso": "pesado", "ordem": 46},
     {"id": 45, "name": "CRM Prescricoes Medico/Geografia/Mes", "func": _sync_crm_prescricoes_geografia_mes, "peso": "muito pesado", "ordem": 45},
     {"id": 48, "name": "CRM Mapa Brasil/Periodo", "func": _sync_crm_mapa_brasil_periodo, "peso": "rapido", "ordem": 48},
