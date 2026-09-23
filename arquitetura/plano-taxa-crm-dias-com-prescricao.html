@@ -765,6 +765,15 @@
     </label>
 <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#etapa-aprovada-mapa-do-brasil-sem-uf-selecionada">
+<span class="md-ellipsis">
+      
+        Etapa aprovada: mapa do Brasil sem UF selecionada
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#1-objetivo">
 <span class="md-ellipsis">
       
@@ -891,10 +900,10 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#43-crm_medicos_anomalos_uf_periodosmod">
+<a class="md-nav__link" href="#43-crm_mapa_brasil_periodosmod">
 <span class="md-ellipsis">
       
-        4.3. crm_medicos_anomalos_uf_periodo.smod
+        4.3. crm_mapa_brasil_periodo.smod
       
     </span>
 </a>
@@ -1468,6 +1477,17 @@
 <div class="md-content" data-md-component="content">
 <article class="md-content__inner md-typeset">
 <h1 id="plano-de-implementacao-taxa-de-prescricoes-por-dia-com-registro">Plano de implementação — Taxa de prescrições por dia com registro<a class="headerlink" href="#plano-de-implementacao-taxa-de-prescricoes-por-dia-com-registro" title="Permanent link">¶</a></h1>
+<h2 id="etapa-aprovada-mapa-do-brasil-sem-uf-selecionada">Etapa aprovada: mapa do Brasil sem UF selecionada<a class="headerlink" href="#etapa-aprovada-mapa-do-brasil-sem-uf-selecionada" title="Permanent link">¶</a></h2>
+<p>O primeiro recorte usa <code>crm_mapa_brasil_periodo.smod</code>, com 27 UFs e uma linha
+<code>BR</code> para cada intervalo de meses completos. Um médico é anômalo em um
+território se, em pelo menos um mês do intervalo, suas prescrições válidas
+divididas pelas datas distintas com prescrição naquele território forem
+<strong>maiores que 22</strong>. A linha <code>BR</code> é calculada com datas distintas nacionais;
+as contagens de médicos não são somadas entre UFs ou meses.</p>
+<p>Esta etapa altera somente o mapa nacional. O ranking e os mapas após selecionar
+uma UF permanecem no fluxo anterior até a ampliação metodológica descrita nas
+demais seções deste plano. A geração real do SMOD depende da execução SQL e da
+sincronização do módulo.</p>
 <h2 id="1-objetivo">1. Objetivo<a class="headerlink" href="#1-objetivo" title="Permanent link">¶</a></h2>
 <p>Alterar a análise gerencial de CRMs disponível em <code>/analises</code> para que a taxa de prescrições por dia deixe de usar todos os dias corridos do período e passe a considerar somente os dias em que exista ao menos uma prescrição válida registrada para o médico no Programa Farmácia Popular do Brasil (PFPB), dentro do escopo geográfico consultado.</p>
 <p>O resultado esperado é uma métrica de intensidade de prescrição nos dias com atividade observável no PFPB:</p>
@@ -1549,7 +1569,7 @@
 </span></code></pre></div>
 <p>Essa regra é produzida no SQL e também recalculada no backend em alguns fluxos.</p>
 <h3 id="33-mapa">3.3. Mapa<a class="headerlink" href="#33-mapa" title="Permanent link">¶</a></h3>
-<p>O mapa usa <code>crm_prescricoes_geografia_mes.smod</code> e o agregado nacional <code>crm_medicos_anomalos_uf_periodo.smod</code>. Portanto, a troca do denominador afeta:</p>
+<p>O mapa usa <code>crm_prescricoes_geografia_mes.smod</code> e o agregado nacional <code>crm_mapa_brasil_periodo.smod</code>. Portanto, a troca do denominador afeta:</p>
 <ul>
 <li>a quantidade de médicos anômalos;</li>
 <li>o percentual de médicos anômalos;</li>
@@ -1660,15 +1680,19 @@
 </tbody>
 </table>
 <p>Esse módulo será a fonte do mapa e do ranking nos escopos UF, Região de Saúde e município.</p>
-<h3 id="43-crm_medicos_anomalos_uf_periodosmod">4.3. <code>crm_medicos_anomalos_uf_periodo.smod</code><a class="headerlink" href="#43-crm_medicos_anomalos_uf_periodosmod" title="Permanent link">¶</a></h3>
-<p>O schema permanece inalterado:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a>uf
-</span><span id="__span-7-2"><a href="#__codelineno-7-2" id="__codelineno-7-2" name="__codelineno-7-2"></a>competencia_inicio
-</span><span id="__span-7-3"><a href="#__codelineno-7-3" id="__codelineno-7-3" name="__codelineno-7-3"></a>competencia_fim
-</span><span id="__span-7-4"><a href="#__codelineno-7-4" id="__codelineno-7-4" name="__codelineno-7-4"></a>qtd_medicos_ativos
-</span><span id="__span-7-5"><a href="#__codelineno-7-5" id="__codelineno-7-5" name="__codelineno-7-5"></a>qtd_medicos_anomalos
+<h3 id="43-crm_mapa_brasil_periodosmod">4.3. <code>crm_mapa_brasil_periodo.smod</code><a class="headerlink" href="#43-crm_mapa_brasil_periodosmod" title="Permanent link">¶</a></h3>
+<p>Granularidade: <code>nivel + id_geografico + competencia_inicio + competencia_fim</code>.
+Há uma linha por UF e uma linha <code>brasil/BR</code> em cada intervalo. Schema:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a>nivel
+</span><span id="__span-7-2"><a href="#__codelineno-7-2" id="__codelineno-7-2" name="__codelineno-7-2"></a>id_geografico
+</span><span id="__span-7-3"><a href="#__codelineno-7-3" id="__codelineno-7-3" name="__codelineno-7-3"></a>competencia_inicio
+</span><span id="__span-7-4"><a href="#__codelineno-7-4" id="__codelineno-7-4" name="__codelineno-7-4"></a>competencia_fim
+</span><span id="__span-7-5"><a href="#__codelineno-7-5" id="__codelineno-7-5" name="__codelineno-7-5"></a>qtd_medicos_ativos
+</span><span id="__span-7-6"><a href="#__codelineno-7-6" id="__codelineno-7-6" name="__codelineno-7-6"></a>qtd_medicos_anomalos
 </span></code></pre></div>
-<p>O arquivo precisa ser regenerado porque <code>qtd_medicos_anomalos</code> depende de <code>is_mes_anomalo</code>, cuja definição será alterada.</p>
+<p><code>qtd_medicos_ativos</code> e <code>qtd_medicos_anomalos</code> são contagens distintas no
+intervalo. A linha <code>BR</code> usa a classificação mensal nacional; seu total de
+médicos não pode ser obtido pela soma das UFs.</p>
 <h3 id="44-modulos-sem-alteracao-de-schema">4.4. Módulos sem alteração de schema<a class="headerlink" href="#44-modulos-sem-alteracao-de-schema" title="Permanent link">¶</a></h3>
 <p>Não alterar nesta implementação:</p>
 <ul>
@@ -1805,11 +1829,11 @@
 <li>atualizar mensagens de erro para identificar claramente o módulo incompatível.</li>
 </ul>
 <h3 id="74-sincronizacao-seletiva">7.4. Sincronização seletiva<a class="headerlink" href="#74-sincronizacao-seletiva" title="Permanent link">¶</a></h3>
-<p>Não criar novos itens em <code>src/scripts/sincronizar_cache.py</code>. Os módulos já possuem registros próprios. Confirmar, contudo, que:</p>
+<p>Registrar <code>crm_mapa_brasil_periodo.smod</code> em <code>src/scripts/sincronizar_cache.py</code>. Na ampliação posterior, confirmar que:</p>
 <ul>
 <li>o módulo geográfico seja sincronizado antes de o agregado nacional por período ser considerado pronto;</li>
 <li>o módulo nacional mensal seja regenerado com sua nova versão;</li>
-<li><code>crm_medicos_anomalos_uf_periodo.smod</code> seja regenerado mesmo sem mudança de schema;</li>
+<li><code>crm_mapa_brasil_periodo.smod</code> seja gerado com o novo schema e a nova regra;</li>
 <li>partes <code>.smod.part</code> e manifestos antigos sejam invalidados pelas novas versões.</li>
 </ul>
 <h3 id="75-inspetor-de-modulos">7.5. Inspetor de módulos<a class="headerlink" href="#75-inspetor-de-modulos" title="Permanent link">¶</a></h3>
@@ -1818,7 +1842,7 @@
 <li><code>crm_prescricoes_medico_brasil_mes.smod</code>;</li>
 <li><code>crm_prescricoes_medico_municipio_mes.smod</code>;</li>
 <li><code>crm_prescricoes_geografia_mes.smod</code>;</li>
-<li><code>crm_medicos_anomalos_uf_periodo.smod</code>.</li>
+<li><code>crm_mapa_brasil_periodo.smod</code>.</li>
 </ul>
 <h2 id="8-backend-da-analise-de-crms">8. Backend da análise de CRMs<a class="headerlink" href="#8-backend-da-analise-de-crms" title="Permanent link">¶</a></h2>
 <h3 id="81-colunas-obrigatorias">8.1. Colunas obrigatórias<a class="headerlink" href="#81-colunas-obrigatorias" title="Permanent link">¶</a></h3>
@@ -1928,12 +1952,10 @@
 <li>comparação por ano para identificar mudanças estruturais da base.</li>
 </ul>
 <h3 id="103-decisao-necessaria">10.3. Decisão necessária<a class="headerlink" href="#103-decisao-necessaria" title="Permanent link">¶</a></h3>
-<p>Antes de promover os dados, escolher explicitamente uma alternativa:</p>
-<ol>
-<li>Manter <code>22</code>, aceitando a nova interpretação e o aumento esperado de alertas; ou</li>
-<li>Recalibrar o limite com base na distribuição da nova taxa.</li>
-</ol>
-<p>A decisão, a data e a justificativa devem ser registradas neste documento ou em nota metodológica vinculada.</p>
+<p>Decisão da etapa do mapa nacional: manter o limite estrito <code>&gt; 22</code> para a taxa
+por dia com prescrição, conforme definição aprovada em 22/09/2026. O estudo
+comparativo continua recomendado antes da publicação dos dados reais e da
+ampliação da metodologia aos rankings e demais mapas.</p>
 <h3 id="104-protecao-contra-rankings-enganosos">10.4. Proteção contra rankings enganosos<a class="headerlink" href="#104-protecao-contra-rankings-enganosos" title="Permanent link">¶</a></h3>
 <p>A nova taxa pode colocar no topo médicos com poucas datas e um único dia de volume muito alto. Por isso, a interface deve sempre mostrar <code>DIAS COM PRESCRIÇÃO</code>.</p>
 <p>Avaliar separadamente, sem aplicar silenciosamente, a adoção futura de um mínimo de dias para elegibilidade no ranking. Qualquer mínimo muda o universo analisado e exige decisão metodológica explícita.</p>
@@ -2071,7 +2093,7 @@
 <li>Executar a etapa SQL completa em ambiente de validação.</li>
 <li>Publicar as tabelas <code>app_*</code> com validação transacional.</li>
 <li>Regenerar os SMODs nacional e geográfico.</li>
-<li>Regenerar <code>crm_medicos_anomalos_uf_periodo.smod</code>.</li>
+<li>Gerar <code>crm_mapa_brasil_periodo.smod</code>.</li>
 <li>Copiar os arquivos somente após validação de schema e conteúdo.</li>
 <li>Reiniciar ou atualizar a geração do cache da aplicação.</li>
 <li>Executar testes funcionais e de performance.</li>
@@ -2111,7 +2133,7 @@
 <li><code>backend/cache_registry.py</code></li>
 <li><code>backend/data_cache.py</code></li>
 <li><code>src/scripts/check_parquet_schema.py</code></li>
-<li><code>src/scripts/sincronizar_cache.py</code> — revisar ordem e registros existentes; não criar novo módulo</li>
+<li><code>src/scripts/sincronizar_cache.py</code> — registrar o novo módulo do mapa na ordem correta</li>
 </ul>
 <h3 id="backendapi">Backend/API<a class="headerlink" href="#backendapi" title="Permanent link">¶</a></h3>
 <ul>
@@ -2129,7 +2151,7 @@
 <ul>
 <li><code>crm_prescricoes_medico_brasil_mes.smod</code></li>
 <li><code>crm_prescricoes_geografia_mes.smod</code></li>
-<li><code>crm_medicos_anomalos_uf_periodo.smod</code></li>
+<li><code>crm_mapa_brasil_periodo.smod</code></li>
 </ul>
 <h2 id="15-criterios-de-aceite">15. Critérios de aceite<a class="headerlink" href="#15-criterios-de-aceite" title="Permanent link">¶</a></h2>
 <p>A implementação será considerada concluída somente quando:</p>
@@ -2152,7 +2174,7 @@
 <h2 id="16-decisoes-pendentes">16. Decisões pendentes<a class="headerlink" href="#16-decisoes-pendentes" title="Permanent link">¶</a></h2>
 <p>Antes de iniciar a implementação, registrar as respostas:</p>
 <ol>
-<li>O limite continuará em 22 ou será recalibrado?</li>
+<li>Decidido: o limite continua em 22, com comparação estrita (<code>&gt; 22</code>) sobre dias com prescrição.</li>
 <li>O script <code>crms_prescricoes_geografia.sql</code> será atualizado ou descontinuado?</li>
 <li>A interface exibirá <code>DIAS COM PRESCRIÇÃO</code> como nova coluna ou substituirá uma coluna atual?</li>
 <li>Haverá, nesta etapa, um mínimo de dias para participação no ranking? A recomendação inicial é não aplicar mínimo sem estudo.</li>
