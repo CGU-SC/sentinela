@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.16] - 2026-09-23
+
+### Alterado
+- **Tooltip da coluna “Risco” esclarecido.** Explica que o multiplicador compara o indicador com a mediana de referência, exemplifica 1x, 2x e 0,5x, e informa quando a referência é regional ou da UF.
+
 ## [1.6.15] - 2026-09-23
 
 ### Alterado
