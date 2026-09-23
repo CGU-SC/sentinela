@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.15] - 2026-09-23
+
+### Alterado
+- **Indicador de “teto máximo” na Nota Técnica esclarecido.** O texto distingue o valor das vendas passíveis de monitoramento do faturamento total, com nota de rodapé quando esses montantes diferem. A conclusão usa o valor dos registros no teto máximo, sem extrapolá-lo para as vendas não monitoradas.
+- **Dados mensais nacionais de prescrições por médico preparados.** A etapa de pré-processamento passou a preservar a quantidade de datas distintas com prescrição no Brasil, sem duplicar dias compartilhados por estabelecimentos; as validações e a sincronização do cache foram alinhadas ao novo campo. A tela de Análises continua em preparação e depende da geração das tabelas e dos módulos de dados correspondentes.
+
+### Corrigido
+- **Conclusão de incompatibilidade patológica na Nota Técnica.** O valor total agora corresponde ao indicador completo, incluindo patologias com valores abaixo do limite usado para exibir o detalhamento, em vez de somar apenas os subitens apresentados.
+
 ## [1.6.14] - 2026-09-22
 
 ### Alterado

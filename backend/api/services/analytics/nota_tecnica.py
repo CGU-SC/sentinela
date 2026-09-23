@@ -457,16 +457,12 @@ def _build_resumo_criticidade(num: str, key: str, comp: dict[str, Any], total_mo
                 f'{_format_decimal_pt(multiplicador, 2)} vezes à mediana correspondente aos estabelecimentos de sua região;'
             )
 
-        valor_identificado = 0.0
-        for item in ranking_patologias:
-            if "valor_incompativel_pago" not in item or item["valor_incompativel_pago"] is None:
-                raise RuntimeError("Valor clinico identificado obrigatorio ausente para resumo da Nota Tecnica.")
-            try:
-                valor_identificado += float(item["valor_incompativel_pago"])
-            except (TypeError, ValueError) as exc:
-                raise RuntimeError(
-                    f"Valor clinico identificado invalido para resumo da Nota Tecnica: {item['valor_incompativel_pago']}"
-                ) from exc
+        try:
+            valor_identificado = float(comp["valor_suspeito"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError("Valor clinico total obrigatorio ausente ou invalido para resumo da Nota Tecnica.") from exc
+        if not (0 < valor_identificado < float("inf")):
+            raise RuntimeError("Valor clinico total deve ser positivo e finito para resumo da Nota Tecnica.")
 
         return (
             f'[Subitem {num}]: Registros de vendas de medicamentos com incompatibilidade patológica com percentual de '
@@ -491,6 +487,14 @@ def _build_resumo_criticidade(num: str, key: str, comp: dict[str, Any], total_mo
             f'[Subitem {num}]: {percentuais_templates[key]} com percentual financeiro de '
             f'{_format_decimal_pt(percentual_financeiro, 2)}% do valor autorizado total da farmácia no período. '
             f'Estes registros de vendas representaram valor autorizado de R$ {_format_decimal_pt(valor_outra_uf, 2)};'
+        )
+    if key == "teto":
+        valor_identificado = comp["valor_suspeito"]
+        return (
+            f'[Subitem {num}]: Registros de vendas correspondentes ao limite máximo de retirada mensal de '
+            f'medicamento por cliente, superior em {_format_decimal_pt(multiplicador, 2)} vezes à mediana '
+            f'correspondente aos estabelecimentos de sua região. Estes registros de vendas representaram '
+            f'um valor total estimado de R$ {_format_decimal_pt(valor_identificado, 2)}.'
         )
     if key in percentuais_templates:
         valor_estimado = _valor_estimado_por_percentual(total_mov, percentual)

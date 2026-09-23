@@ -1,4 +1,5 @@
 from datetime import date
+from math import isfinite
 from typing import Any, Optional
 import unicodedata
 
@@ -1836,6 +1837,18 @@ def _build_teto_context(
         except (TypeError, ValueError):
             return 0.0
 
+    def as_required_value(key: str) -> float:
+        value = row.get(key)
+        if value is None:
+            raise RuntimeError(f"Valor obrigatorio {key} ausente na matriz de teto para {cnpj}.")
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(f"Valor obrigatorio {key} invalido na matriz de teto para {cnpj}.") from exc
+        if not isfinite(numeric_value) or numeric_value < 0:
+            raise RuntimeError(f"Valor obrigatorio {key} invalido na matriz de teto para {cnpj}.")
+        return numeric_value
+
     if data_inicio and data_fim:
         periodo_desc = (
             f'no ano de {data_inicio.year}'
@@ -1848,7 +1861,9 @@ def _build_teto_context(
     return {
         "periodo_desc": periodo_desc,
         "percentual": as_float("pct_teto"),
-        "valor_suspeito": as_float("teto_valor"),
+        "valor_suspeito": as_required_value("teto_valor"),
+        "valor_monitorado": as_required_value("teto_valor_total"),
+        "valor_total_vendas": as_required_value("valor_total_vendas"),
         "mediana_regiao": as_float("med_teto_reg"),
         "mediana_uf": as_float("med_teto_uf"),
         "mediana_brasil": as_float("med_teto_br"),
@@ -1862,14 +1877,18 @@ def _add_teto_text(doc, num: str, razao_social: str, teto_comp: dict[str, Any], 
     """Adiciona texto analitico de vendas no teto maximo usando a matriz atual."""
     periodo_desc = teto_comp["periodo_desc"]
     percentual_fmt = _format_decimal_pt(teto_comp["percentual"], 2)
-    valor_suspeito = teto_comp.get("valor_suspeito") or 0.0
-    valor_suspeito_fmt = _format_decimal_pt(valor_suspeito, 2)
+    valor_suspeito_fmt = _format_decimal_pt(teto_comp["valor_suspeito"], 2)
+    valor_monitorado_fmt = _format_decimal_pt(teto_comp["valor_monitorado"], 2)
+    valor_total_vendas = teto_comp["valor_total_vendas"]
+    valor_total_vendas_fmt = _format_decimal_pt(valor_total_vendas, 2)
+    if valor_total_vendas < teto_comp["valor_monitorado"]:
+        raise RuntimeError("Vendas totais inferiores as vendas monitoradas no indicador de teto.")
     multiplicador_reg_fmt = _format_decimal_pt(teto_comp["multiplicador_regiao"], 2)
     multiplicador_uf_fmt = _format_decimal_pt(teto_comp["multiplicador_uf"], 2)
     multiplicador_br_fmt = _format_decimal_pt(teto_comp["multiplicador_brasil"], 2)
 
     heading = doc.add_heading(
-        f'{num} Registros de vendas no “teto máximo” para clientes da Farmácia {razao_social} com percentual sobre suas vendas totais muito superior ao dos estabelecimentos de sua região',
+        f'{num} Registros de vendas no “teto máximo” da Farmácia {razao_social} com participação no valor das vendas superior à mediana das farmácias de sua região',
         level=2,
     )
     if bookmark_name:
@@ -1884,26 +1903,34 @@ def _add_teto_text(doc, num: str, razao_social: str, teto_comp: dict[str, Any], 
     )
     _run(
         p1,
-        'Retiradas de medicamentos por um CPF no limite máximo mensal são consideradas, para fins de monitoramento, uma “venda no teto”. ',
+        'Para este indicador, considera-se um item no “teto máximo” quando a quantidade autorizada no registro é igual ou superior ao limite previsto para seu princípio ativo. ',
         color='0F172A',
         size=12,
     )
     _run(
         p1,
-        'A expectativa da análise é que o percentual levantado para vendas de medicamentos “no teto” pelo estabelecimento acompanhe o padrão das demais farmácias localizadas na mesma região. Percentual muito acima da mediana da região sugere a ocorrência de vendas fictícias.',
+        'A expectativa da análise é que a participação desses itens no valor das vendas monitoradas acompanhe o padrão das demais farmácias localizadas na mesma região. Percentual muito acima da mediana da região sugere a ocorrência de vendas fictícias.',
         color='0F172A',
         size=12,
     )
 
     p2 = doc.add_paragraph()
     _run(p2, f'Em relação à Farmácia {razao_social}, verificou-se que, {periodo_desc}, ', color='0F172A', size=12)
-    _run(p2, f'{percentual_fmt}%', color='334155', size=12, underline=True)
-    if valor_suspeito > 0:
-        _run(p2, f' (R$ {valor_suspeito_fmt})', color='334155', size=12, underline=True)
-    _run(p2, ' dos registros de vendas de medicamentos por ela efetivadas no âmbito do PFPB foram realizadas no “teto máximo”. Tal percentual corresponde a ', color='0F172A', size=12)
+    _run(p2, f'{percentual_fmt}% (R$ {valor_suspeito_fmt})', color='334155', size=12, underline=True)
+    _run(p2, ' dos registros de vendas de medicamentos passíveis de serem monitoradas por este indicador', color='0F172A', size=12)
+    if valor_total_vendas > teto_comp["valor_monitorado"]:
+        _footnote_ref(
+            doc,
+            p2,
+            18,
+            f'Ressalta-se que o montante total de vendas no período atingiu R$ {valor_total_vendas_fmt}. '
+            f'Contudo, a base analisada para a definição das medianas contemplou R$ {valor_monitorado_fmt}, '
+            'visto que parte dos medicamentos cadastrados não apresentava teto máximo válido, '
+            'inviabilizando o processamento completo pelo sistema.',
+        )
+    _run(p2, ' foram realizadas no “teto máximo”. Tal percentual corresponde a ', color='0F172A', size=12)
     _run(p2, f'{multiplicador_reg_fmt} {_vez_ou_vezes(multiplicador_reg_fmt)}', color='334155', size=12, underline=True)
-    _run(p2, ' o percentual mediano de vendas com essa configuração das farmácias de sua região. ', color='0F172A', size=12)
-    _run(p2, 'Ampliando-se o comparativo geográfico, o percentual equivale a ', color='0F172A', size=12)
+    _run(p2, ' o percentual mediano de vendas com essa configuração das farmácias de sua região. Ampliando-se o comparativo geográfico, o percentual equivale a ', color='0F172A', size=12)
     _run(p2, f'{multiplicador_uf_fmt} {_vez_ou_vezes(multiplicador_uf_fmt)}', color='334155', size=12, underline=True)
     _run(p2, ' o das farmácias localizadas em seu Estado e ', color='0F172A', size=12)
     _run(p2, f'{multiplicador_br_fmt} {_vez_ou_vezes(multiplicador_br_fmt)}', color='334155', size=12, underline=True)
