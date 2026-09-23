@@ -64,12 +64,13 @@ def _crm_prescricoes_brasil_semestre_schema() -> dict:
     }
 
 
-def _crm_prescricoes_estabelecimento_mes_schema() -> dict:
+def _crm_prescricoes_estabelecimento_medico_mes_schema() -> dict:
     return {
         "id_cnpj": pl.Int32,
         "id_medico": pl.Utf8,
         "competencia": pl.Int32,
-        "nu_prescricoes_mes": pl.Int32,
+        "nu_prescricoes_mes": pl.Int16,
+        "qtd_dias_com_prescricao_mes": pl.UInt8,
     }
 
 
@@ -82,16 +83,33 @@ def _crm_prescricoes_medico_municipio_mes_schema() -> dict:
     }
 
 
-def _crm_prescricoes_gerencial_schema() -> dict:
+def _crm_prescricoes_medico_brasil_mes_schema() -> dict:
+    return {
+        "id_medico": pl.Utf8,
+        "competencia": pl.Int32,
+        "nu_prescricoes_mes": pl.Int16,
+    }
+
+
+def _crm_prescricoes_geografia_mes_schema() -> dict:
     return {
         "nivel": pl.Utf8,
         "id_geografico": pl.Utf8,
+        "id_medico": pl.Utf8,
         "competencia": pl.Int32,
-        "nu_prescricoes_total": pl.Int64,
-        "qtd_crms_ativos": pl.Int32,
-        "qtd_crms_anomalos": pl.Int32,
-        "percentual_crms_anomalos": pl.Float64,
-        "media_prescricoes_dia": pl.Float64,
+        "nu_prescricoes_mes": pl.Int64,
+        "is_mes_anomalo": pl.Boolean,
+    }
+
+
+def _crm_mapa_brasil_periodo_schema() -> dict:
+    return {
+        "nivel": pl.Utf8,
+        "id_geografico": pl.Utf8,
+        "competencia_inicio": pl.Int32,
+        "competencia_fim": pl.Int32,
+        "qtd_medicos_ativos": pl.Int32,
+        "qtd_medicos_anomalos": pl.Int32,
     }
 
 
@@ -414,9 +432,11 @@ GLOBAL_CACHE_DEFINITIONS = (
     CacheDefinition("bench_crm_regiao", cache_files.BENCH_CRM_REGIAO_PARQUET, "global"),
     CacheDefinition("bench_crm_br", cache_files.BENCH_CRM_BR_PARQUET, "global"),
     CacheDefinition("crm_prescricoes_brasil_semestre", cache_files.CRM_PRESCRICOES_BRASIL_SEMESTRE_PARQUET, "global", _crm_prescricoes_brasil_semestre_schema()),
-    CacheDefinition("crm_prescricoes_estabelecimento_mes", cache_files.CRM_PRESCRICOES_ESTABELECIMENTO_MES_PARQUET, "global", _crm_prescricoes_estabelecimento_mes_schema()),
+    CacheDefinition("crm_prescricoes_estabelecimento_medico_mes", cache_files.CRM_PRESCRICOES_ESTABELECIMENTO_MEDICO_MES_PARQUET, "global", _crm_prescricoes_estabelecimento_medico_mes_schema()),
     CacheDefinition("crm_prescricoes_medico_municipio_mes", cache_files.CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PARQUET, "global", _crm_prescricoes_medico_municipio_mes_schema()),
-    CacheDefinition("crm_prescricoes_gerencial", cache_files.CRM_PRESCRICOES_GERENCIAL_PARQUET, "global", _crm_prescricoes_gerencial_schema()),
+    CacheDefinition("crm_prescricoes_medico_brasil_mes", cache_files.CRM_PRESCRICOES_MEDICO_BRASIL_MES_PARQUET, "global", _crm_prescricoes_medico_brasil_mes_schema()),
+    CacheDefinition("crm_prescricoes_geografia_mes", cache_files.CRM_PRESCRICOES_GEOGRAFIA_MES_PARQUET, "global", _crm_prescricoes_geografia_mes_schema()),
+    CacheDefinition("crm_mapa_brasil_periodo", cache_files.CRM_MAPA_BRASIL_PERIODO_PARQUET, "global", _crm_mapa_brasil_periodo_schema()),
     CacheDefinition("dados_medico", cache_files.DADOS_MEDICO_PARQUET, "global", _dados_medico_schema()),
     CacheDefinition("crm_prescritores_global", cache_files.CRM_PRESCRITORES_GLOBAL_PARQUET, "global", _crm_prescritores_schema(include_id_cnpj=True, include_no_medico=False)),
     CacheDefinition("memoria_calculo_global", cache_files.MEMORIA_CALCULO_GLOBAL_PARQUET, "global", _memoria_calculo_global_schema()),

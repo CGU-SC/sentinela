@@ -524,10 +524,10 @@ class CrmPrescricoesMapaItemSchema(BaseModel):
     uf: str
     id_ibge7: Optional[int] = None
     id_regiao_saude: Optional[str] = None
-    nu_prescricoes_total: int
-    qtd_crms_ativos: int
-    qtd_crms_anomalos: int
-    percentual_crms_anomalos: Optional[float] = None
+    nu_prescricoes_total: Optional[int] = None
+    qtd_medicos_ativos: int
+    qtd_medicos_anomalos: int
+    percentual_medicos_anomalos: Optional[float] = None
     media_prescricoes_dia: Optional[float] = None
 
 

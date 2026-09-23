@@ -339,6 +339,15 @@ def _add_anexo_ii_memoria_calculo(
         size=12,
     )
 
+    p_methodology = doc.add_paragraph()
+    p_methodology.paragraph_format.space_after = Pt(8)
+    _run(
+        p_methodology,
+        "Ressalta-se que o cálculo das vendas sem comprovação, independentemente do período de escopo selecionado, sempre leva em consideração o período total disponível no Sentinela, ou seja, de 2015 a 2024. Tal metodologia é mais conservadora e reflete maior segurança ao estoque inicial considerado pelo Sistema, tendo em vista que leva em conta as compras realizadas pelo estabelecimento desde 2015.",
+        color="0F172A",
+        size=12,
+    )
+
     p_title = doc.add_paragraph()
     _format_block_title(p_title, space_before=16, space_after=8, alignment=WD_ALIGN_PARAGRAPH.CENTER)
     _run(p_title, "Tabela 1 - Resumo geral da memória de cálculo", color="334155", size=10, bold=True)
