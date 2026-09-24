@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.6.18] - 2026-09-24
+
+### Adicionado
+- **Ações de favoritos e anotações na lista de estabelecimentos.** A tabela permite favoritar uma farmácia e abrir sua anotação diretamente na linha, sem acrescentar uma coluna.
+
+### Alterado
+- **Ações da tabela reorganizadas.** O botão “Ver indicador” aparece ao passar o mouse ou receber foco; os controles ficam alinhados, enquanto a UF permanece junto ao município.
+- **Explicações dos indicadores na lateral.** Cada indicador apresenta o mesmo tooltip HTML completo da aba de detalhe do estabelecimento. Os nomes podem ocupar mais de uma linha, e o quadro explicativo redundante foi removido.
+- **Tooltips da tabela de estabelecimentos modernizados.** As colunas e ações passaram a usar explicações em HTML, incluindo orientações para Razão Social e Risco.
+
+### Corrigido
+- **Busca de filtros da lateral.** A pesquisa reconhece termos parciais, incluindo “ju” para Jurisdição PF.
+
+## [1.6.17] - 2026-09-24
+
+### Adicionado
+- **Recuperação das Farmácias Monitoradas.** A tela permite conferir cópias válidas das preferências e restaurar a lista mediante confirmação, preservando o arquivo anterior.
+
+### Corrigido
+- **Proteção contra perda de favoritos.** Falhas de leitura ou gravação das preferências agora são informadas ao usuário, sem substituir automaticamente a lista por uma vazia nem apresentar uma gravação malsucedida como concluída. O backup só é atualizado com dados validados.
+- **Aviso da Regional da Nota Técnica alinhado às preferências.** Quando o arquivo de preferências não pode ser lido, a tela evita o alerta duplicado, identifica a regional como temporariamente indisponível e a recarrega após a recuperação da lista.
+
 ## [1.6.16] - 2026-09-23
 
 ### Alterado
