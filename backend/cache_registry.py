@@ -92,14 +92,14 @@ def _crm_medico_brasil_mes_schema() -> dict:
     }
 
 
-def _crm_prescricoes_geografia_mes_schema() -> dict:
+def _crm_contagem_medicos_municipio_regiao_periodo_schema() -> dict:
     return {
         "nivel": pl.Utf8,
         "id_geografico": pl.Utf8,
-        "id_medico": pl.Utf8,
-        "competencia": pl.Int32,
-        "nu_prescricoes_mes": pl.Int64,
-        "is_mes_anomalo": pl.Boolean,
+        "competencia_inicio": pl.Int32,
+        "competencia_fim": pl.Int32,
+        "qtd_medicos_ativos": pl.Int32,
+        "qtd_medicos_anomalos": pl.Int32,
     }
 
 
@@ -436,7 +436,7 @@ GLOBAL_CACHE_DEFINITIONS = (
     CacheDefinition("crm_medico_estabelecimento_mes", cache_files.CRM_MEDICO_ESTABELECIMENTO_MES_PARQUET, "global", _crm_medico_estabelecimento_mes_schema()),
     CacheDefinition("crm_prescricoes_medico_municipio_mes", cache_files.CRM_PRESCRICOES_MEDICO_MUNICIPIO_MES_PARQUET, "global", _crm_prescricoes_medico_municipio_mes_schema()),
     CacheDefinition("crm_medico_brasil_mes", cache_files.CRM_MEDICO_BRASIL_MES_PARQUET, "global", _crm_medico_brasil_mes_schema()),
-    CacheDefinition("crm_prescricoes_geografia_mes", cache_files.CRM_PRESCRICOES_GEOGRAFIA_MES_PARQUET, "global", _crm_prescricoes_geografia_mes_schema()),
+    CacheDefinition("crm_contagem_medicos_municipio_regiao_periodo", cache_files.CRM_CONTAGEM_MEDICOS_MUNICIPIO_REGIAO_PERIODO_PARQUET, "global", _crm_contagem_medicos_municipio_regiao_periodo_schema()),
     CacheDefinition("crm_contagem_medicos_uf_brasil_periodo", cache_files.CRM_CONTAGEM_MEDICOS_UF_BRASIL_PERIODO_PARQUET, "global", _crm_contagem_medicos_uf_brasil_periodo_schema()),
     CacheDefinition("dados_medico", cache_files.DADOS_MEDICO_PARQUET, "global", _dados_medico_schema()),
     CacheDefinition("crm_prescritores_global", cache_files.CRM_PRESCRITORES_GLOBAL_PARQUET, "global", _crm_prescritores_schema(include_id_cnpj=True, include_no_medico=False)),
