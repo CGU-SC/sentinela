@@ -882,28 +882,28 @@
 <nav aria-label="4. Arquitetura-alvo dos módulos" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#41-crm_prescricoes_medico_brasil_messmod">
+<a class="md-nav__link" href="#41-crm_medico_brasil_messmod">
 <span class="md-ellipsis">
       
-        4.1. crm_prescricoes_medico_brasil_mes.smod
+        4.1. crm_medico_brasil_mes.smod
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#42-crm_prescricoes_geografia_messmod">
+<a class="md-nav__link" href="#42-crm_contagem_medicos_municipio_regiao_periodosmod">
 <span class="md-ellipsis">
       
-        4.2. crm_prescricoes_geografia_mes.smod
+        4.2. crm_contagem_medicos_municipio_regiao_periodo.smod
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#43-crm_mapa_brasil_periodosmod">
+<a class="md-nav__link" href="#43-crm_contagem_medicos_uf_brasil_periodosmod">
 <span class="md-ellipsis">
       
-        4.3. crm_mapa_brasil_periodo.smod
+        4.3. crm_contagem_medicos_uf_brasil_periodo.smod
       
     </span>
 </a>
@@ -1478,16 +1478,24 @@
 <article class="md-content__inner md-typeset">
 <h1 id="plano-de-implementacao-taxa-de-prescricoes-por-dia-com-registro">Plano de implementação — Taxa de prescrições por dia com registro<a class="headerlink" href="#plano-de-implementacao-taxa-de-prescricoes-por-dia-com-registro" title="Permanent link">¶</a></h1>
 <h2 id="etapa-aprovada-mapa-do-brasil-sem-uf-selecionada">Etapa aprovada: mapa do Brasil sem UF selecionada<a class="headerlink" href="#etapa-aprovada-mapa-do-brasil-sem-uf-selecionada" title="Permanent link">¶</a></h2>
-<p>O primeiro recorte usa <code>crm_mapa_brasil_periodo.smod</code>, com 27 UFs e uma linha
+<p>O primeiro recorte usa <code>crm_contagem_medicos_uf_brasil_periodo.smod</code>, com 27 UFs e uma linha
 <code>BR</code> para cada intervalo de meses completos. Um médico é anômalo em um
 território se, em pelo menos um mês do intervalo, suas prescrições válidas
 divididas pelas datas distintas com prescrição naquele território forem
 <strong>maiores que 22</strong>. A linha <code>BR</code> é calculada com datas distintas nacionais;
 as contagens de médicos não são somadas entre UFs ou meses.</p>
-<p>Esta etapa altera somente o mapa nacional. O ranking e os mapas após selecionar
-uma UF permanecem no fluxo anterior até a ampliação metodológica descrita nas
-demais seções deste plano. A geração real do SMOD depende da execução SQL e da
-sincronização do módulo.</p>
+<p>Os módulos mensais de detalhe são <code>crm_medico_estabelecimento_mes.smod</code> e
+<code>crm_medico_brasil_mes.smod</code>. As tabelas <code>app_</code> já publicadas com os nomes
+anteriores devem ser renomeadas no banco com
+<code>src/indicadores/crms_renomear_tabelas_app.sql</code> antes de uma nova sincronização
+das opções 44, 47 ou 48. O script de migração não é executado automaticamente.
+Se a tabela de contagem por UF/Brasil ainda não existir, execute as etapas SQL
+de geração e promoção antes de sincronizar a opção 48.</p>
+<p>O mapa municipal após selecionar uma UF passa a consumir contagens prontas por
+município e intervalo; a contagem distinta do escopo de região de saúde também
+é materializada. O ranking permanece no fluxo anterior e não pode consumir o
+SMOD agregado. A geração real dos SMODs depende da execução SQL e da
+sincronização dos módulos.</p>
 <h2 id="1-objetivo">1. Objetivo<a class="headerlink" href="#1-objetivo" title="Permanent link">¶</a></h2>
 <p>Alterar a análise gerencial de CRMs disponível em <code>/analises</code> para que a taxa de prescrições por dia deixe de usar todos os dias corridos do período e passe a considerar somente os dias em que exista ao menos uma prescrição válida registrada para o médico no Programa Farmácia Popular do Brasil (PFPB), dentro do escopo geográfico consultado.</p>
 <p>O resultado esperado é uma métrica de intensidade de prescrição nos dias com atividade observável no PFPB:</p>
@@ -1569,16 +1577,16 @@ sincronização do módulo.</p>
 </span></code></pre></div>
 <p>Essa regra é produzida no SQL e também recalculada no backend em alguns fluxos.</p>
 <h3 id="33-mapa">3.3. Mapa<a class="headerlink" href="#33-mapa" title="Permanent link">¶</a></h3>
-<p>O mapa usa <code>crm_prescricoes_geografia_mes.smod</code> e o agregado nacional <code>crm_mapa_brasil_periodo.smod</code>. Portanto, a troca do denominador afeta:</p>
+<p>O mapa usa <code>crm_contagem_medicos_municipio_regiao_periodo.smod</code> e o agregado nacional <code>crm_contagem_medicos_uf_brasil_periodo.smod</code>. As contagens municipais e regionais são calculadas por médico apenas na etapa SQL. O módulo final não armazena o ranking, as prescrições totais nem a média diária. Portanto, a troca do denominador afeta:</p>
 <ul>
 <li>a quantidade de médicos anômalos;</li>
 <li>o percentual de médicos anômalos;</li>
 <li>a quantidade de meses anômalos por médico;</li>
-<li>a média de prescrições por dia apresentada nos tooltips;</li>
+<li>a média de prescrições por dia, caso venha a ser publicada por uma fonte separada;</li>
 <li>a escala de cores indiretamente, porque os percentuais serão diferentes.</li>
 </ul>
 <h2 id="4-arquitetura-alvo-dos-modulos">4. Arquitetura-alvo dos módulos<a class="headerlink" href="#4-arquitetura-alvo-dos-modulos" title="Permanent link">¶</a></h2>
-<h3 id="41-crm_prescricoes_medico_brasil_messmod">4.1. <code>crm_prescricoes_medico_brasil_mes.smod</code><a class="headerlink" href="#41-crm_prescricoes_medico_brasil_messmod" title="Permanent link">¶</a></h3>
+<h3 id="41-crm_medico_brasil_messmod">4.1. <code>crm_medico_brasil_mes.smod</code><a class="headerlink" href="#41-crm_medico_brasil_messmod" title="Permanent link">¶</a></h3>
 <p>Granularidade mantida:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a>id_medico + competencia
 </span></code></pre></div>
@@ -1620,9 +1628,9 @@ sincronização do módulo.</p>
 </tbody>
 </table>
 <p>Esse módulo continuará sendo a fonte do ranking quando o escopo for Brasil.</p>
-<h3 id="42-crm_prescricoes_geografia_messmod">4.2. <code>crm_prescricoes_geografia_mes.smod</code><a class="headerlink" href="#42-crm_prescricoes_geografia_messmod" title="Permanent link">¶</a></h3>
-<p>Granularidade mantida:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a>nivel + id_geografico + id_medico + competencia
+<h3 id="42-crm_contagem_medicos_municipio_regiao_periodosmod">4.2. <code>crm_contagem_medicos_municipio_regiao_periodo.smod</code><a class="headerlink" href="#42-crm_contagem_medicos_municipio_regiao_periodosmod" title="Permanent link">¶</a></h3>
+<p>Granularidade final:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a>nivel + id_geografico + competencia_inicio + competencia_fim
 </span></code></pre></div>
 <p>Schema proposto:</p>
 <table>
@@ -1639,7 +1647,7 @@ sincronização do módulo.</p>
 <td><code>nivel</code></td>
 <td>string</td>
 <td style="text-align: right;">Sim</td>
-<td><code>municipio</code>, <code>regiao_saude</code> ou <code>uf</code></td>
+<td><code>municipio</code> ou <code>regiao_saude</code></td>
 </tr>
 <tr>
 <td><code>id_geografico</code></td>
@@ -1648,39 +1656,35 @@ sincronização do módulo.</p>
 <td>ID coerente com o nível</td>
 </tr>
 <tr>
-<td><code>id_medico</code></td>
-<td>string</td>
-<td style="text-align: right;">Sim</td>
-<td>Identificador normalizado CRM/UF</td>
-</tr>
-<tr>
-<td><code>competencia</code></td>
+<td><code>competencia_inicio</code></td>
 <td>int32</td>
 <td style="text-align: right;">Sim</td>
-<td>Formato <code>YYYYMM</code></td>
+<td>Primeiro mês do intervalo, <code>YYYYMM</code></td>
 </tr>
 <tr>
-<td><code>nu_prescricoes_mes</code></td>
-<td>int64</td>
+<td><code>competencia_fim</code></td>
+<td>int32</td>
 <td style="text-align: right;">Sim</td>
-<td>Maior que zero</td>
+<td>Último mês do intervalo, <code>YYYYMM</code></td>
 </tr>
 <tr>
-<td><code>qtd_dias_com_prescricao_mes</code></td>
-<td>int8/int16</td>
+<td><code>qtd_medicos_ativos</code></td>
+<td>int32</td>
 <td style="text-align: right;">Sim</td>
-<td>Entre 1 e o número de dias do mês</td>
+<td>Médicos distintos ativos no intervalo</td>
 </tr>
 <tr>
-<td><code>is_mes_anomalo</code></td>
-<td>boolean</td>
+<td><code>qtd_medicos_anomalos</code></td>
+<td>int32</td>
 <td style="text-align: right;">Sim</td>
-<td>Resultado da nova regra mensal</td>
+<td>Médicos distintos com ao menos um mês acima de 22/dia com prescrição</td>
 </tr>
 </tbody>
 </table>
-<p>Esse módulo será a fonte do mapa e do ranking nos escopos UF, Região de Saúde e município.</p>
-<h3 id="43-crm_mapa_brasil_periodosmod">4.3. <code>crm_mapa_brasil_periodo.smod</code><a class="headerlink" href="#43-crm_mapa_brasil_periodosmod" title="Permanent link">¶</a></h3>
+<p>O módulo final não contém <code>id_medico</code>. O cálculo por médico, território e mês
+ocorre apenas nas temporárias da etapa 1. O mapa lê as contagens municipais,
+enquanto o total da UF vem do módulo UF/Brasil. Ranking não usa este módulo.</p>
+<h3 id="43-crm_contagem_medicos_uf_brasil_periodosmod">4.3. <code>crm_contagem_medicos_uf_brasil_periodo.smod</code><a class="headerlink" href="#43-crm_contagem_medicos_uf_brasil_periodosmod" title="Permanent link">¶</a></h3>
 <p>Granularidade: <code>nivel + id_geografico + competencia_inicio + competencia_fim</code>.
 Há uma linha por UF e uma linha <code>brasil/BR</code> em cada intervalo. Schema:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a>nivel
@@ -1697,7 +1701,7 @@ médicos não pode ser obtido pela soma das UFs.</p>
 <p>Não alterar nesta implementação:</p>
 <ul>
 <li><code>crm_prescricoes_medico_municipio_mes.smod</code>;</li>
-<li><code>crm_prescricoes_estabelecimento_medico_mes.smod</code>;</li>
+<li><code>crm_medico_estabelecimento_mes.smod</code>;</li>
 <li><code>dados_medico.smod</code>;</li>
 <li><code>localidades.smod</code>;</li>
 <li><code>crm_prescricoes_medico_brasil_semestre.smod</code>.</li>
@@ -1784,9 +1788,9 @@ médicos não pode ser obtido pela soma das UFs.</p>
 <li>Reescrevê-lo para consumir uma fonte diária persistida e validada; ou</li>
 <li>Descontinuá-lo formalmente e tornar <code>crms_etapa1_pre_global.sql</code> a única fonte de verdade para esse módulo.</li>
 </ol>
-<p>A recomendação é a segunda opção, evitando uma segunda varredura independente da movimentação bruta. A remoção ou descontinuação deve ser autorizada antes da implementação.</p>
+<p>Foi adotada a segunda opção: o SQL independente lança erro explícito, e a etapa 1 é a fonte de verdade do agregado municipal/regional por período.</p>
 <h2 id="6-validacoes-sql-da-etapa-de-publicacao">6. Validações SQL da etapa de publicação<a class="headerlink" href="#6-validacoes-sql-da-etapa-de-publicacao" title="Permanent link">¶</a></h2>
-<p>Alterar <code>src/indicadores/crms_etapa6_build_crm_para_app.sql</code> para exigir o novo campo nos módulos nacional e geográfico.</p>
+<p>Validar o campo de dias no módulo nacional mensal e, separadamente, o contrato de seis campos do agregado municipal/regional por período em <code>src/indicadores/crms_etapa6_build_crm_para_app.sql</code>.</p>
 <p>Adicionar as seguintes validações:</p>
 <ul>
 <li>coluna existente e <code>NOT NULL</code>;</li>
@@ -1795,8 +1799,8 @@ médicos não pode ser obtido pela soma das UFs.</p>
 <li>valor menor ou igual a <code>DAY(EOMONTH(competencia))</code>;</li>
 <li><code>nu_prescricoes_mes &gt;= qtd_dias_com_prescricao_mes</code>;</li>
 <li>chave única preservada;</li>
-<li>três níveis geográficos presentes;</li>
-<li><code>is_mes_anomalo</code> exatamente coerente com a nova fórmula e o limite vigente;</li>
+<li>dois níveis no agregado municipal/regional e todos os intervalos por território;</li>
+<li>contagens não negativas, com anômalos menores ou iguais aos ativos;</li>
 <li>nenhuma divergência entre total nacional mensal e soma da movimentação elegível;</li>
 <li>nenhuma divergência de total de prescrições causada pela introdução da granularidade diária.</li>
 </ul>
@@ -1805,15 +1809,15 @@ médicos não pode ser obtido pela soma das UFs.</p>
 <h3 id="71-versoes-de-cache">7.1. Versões de cache<a class="headerlink" href="#71-versoes-de-cache" title="Permanent link">¶</a></h3>
 <p>Alterar <code>backend/cache_files.py</code>:</p>
 <ul>
-<li>incrementar <code>CRM_PRESCRICOES_MEDICO_BRASIL_MES_CACHE_VERSION</code>;</li>
-<li>incrementar <code>CRM_PRESCRICOES_GEOGRAFIA_MES_CACHE_VERSION</code>.</li>
+<li>incrementar <code>CRM_MEDICO_BRASIL_MES_CACHE_VERSION</code>;</li>
+<li>incrementar <code>CRM_CONTAGEM_MEDICOS_MUNICIPIO_REGIAO_PERIODO_CACHE_VERSION</code>.</li>
 </ul>
 <p>Isso invalida manifestos parciais incompatíveis e impede que partes antigas sejam misturadas ao novo schema.</p>
 <h3 id="72-registro-de-schemas">7.2. Registro de schemas<a class="headerlink" href="#72-registro-de-schemas" title="Permanent link">¶</a></h3>
 <p>Alterar <code>backend/cache_registry.py</code>:</p>
 <ul>
 <li>adicionar <code>qtd_dias_com_prescricao_mes</code> ao schema nacional;</li>
-<li>adicionar <code>qtd_dias_com_prescricao_mes</code> ao schema geográfico;</li>
+<li>exigir as seis colunas do agregado municipal/regional por período;</li>
 <li>definir tipo Polars pequeno, explícito e compatível com 1 a 31;</li>
 <li>manter validação estrita, sem aceitar arquivo com schema antigo.</li>
 </ul>
@@ -1829,24 +1833,24 @@ médicos não pode ser obtido pela soma das UFs.</p>
 <li>atualizar mensagens de erro para identificar claramente o módulo incompatível.</li>
 </ul>
 <h3 id="74-sincronizacao-seletiva">7.4. Sincronização seletiva<a class="headerlink" href="#74-sincronizacao-seletiva" title="Permanent link">¶</a></h3>
-<p>Registrar <code>crm_mapa_brasil_periodo.smod</code> em <code>src/scripts/sincronizar_cache.py</code>. Na ampliação posterior, confirmar que:</p>
+<p>Registrar <code>crm_contagem_medicos_uf_brasil_periodo.smod</code> em <code>src/scripts/sincronizar_cache.py</code>. Na ampliação posterior, confirmar que:</p>
 <ul>
 <li>o módulo geográfico seja sincronizado antes de o agregado nacional por período ser considerado pronto;</li>
 <li>o módulo nacional mensal seja regenerado com sua nova versão;</li>
-<li><code>crm_mapa_brasil_periodo.smod</code> seja gerado com o novo schema e a nova regra;</li>
+<li><code>crm_contagem_medicos_uf_brasil_periodo.smod</code> seja gerado com o novo schema e a nova regra;</li>
 <li>partes <code>.smod.part</code> e manifestos antigos sejam invalidados pelas novas versões.</li>
 </ul>
 <h3 id="75-inspetor-de-modulos">7.5. Inspetor de módulos<a class="headerlink" href="#75-inspetor-de-modulos" title="Permanent link">¶</a></h3>
 <p>Alterar <code>src/scripts/check_parquet_schema.py</code> para permitir inspeção direta de:</p>
 <ul>
-<li><code>crm_prescricoes_medico_brasil_mes.smod</code>;</li>
+<li><code>crm_medico_brasil_mes.smod</code>;</li>
 <li><code>crm_prescricoes_medico_municipio_mes.smod</code>;</li>
-<li><code>crm_prescricoes_geografia_mes.smod</code>;</li>
-<li><code>crm_mapa_brasil_periodo.smod</code>.</li>
+<li><code>crm_contagem_medicos_municipio_regiao_periodo.smod</code>;</li>
+<li><code>crm_contagem_medicos_uf_brasil_periodo.smod</code>.</li>
 </ul>
 <h2 id="8-backend-da-analise-de-crms">8. Backend da análise de CRMs<a class="headerlink" href="#8-backend-da-analise-de-crms" title="Permanent link">¶</a></h2>
 <h3 id="81-colunas-obrigatorias">8.1. Colunas obrigatórias<a class="headerlink" href="#81-colunas-obrigatorias" title="Permanent link">¶</a></h3>
-<p>Alterar <code>backend/api/services/analytics/crm_analysis.py</code> para exigir <code>qtd_dias_com_prescricao_mes</code> nos módulos nacional e geográfico.</p>
+<p>Exigir as seis colunas do agregado municipal/regional em <code>backend/api/services/analytics/crm_analysis.py</code>. O módulo nacional tem contrato próprio; o ranking utiliza fontes mensais separadas.</p>
 <p>Ausência da coluna deve produzir erro visível de cache incompatível. Não implementar compatibilidade silenciosa com o schema antigo.</p>
 <h3 id="82-ranking-nacional">8.2. Ranking nacional<a class="headerlink" href="#82-ranking-nacional" title="Permanent link">¶</a></h3>
 <p>Substituir <code>dias_intervalo</code> por:</p>
@@ -1860,7 +1864,7 @@ médicos não pode ser obtido pela soma das UFs.</p>
 <p>O cálculo de mês anômalo deve usar o denominador mensal persistido.</p>
 <h3 id="83-rankings-geograficos">8.3. Rankings geográficos<a class="headerlink" href="#83-rankings-geograficos" title="Permanent link">¶</a></h3>
 <p>Parar de reconstruir UF e Região de Saúde a partir de <code>crm_prescricoes_medico_municipio_mes.smod</code>.</p>
-<p>Usar <code>crm_prescricoes_geografia_mes.smod</code> diretamente:</p>
+<p>O SMOD <code>crm_contagem_medicos_municipio_regiao_periodo.smod</code> não contém médicos individualizados e não pode alimentar o ranking. Uma futura migração exigirá fonte própria com dias distintos no escopo consultado.</p>
 <table>
 <thead>
 <tr>
@@ -1883,20 +1887,13 @@ médicos não pode ser obtido pela soma das UFs.</p>
 <tr>
 <td>UF</td>
 <td><code>uf</code></td>
-<td>sigla da UF</td>
+<td>sigla da UF no módulo UF/Brasil</td>
 </tr>
 </tbody>
 </table>
 <p>Isso evita duplicar dias entre municípios e simplifica o caminho de consulta.</p>
 <h3 id="84-mapa">8.4. Mapa<a class="headerlink" href="#84-mapa" title="Permanent link">¶</a></h3>
-<p>No agregado do mapa:</p>
-<ul>
-<li>substituir <code>crm_dias</code> por <code>dias_com_prescricao</code>;</li>
-<li>somar <code>qtd_dias_com_prescricao_mes</code> por médico e competência;</li>
-<li>calcular <code>media_prescricoes_dia</code> usando a soma desses dias;</li>
-<li>continuar contando o médico uma única vez por território no período;</li>
-<li>usar <code>is_mes_anomalo</code> já coerente com a nova metodologia.</li>
-</ul>
+<p>O mapa municipal lê as contagens do intervalo exato e calcula o percentual em memória. O total distinto da UF vem do módulo UF/Brasil; o total da região vem da linha <code>regiao_saude</code>. Prescrições totais e média diária não constam desse módulo de contagens.</p>
 <h3 id="85-cache-do-ranking-em-memoria">8.5. Cache do ranking em memória<a class="headerlink" href="#85-cache-do-ranking-em-memoria" title="Permanent link">¶</a></h3>
 <p>Manter a chave atual por geração do cache, período e geografia. Confirmar que uma nova geração de cache invalide todos os rankings calculados com o denominador antigo.</p>
 <h3 id="86-contrato-da-api">8.6. Contrato da API<a class="headerlink" href="#86-contrato-da-api" title="Permanent link">¶</a></h3>
@@ -2060,8 +2057,8 @@ ampliação da metodologia aos rankings e demais mapas.</p>
 <li>Introduzir a base diária temporária na etapa 1.</li>
 <li>Reconciliar totais mensais.</li>
 <li>Construir o agregado nacional com dias distintos.</li>
-<li>Construir os três níveis geográficos com dias distintos.</li>
-<li>Recalcular <code>is_mes_anomalo</code>.</li>
+<li>Construir temporariamente médico/mês por município e região com dias distintos.</li>
+<li>Materializar somente contagens distintas por território e intervalo.</li>
 <li>Atualizar validações da etapa 6.</li>
 <li>Atualizar ou descontinuar o script geográfico independente.</li>
 </ol>
@@ -2076,8 +2073,8 @@ ampliação da metodologia aos rankings e demais mapas.</p>
 <h3 id="fase-4-backend">Fase 4 — Backend<a class="headerlink" href="#fase-4-backend" title="Permanent link">¶</a></h3>
 <ol>
 <li>Migrar ranking nacional para o novo denominador.</li>
-<li>Migrar rankings geográficos para <code>crm_prescricoes_geografia_mes.smod</code>.</li>
-<li>Migrar médias do mapa.</li>
+<li>Manter os rankings geográficos em fonte própria; o agregado não contém <code>id_medico</code>.</li>
+<li>Ocultar a média do tooltip municipal até haver fonte agregada específica.</li>
 <li>Atualizar colunas obrigatórias e erros.</li>
 <li>Validar paginação e cache TTL.</li>
 </ol>
@@ -2093,7 +2090,7 @@ ampliação da metodologia aos rankings e demais mapas.</p>
 <li>Executar a etapa SQL completa em ambiente de validação.</li>
 <li>Publicar as tabelas <code>app_*</code> com validação transacional.</li>
 <li>Regenerar os SMODs nacional e geográfico.</li>
-<li>Gerar <code>crm_mapa_brasil_periodo.smod</code>.</li>
+<li>Gerar <code>crm_contagem_medicos_uf_brasil_periodo.smod</code>.</li>
 <li>Copiar os arquivos somente após validação de schema e conteúdo.</li>
 <li>Reiniciar ou atualizar a geração do cache da aplicação.</li>
 <li>Executar testes funcionais e de performance.</li>
@@ -2149,9 +2146,9 @@ ampliação da metodologia aos rankings e demais mapas.</p>
 </ul>
 <h3 id="artefatos-a-regenerar">Artefatos a regenerar<a class="headerlink" href="#artefatos-a-regenerar" title="Permanent link">¶</a></h3>
 <ul>
-<li><code>crm_prescricoes_medico_brasil_mes.smod</code></li>
-<li><code>crm_prescricoes_geografia_mes.smod</code></li>
-<li><code>crm_mapa_brasil_periodo.smod</code></li>
+<li><code>crm_medico_brasil_mes.smod</code></li>
+<li><code>crm_contagem_medicos_municipio_regiao_periodo.smod</code></li>
+<li><code>crm_contagem_medicos_uf_brasil_periodo.smod</code></li>
 </ul>
 <h2 id="15-criterios-de-aceite">15. Critérios de aceite<a class="headerlink" href="#15-criterios-de-aceite" title="Permanent link">¶</a></h2>
 <p>A implementação será considerada concluída somente quando:</p>
