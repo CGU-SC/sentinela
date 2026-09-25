@@ -1,7 +1,9 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
 import { useFilterStore } from '@/stores/filters';
+import { useFarmaciaListsStore } from '@/stores/farmaciaLists';
 import { useCnpjDetailStore } from '@/stores/cnpjDetail';
 import { useMetodologiaConfigStore } from '@/stores/metodologiaConfig';
 import { useFrozenData } from '@/composables/useFrozenData';
@@ -17,7 +19,9 @@ import Tag from 'primevue/tag';
 import IndicatorDetailDialog from '@/views/components/cnpj/IndicatorDetailDialog.vue';
 import GeographicDispersionDialog from '@/views/components/cnpj/GeographicDispersionDialog.vue';
 import ClinicalIncompatibilityDialog from '@/views/components/cnpj/ClinicalIncompatibilityDialog.vue';
+import ObservationDialog from '@/views/components/cnpj/ObservationDialog.vue';
 import { createCnpjPerfSession, logCnpjPerf } from '@/utils/cnpjPerfLogger';
+import { establishmentTableTooltip, establishmentRiskTooltip } from '@/config/establishmentTableTooltipConfig';
 
 const props = defineProps({
   /** Array de IndicadorCnpjRowSchema */
@@ -77,11 +81,16 @@ onMounted(() => {
 });
 
 const router = useRouter();
+const toast = useToast();
 const filterStore = useFilterStore();
+const farmaciaLists = useFarmaciaListsStore();
 const cnpjDetailStore = useCnpjDetailStore();
 const { formatCurrencyFull, toLocalISO } = useFormatting();
 const { conexaoMsClass } = useStatusClass();
 const copiedKey = ref(null);
+const showObservationDialog = ref(false);
+const observationCnpj = ref('');
+const observationEntityName = ref('');
 
 // ── Detalhamento de Indicador por linha ──────────────────
 const showGenericDetailDialog = ref(false);
@@ -315,8 +324,27 @@ function statusClass(status) {
 }
 
 function goToDetail(event) {
-  if (event.originalEvent?.target?.closest('.clickable-badge, .copy-btn')) return;
+  if (event.originalEvent?.target?.closest('.clickable-badge, .copy-btn, .row-action-btn')) return;
   router.push({ name: 'EstablishmentDetail', params: { cnpj: event.data.cnpj } });
+}
+
+async function toggleFavoriteForRow(row) {
+  const saved = await farmaciaLists.toggleInteresse(row.cnpj, row.razao_social);
+  if (!saved && farmaciaLists.loadState === 'ready') {
+    toast.add({
+      severity: 'error',
+      summary: 'Favorito não alterado',
+      detail: farmaciaLists.error || 'Não foi possível salvar a alteração.',
+      life: 5000,
+    });
+  }
+}
+
+function openObservationForRow(row) {
+  if (!farmaciaLists.canEdit || !farmaciaLists.isInteresse(row.cnpj)) return;
+  observationCnpj.value = String(row.cnpj);
+  observationEntityName.value = row.razao_social || row.cnpj;
+  showObservationDialog.value = true;
 }
 
 function copyAndSignal(text, key) {
@@ -383,7 +411,7 @@ const indicatorColumnHeader = computed(() => {
         <div v-if="selectedRegiaoNome" class="scope-filter-chip">
           <i class="pi pi-directions" />
           <span>Região: <strong>{{ selectedRegiaoNome }}</strong></span>
-          <button class="chip-clear" @click="$emit('clear-regiao-filter')" title="Limpar Região">
+          <button class="chip-clear" aria-label="Limpar Região" @click="$emit('clear-regiao-filter')" v-tooltip.top="establishmentTableTooltip('clearRegion')">
             <i class="pi pi-times" />
           </button>
         </div>
@@ -391,7 +419,7 @@ const indicatorColumnHeader = computed(() => {
         <div v-if="selectedMunicipioNome" class="scope-filter-chip">
           <i class="pi pi-map-marker" />
           <span>Município: <strong>{{ selectedMunicipioNome }}</strong></span>
-          <button class="chip-clear" @click="$emit('clear-municipio-filter')" title="Limpar Município">
+          <button class="chip-clear" aria-label="Limpar Município" @click="$emit('clear-municipio-filter')" v-tooltip.top="establishmentTableTooltip('clearMunicipality')">
             <i class="pi pi-times" />
           </button>
         </div>
@@ -419,39 +447,85 @@ const indicatorColumnHeader = computed(() => {
       <!-- Razão Social + CNPJ + Município -->
       <Column
         field="razao_social"
-        header="Razão Social"
         sortable
         headerClass="col-name"
         bodyClass="col-name"
       >
+        <template #header>
+          <span v-tooltip.top="establishmentTableTooltip('nameColumn')">Razão Social</span>
+        </template>
         <template #body="{ data }">
           <div class="razao-block">
             <span class="razao-nome-row">
               <span
-                v-tooltip.top="data.is_matriz ? 'Matriz' : 'Filial'"
+                v-tooltip.top="establishmentTableTooltip(data.is_matriz ? 'matrix' : 'branch')"
                 :class="data.is_matriz ? 'tipo-badge matriz' : 'tipo-badge filial'"
               >
                 <i :class="data.is_matriz ? 'pi pi-home' : 'pi pi-building'" />
               </span>
               <span
                 class="razao-social-cell"
-                v-tooltip.top="data.razao_social"
+                v-tooltip.top="data.razao_social != null ? establishmentTableTooltip('pharmacyName', data.razao_social) : null"
               >{{ data.razao_social ?? '—' }}</span>
             </span>
             <span class="cnpj-row">
-              <span class="cnpj-text">{{ data.cnpj }}</span>
+              <span class="cnpj-text" v-tooltip.top="establishmentTableTooltip('cnpjValue', data.cnpj)">{{ data.cnpj }}</span>
               <i
                 :class="['pi', copiedKey === data.cnpj + '-cnpj' ? 'pi-check text-success' : 'pi-copy', 'copy-btn']"
-                v-tooltip.top="'Copiar CNPJ'"
+                v-tooltip.top="establishmentTableTooltip('copyCnpj')"
                 @click.stop="copyAndSignal(data.cnpj, data.cnpj + '-cnpj')"
               />
             </span>
             <span class="loc-inline-row">
+              <span class="loc-place">
+                <span
+                  class="municipio-inline-text"
+                  v-tooltip.top="data.municipio != null ? establishmentTableTooltip('municipality', data.municipio) : null"
+                >{{ data.municipio ?? '—' }}</span>
+                <span class="uf-tag" v-tooltip.top="establishmentTableTooltip('stateValue', data.uf)">{{ data.uf }}</span>
+              </span>
               <span
-                class="municipio-inline-text"
-                v-tooltip.top="data.municipio"
-              >{{ data.municipio ?? '—' }}</span>
-              <span class="uf-tag">{{ data.uf }}</span>
+                class="row-actions"
+                :class="{ 'row-actions--with-detail': canShowDetailButton }"
+              >
+                <button
+                  v-if="canShowDetailButton"
+                  type="button"
+                  class="row-action-btn detail-action-btn"
+                  :class="{ 'is-loading': loadingDetailCnpj === String(data.cnpj).replace(/\D/g, '') }"
+                  :aria-label="`Ver detalhamento do indicador para ${data.razao_social || data.cnpj}`"
+                  :disabled="Boolean(loadingDetailCnpj)"
+                  v-tooltip.top="establishmentTableTooltip('indicatorDetails')"
+                  @click.stop="openDetailForRow(data.cnpj)"
+                >
+                  <i :class="loadingDetailCnpj === String(data.cnpj).replace(/\D/g, '') ? 'pi pi-spin pi-spinner' : 'pi pi-chart-bar'" aria-hidden="true" />
+                  <span>Ver indicador</span>
+                </button>
+                <button
+                  type="button"
+                  class="row-action-btn favorite-action-btn"
+                  :class="{ 'is-favorite': farmaciaLists.isInteresse(data.cnpj) }"
+                  :aria-label="`${farmaciaLists.isInteresse(data.cnpj) ? 'Remover dos' : 'Adicionar aos'} favoritos: ${data.razao_social || data.cnpj}`"
+                  :aria-pressed="farmaciaLists.isInteresse(data.cnpj)"
+                  :disabled="!farmaciaLists.canEdit"
+                  v-tooltip.top="establishmentTableTooltip(farmaciaLists.isInteresse(data.cnpj) ? 'favoriteRemove' : 'favoriteAdd')"
+                  @click.stop="toggleFavoriteForRow(data)"
+                >
+                  <i :class="farmaciaLists.isInteresse(data.cnpj) ? 'pi pi-star-fill' : 'pi pi-star'" aria-hidden="true" />
+                </button>
+                <button
+                  v-if="farmaciaLists.isInteresse(data.cnpj)"
+                  type="button"
+                  class="row-action-btn observation-action-btn"
+                  :class="{ 'has-observation': Boolean(farmaciaLists.getObservacao(data.cnpj)) }"
+                  :aria-label="`${farmaciaLists.getObservacao(data.cnpj) ? 'Editar' : 'Adicionar'} anotação para ${data.razao_social || data.cnpj}`"
+                  :disabled="!farmaciaLists.canEdit"
+                  v-tooltip.top="establishmentTableTooltip(farmaciaLists.getObservacao(data.cnpj) ? 'observationEdit' : 'observationAdd')"
+                  @click.stop="openObservationForRow(data)"
+                >
+                  <i :class="farmaciaLists.getObservacao(data.cnpj) ? 'pi pi-comment' : 'pi pi-pencil'" aria-hidden="true" />
+                </button>
+              </span>
             </span>
           </div>
         </template>
@@ -490,7 +564,7 @@ const indicatorColumnHeader = computed(() => {
         bodyClass="col-indicator"
       >
         <template #header>
-          <span class="indicator-column-title" v-tooltip.top="indicatorColumnHeader">
+          <span class="indicator-column-title" v-tooltip.top="establishmentTableTooltip('indicatorColumn', indicatorColumnHeader)">
             {{ indicatorColumnHeader }}
           </span>
         </template>
@@ -504,13 +578,26 @@ const indicatorColumnHeader = computed(() => {
 
       <Column
         field="risco_benchmark"
-        header="Risco"
         sortable
         headerClass="col-risk"
         bodyClass="col-risk"
       >
+        <template #header>
+          <span v-tooltip.top="establishmentTableTooltip('riskColumn')">Risco</span>
+        </template>
         <template #body="{ data }">
-          <div class="risk-cell" :class="{ muted: data.risco_benchmark == null }">
+          <div
+            class="risk-cell"
+            :class="{ muted: data.risco_benchmark == null }"
+            v-tooltip.top="establishmentRiskTooltip({
+              indicator: indicadorLabel,
+              value: formatValue(data.valor),
+              median: formatValue(benchmarkValue(data)),
+              scope: benchmarkLabel(data),
+              ratio: data.risco_benchmark,
+              status: data.status,
+            })"
+          >
             <span
               v-if="data.risco_benchmark != null"
               class="risk-value"
@@ -541,7 +628,7 @@ const indicatorColumnHeader = computed(() => {
         <template #body="{ data }">
           <span
             class="movement-value"
-            v-tooltip.top="data.valor_movimentado != null ? formatCurrencyFull(data.valor_movimentado) : null"
+            v-tooltip.top="data.valor_movimentado != null ? establishmentTableTooltip('totalSales', formatCurrencyFull(data.valor_movimentado)) : null"
           >
             {{ formatCurrencyCompact(data.valor_movimentado) }}
           </span>
@@ -549,7 +636,7 @@ const indicatorColumnHeader = computed(() => {
         <template #footer>
           <span
             class="movement-value table-total-movement"
-            v-tooltip.top="tableFooter.totalMovFull"
+            v-tooltip.top="establishmentTableTooltip('totalSalesFooter', tableFooter.totalMovFull)"
           >{{ tableFooter.totalMov }}</span>
         </template>
       </Column>
@@ -567,7 +654,7 @@ const indicatorColumnHeader = computed(() => {
             <span
               class="noncomp-value"
               :class="{ 'high-value-audit': data.val_sem_comp >= auditHighValue }"
-              v-tooltip.top="data.val_sem_comp != null ? formatCurrencyFull(data.val_sem_comp) : null"
+              v-tooltip.top="data.val_sem_comp != null ? establishmentTableTooltip('unverifiedSales', formatCurrencyFull(data.val_sem_comp)) : null"
             >
               {{ formatCurrencyCompact(data.val_sem_comp) }}
             </span>
@@ -580,7 +667,7 @@ const indicatorColumnHeader = computed(() => {
           <div class="noncomp-cell table-total-cell">
             <span
               class="noncomp-value"
-              v-tooltip.top="tableFooter.totalSemComprovacaoFull"
+              v-tooltip.top="establishmentTableTooltip('unverifiedSalesFooter', tableFooter.totalSemComprovacaoFull)"
             >{{ tableFooter.totalSemComprovacao }}</span>
           </div>
         </template>
@@ -597,7 +684,7 @@ const indicatorColumnHeader = computed(() => {
           <Tag
             :value="data.is_grande_rede ? 'Sim' : 'Não'"
             :class="[data.is_grande_rede ? 'status-info' : 'status-secondary', 'clickable-badge']"
-            v-tooltip.top="'Filtrar por Grande Rede: ' + (data.is_grande_rede ? 'Sim' : 'Não')"
+            v-tooltip.top="establishmentTableTooltip('largeNetworkFilter', data.is_grande_rede ? 'Sim' : 'Não')"
             @click.stop="applyFilter('grandeRede', data.is_grande_rede)"
           />
         </template>
@@ -615,7 +702,7 @@ const indicatorColumnHeader = computed(() => {
             v-if="data.qtd_estabelecimentos_rede > 1"
             :value="String(data.qtd_estabelecimentos_rede)"
             class="status-info clickable-badge"
-            v-tooltip.top="'Ver todos os estabelecimentos desta rede'"
+            v-tooltip.top="establishmentTableTooltip('networkEstablishments', data.qtd_estabelecimentos_rede)"
             @click.stop="filterStore.selectedCnpjRaiz = extractCnpjRaiz(data.cnpj)"
           />
           <Tag
@@ -638,37 +725,20 @@ const indicatorColumnHeader = computed(() => {
           <Tag
             :value="data.is_conexao_ativa ? 'Ativa' : 'Inativa'"
             :class="[conexaoMsClass(data.is_conexao_ativa), 'clickable-badge']"
-            v-tooltip.top="'Filtrar por Conexão MS: ' + (data.is_conexao_ativa ? 'Ativa' : 'Inativa')"
+            v-tooltip.top="establishmentTableTooltip('ministryConnectionFilter', data.is_conexao_ativa ? 'Ativa' : 'Inativa')"
             @click.stop="applyFilter('conexaoMS', data.is_conexao_ativa)"
           />
         </template>
       </Column>
 
-      <!-- Botão de Detalhamento do Indicador -->
-      <Column
-        v-if="canShowDetailButton"
-        header=""
-        headerClass="col-detail-action"
-        bodyClass="col-detail-action"
-        :style="{ width: '48px', minWidth: '48px' }"
-      >
-        <template #body="{ data }">
-          <button
-            class="detail-action-btn"
-            :class="{ 'is-loading': loadingDetailCnpj === String(data.cnpj).replace(/\D/g, '') }"
-            v-tooltip.left="'Ver detalhamento do indicador'"
-            @click.stop="openDetailForRow(data.cnpj)"
-          >
-            <i
-              v-if="loadingDetailCnpj === String(data.cnpj).replace(/\D/g, '')"
-              class="pi pi-spin pi-spinner"
-            />
-            <i v-else class="pi pi-external-link" />
-          </button>
-        </template>
-      </Column>
-
     </DataTable>
+
+    <ObservationDialog
+      v-if="observationCnpj"
+      v-model:visible="showObservationDialog"
+      :cnpj="observationCnpj"
+      :entity-name="observationEntityName"
+    />
 
     <!-- Dialogs de detalhamento (reutilizam os mesmos da aba Indicadores) -->
     <IndicatorDetailDialog
@@ -708,15 +778,18 @@ const indicatorColumnHeader = computed(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  gap: 0.3rem;
+  box-sizing: border-box;
+  width: 6.3rem;
   height: 28px;
-  padding: 0;
+  padding: 0 0.35rem;
   border: 1px solid color-mix(in srgb, var(--primary-color) 30%, var(--card-border));
   border-radius: 7px;
   background: color-mix(in srgb, var(--primary-color) 6%, var(--card-bg));
   color: var(--primary-color);
   cursor: pointer;
   font-size: 0.75rem;
+  white-space: nowrap;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -731,6 +804,87 @@ const indicatorColumnHeader = computed(() => {
   opacity: 0.6;
   pointer-events: none;
   cursor: default;
+}
+
+.detail-action-btn span {
+  font-size: 0.65rem;
+}
+
+.row-actions {
+  display: grid;
+  grid-template-columns: 28px 28px;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.row-actions--with-detail {
+  grid-template-columns: 6.3rem 28px 28px;
+}
+
+.row-action-btn {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.favorite-action-btn,
+.observation-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--card-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.favorite-action-btn.is-favorite {
+  opacity: 1;
+  pointer-events: auto;
+  color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--primary-color) 40%, var(--card-border));
+}
+
+.observation-action-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.observation-action-btn.has-observation {
+  color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--primary-color) 40%, var(--card-border));
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
+}
+
+:deep(.ind-cnpj-table .p-datatable-tbody > tr:hover) .row-action-btn,
+:deep(.ind-cnpj-table .p-datatable-tbody > tr:has(.row-action-btn:focus-visible)) .row-action-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.row-action-btn:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.favorite-action-btn:hover,
+.observation-action-btn:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.row-action-btn:disabled {
+  cursor: not-allowed;
 }
 
 /* Overlay de loading do detalhamento */
@@ -914,6 +1068,7 @@ const indicatorColumnHeader = computed(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .loc-inline-row {
@@ -921,9 +1076,19 @@ const indicatorColumnHeader = computed(() => {
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
+  width: 100%;
+}
+
+.loc-place {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
 }
 
 .municipio-inline-text {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 0.80rem;
   color: var(--text-muted);
   white-space: nowrap;
@@ -962,6 +1127,8 @@ const indicatorColumnHeader = computed(() => {
   font-size: 0.80rem;
   color: var(--text-muted);
   letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .copy-btn {
@@ -1011,6 +1178,10 @@ const indicatorColumnHeader = computed(() => {
 .uf-tag {
   display: inline-block;
   align-self: flex-start;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 2rem;
+  text-align: center;
   padding: 0.05rem 0.3rem;
   background: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg));
   color: var(--primary-color);

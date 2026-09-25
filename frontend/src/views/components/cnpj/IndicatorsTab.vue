@@ -13,6 +13,7 @@ import {
   INDICATOR_TABLE_TOOLTIP_COPY,
   INDICATOR_TOOLTIP_COPY,
 } from '@/config/indicatorTooltipConfig';
+import { createIndicatorHtmlTooltip, indicatorTooltip } from '@/utils/indicatorTooltip';
 import ClinicalIncompatibilityDialog from './ClinicalIncompatibilityDialog.vue';
 import GeographicDispersionDialog from './GeographicDispersionDialog.vue';
 import IndicatorDetailDialog from './IndicatorDetailDialog.vue';
@@ -73,69 +74,11 @@ function formatIndicadorValue(valor, formato) {
   return valor.toFixed(2);
 }
 
-function escapeTooltipHtml(value) {
-  return String(value).replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[character]);
-}
-
-function renderTooltipSection(section) {
-  const content = section.items
-    ? `<ul>${section.items.map((item) => `<li>${escapeTooltipHtml(item)}</li>`).join('')}</ul>`
-    : section.formula
-      ? `<div class="indicator-tooltip-formula"><span>Fórmula</span><strong>${escapeTooltipHtml(section.formula)}</strong></div>`
-      : section.value != null
-        ? `<div class="indicator-tooltip-value"><strong>${escapeTooltipHtml(section.value)}</strong></div>`
-        : `<p>${escapeTooltipHtml(section.text)}</p>`;
-
-  return `
-    <section class="indicator-tooltip-section">
-      <strong class="indicator-tooltip-section-label">${escapeTooltipHtml(section.label)}</strong>
-      ${content}
-    </section>
-  `;
-}
-
-function createIndicatorHtmlTooltip(copy) {
-  if (!copy?.title || !copy?.intro || !Array.isArray(copy.sections)) {
-    throw new Error('Texto de tooltip de indicador incompleto.');
-  }
-
-  return {
-    value: `
-      <div class="indicator-tooltip-content">
-        <div class="indicator-tooltip-heading">
-          <i class="pi pi-info-circle" aria-hidden="true"></i>
-          <span>${escapeTooltipHtml(copy.title)}</span>
-        </div>
-        <p class="indicator-tooltip-intro">${escapeTooltipHtml(copy.intro)}</p>
-        <div class="indicator-tooltip-sections">
-          ${copy.sections.map(renderTooltipSection).join('')}
-        </div>
-      </div>
-    `,
-    escape: false,
-    class: 'indicator-info-tooltip',
-    showDelay: 120,
-    hideDelay: 80,
-  };
-}
-
 const tableHelpTooltip = createIndicatorHtmlTooltip(INDICATOR_TABLE_TOOLTIP_COPY);
 
 function columnTooltip(key) {
   const copy = INDICATOR_COLUMN_TOOLTIP_COPY[key];
   if (!copy) throw new Error(`Texto de tooltip de coluna não encontrado: ${key}`);
-  return createIndicatorHtmlTooltip(copy);
-}
-
-function indicatorTooltip(indicator) {
-  const copy = INDICATOR_TOOLTIP_COPY[indicator?.key];
-  if (!copy) throw new Error(`Texto de tooltip de indicador não encontrado: ${indicator?.key}`);
   return createIndicatorHtmlTooltip(copy);
 }
 
@@ -1346,140 +1289,5 @@ function riscoTextStyle(indicadorData) {
   color: var(--sidebar-border);
   opacity: 0.7;
 }
-
-:global(.p-tooltip.indicator-info-tooltip) {
-  max-width: min(360px, calc(100vw - 2rem));
-  width: auto;
-  padding: 0;
-  background: var(--tooltip-bg);
-  border: 1px solid var(--tooltip-border);
-  border-radius: 9px;
-  box-shadow: var(--tooltip-shadow);
-}
-
-:global(.p-tooltip.indicator-info-tooltip .p-tooltip-text) {
-  width: 100%;
-  padding: 0;
-  white-space: normal;
-}
-
-:global(.indicator-tooltip-content) {
-  display: flex;
-  width: min(330px, calc(100vw - 2rem));
-  flex-direction: column;
-  gap: 0.62rem;
-  padding: 0.75rem 0.85rem;
-  color: var(--text-color-85);
-  line-height: 1.42;
-  overflow-wrap: anywhere;
-}
-
-:global(.indicator-tooltip-heading) {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--text-color-85);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-:global(.indicator-tooltip-heading i) {
-  flex-shrink: 0;
-  color: var(--risk-medium);
-  font-size: 0.8rem;
-}
-
-:global(.indicator-tooltip-intro) {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-}
-
-:global(.indicator-tooltip-sections) {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-:global(.indicator-tooltip-section) {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid var(--tabs-border);
-}
-
-:global(.indicator-tooltip-section:first-child) {
-  padding-top: 0;
-  border-top: 0;
-}
-
-:global(.indicator-tooltip-section-label) {
-  color: var(--risk-medium);
-  font-size: 0.67rem;
-  font-weight: 700;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-
-:global(.indicator-tooltip-section p) {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-}
-
-:global(.indicator-tooltip-section ul) {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin: 0;
-  padding-left: 1rem;
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-}
-
-:global(.indicator-tooltip-section li::marker) {
-  color: var(--risk-medium);
-}
-
-:global(.indicator-tooltip-formula) {
-  display: flex;
-  flex-direction: column;
-  gap: 0.16rem;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid var(--tabs-border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
-}
-
-:global(.indicator-tooltip-formula span) {
-  color: var(--text-muted);
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-:global(.indicator-tooltip-formula strong) {
-  color: var(--text-color-85);
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
-:global(.indicator-tooltip-value) {
-  display: flex;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid var(--tabs-border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
-}
-
-:global(.indicator-tooltip-value strong) {
-  color: var(--text-color-85);
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
 
 </style>

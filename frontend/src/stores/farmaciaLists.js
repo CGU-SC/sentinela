@@ -1,97 +1,160 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { computed, ref } from 'vue';
 import axios from 'axios';
 import { API_ENDPOINTS } from '@/config/api';
 
 const STORAGE_KEY = 'sentinela_farmacia_lists';
 
-function loadFromStorage() {
+function readLocalSnapshot() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return { interesse: [] };
-}
-
-function saveToStorage(interesse) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      interesse: interesse.value,
-    }));
-  } catch {}
-}
-
-async function saveToBackend(interesse) {
-  try {
-    await axios.put(API_ENDPOINTS.preferencesWatchlist, {
-      interesse: interesse.value,
-    });
-  } catch (error) {
-    console.warn('[farmaciaLists] Falha ao sincronizar lista no backend:', error);
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    return Array.isArray(data?.interesse) ? data.interesse : [];
+  } catch {
+    return [];
   }
 }
 
+function writeLocalSnapshot(list) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ interesse: list }));
+  } catch (error) {
+    console.warn('[farmaciaLists] Cópia local não pôde ser atualizada:', error);
+  }
+}
+
+function errorMessage(error, fallback) {
+  return typeof error?.response?.data?.detail === 'string'
+    ? error.response.data.detail
+    : fallback;
+}
+
 export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
-  const stored = loadFromStorage();
-  const interesse = ref(stored.interesse || []);
+  const interesse = ref([]);
+  const localSnapshot = ref(readLocalSnapshot());
+  const recoveryOptions = ref(null);
+  const loadState = ref('loading');
+  const saving = ref(false);
+  const error = ref('');
+  const localRecoveryAvailable = computed(() => localSnapshot.value.length > 0
+    && interesse.value.length === 0);
+  const canEdit = computed(() => loadState.value === 'ready' && !saving.value);
+
+  async function loadRecoveryOptions() {
+    try {
+      const { data } = await axios.get(API_ENDPOINTS.preferencesRecoveryStatus);
+      recoveryOptions.value = data;
+    } catch (cause) {
+      console.warn('[farmaciaLists] Não foi possível consultar cópias de recuperação:', cause);
+      recoveryOptions.value = null;
+    }
+  }
 
   async function loadFromBackend() {
+    loadState.value = 'loading';
+    error.value = '';
     try {
       const { data } = await axios.get(API_ENDPOINTS.preferences);
-      const backendList = Array.isArray(data?.watchlist) ? data.watchlist : [];
-
-      if (backendList.length > 0 || interesse.value.length === 0) {
-        interesse.value = backendList;
-        saveToStorage(interesse);
-      } else {
-        await saveToBackend(interesse);
+      if (!Array.isArray(data?.watchlist)) {
+        throw new Error('Resposta de preferências sem a lista obrigatória.');
       }
-    } catch (error) {
-      console.warn('[farmaciaLists] Usando lista local do navegador:', error);
+      interesse.value = data.watchlist;
+      loadState.value = 'ready';
+      if (data.watchlist.length > 0 || localSnapshot.value.length === 0) {
+        writeLocalSnapshot(data.watchlist);
+        localSnapshot.value = data.watchlist;
+      }
+    } catch (cause) {
+      loadState.value = 'error';
+      error.value = errorMessage(cause, 'Não foi possível carregar as Farmácias Monitoradas. Nenhuma lista foi alterada.');
+      console.error('[farmaciaLists] Falha ao carregar lista:', cause);
+    }
+    if (loadState.value === 'error' || localRecoveryAvailable.value) {
+      await loadRecoveryOptions();
+    }
+  }
+
+  async function saveList(next) {
+    if (!canEdit.value) return false;
+    saving.value = true;
+    error.value = '';
+    try {
+      const { data } = await axios.put(API_ENDPOINTS.preferencesWatchlist, { interesse: next });
+      if (!Array.isArray(data?.watchlist)) {
+        throw new Error('O servidor não confirmou a lista salva.');
+      }
+      interesse.value = data.watchlist;
+      localSnapshot.value = data.watchlist;
+      writeLocalSnapshot(data.watchlist);
+      return true;
+    } catch (cause) {
+      error.value = errorMessage(cause, 'Não foi possível salvar as Farmácias Monitoradas. A alteração não foi confirmada.');
+      console.error('[farmaciaLists] Falha ao salvar lista:', cause);
+      return false;
+    } finally {
+      saving.value = false;
     }
   }
 
   const isInteresse = computed(() => (cnpj) =>
-    interesse.value.some((e) => e.cnpj === cnpj),
+    interesse.value.some((item) => item.cnpj === cnpj),
   );
 
-  function toggleInteresse(cnpj, razaoSocial) {
-    if (isInteresse.value(cnpj)) {
-      interesse.value = interesse.value.filter((e) => e.cnpj !== cnpj);
-    } else {
-      interesse.value.push({
-        cnpj,
-        razaoSocial,
-        adicionadoEm: new Date().toISOString(),
-        observacao: '',
-      });
-    }
-    saveToStorage(interesse);
-    saveToBackend(interesse);
+  async function toggleInteresse(cnpj, razaoSocial) {
+    if (!canEdit.value) return false;
+    const next = isInteresse.value(cnpj)
+      ? interesse.value.filter((item) => item.cnpj !== cnpj)
+      : [...interesse.value, {
+        cnpj, razaoSocial, adicionadoEm: new Date().toISOString(), observacao: '',
+      }];
+    return saveList(next);
   }
 
-  function setObservacao(cnpj, text) {
-    const item = interesse.value.find((e) => e.cnpj === cnpj);
-    if (item) {
-      item.observacao = text;
-      item.atualizadoEm = new Date().toISOString();
-      saveToStorage(interesse);
-      saveToBackend(interesse);
+  async function setObservacao(cnpj, text) {
+    if (!canEdit.value) return false;
+    const next = interesse.value.map((item) => item.cnpj === cnpj
+      ? { ...item, observacao: text, atualizadoEm: new Date().toISOString() }
+      : item);
+    return saveList(next);
+  }
+
+  const getObservacao = computed(() => (cnpj) =>
+    interesse.value.find((item) => item.cnpj === cnpj)?.observacao || '',
+  );
+
+  async function restoreFromFile(source) {
+    if (!['backup', 'corrupt'].includes(source) || saving.value) return false;
+    saving.value = true;
+    error.value = '';
+    try {
+      const { data } = await axios.post(API_ENDPOINTS.preferencesRecovery, { source });
+      if (!Array.isArray(data?.watchlist)) throw new Error('Restauração sem lista válida.');
+      interesse.value = data.watchlist;
+      localSnapshot.value = data.watchlist;
+      writeLocalSnapshot(data.watchlist);
+      loadState.value = 'ready';
+      await loadRecoveryOptions();
+      return true;
+    } catch (cause) {
+      error.value = errorMessage(cause, 'Não foi possível restaurar a lista. Os arquivos originais foram preservados.');
+      return false;
+    } finally {
+      saving.value = false;
     }
   }
 
-  const getObservacao = computed(() => (cnpj) => {
-    const item = interesse.value.find((e) => e.cnpj === cnpj);
-    return item ? item.observacao : '';
-  });
+  async function restoreFromLocal() {
+    if (!localRecoveryAvailable.value || loadState.value !== 'ready') return false;
+    return saveList(localSnapshot.value);
+  }
 
   loadFromBackend();
 
   return {
-    interesse,
-    isInteresse,
-    toggleInteresse,
-    setObservacao,
-    getObservacao,
+    interesse, loadState, saving, error, canEdit, recoveryOptions,
+    localRecoveryAvailable, localSnapshot, isInteresse, getObservacao,
+    loadFromBackend, loadRecoveryOptions, toggleInteresse, setObservacao,
+    restoreFromFile, restoreFromLocal,
   };
 });

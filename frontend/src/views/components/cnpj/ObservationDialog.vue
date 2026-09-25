@@ -38,9 +38,10 @@ function selectTextareaOnFocus(event) {
   shouldSelectOnFocus.value = false;
 }
 
-const saveObs = () => {
-  farmaciaLists.setObservacao(props.cnpj, tempObs.value);
-  dialogVisible.value = false;
+const saveObs = async () => {
+  if (await farmaciaLists.setObservacao(props.cnpj, tempObs.value)) {
+    dialogVisible.value = false;
+  }
 };
 </script>
 
@@ -72,7 +73,7 @@ const saveObs = () => {
     <template #footer>
       <div class="dialog-footer-actions">
         <button class="footer-btn footer-btn--cancel" @click="dialogVisible = false">Cancelar</button>
-        <button class="footer-btn footer-btn--save" @click="saveObs">Salvar Observação</button>
+        <button class="footer-btn footer-btn--save" :disabled="!farmaciaLists.canEdit" @click="saveObs">Salvar Observação</button>
       </div>
     </template>
   </Dialog>

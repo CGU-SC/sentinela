@@ -4,6 +4,7 @@ import { useFilterStore } from '@/stores/filters';
 import { useGeoStore } from '@/stores/geo';
 import { useFetchAnalytics } from '@/composables/useFetchAnalytics';
 import { useCrmPrescricoesAnalysis } from '@/composables/useCrmPrescricoesAnalysis';
+import { CRM_ANALYSIS_FILTER_SCOPE_NOTICE } from '@/config/constants';
 
 import AnalysisSidebar from './components/analises/AnalysisSidebar.vue';
 import CrmPrescricoesMap from './components/analises/CrmPrescricoesMap.vue';
@@ -23,11 +24,14 @@ function levelForFilters() {
 const mapLevel = ref(levelForFilters());
 const navigationError = ref(null);
 const {
-  data,
-  isLoading,
+  mapResponse,
+  rankingResponse,
+  hasIgnoredFilters,
+  isMapLoading,
   isRankingLoading,
-  error,
+  mapError,
   rankingError,
+  rankingPageError,
   rankingPage,
   rankingPageSize,
   fetchRankingPage,
@@ -35,10 +39,16 @@ const {
 
 const selectedUf = computed(() => filterStore.selectedUF !== 'Todos' ? filterStore.selectedUF : null);
 const selectedRegiaoId = computed(() => filterStore.selectedRegiaoSaude !== 'Todos' ? filterStore.selectedRegiaoSaude : null);
-const mapData = computed(() => data.value?.mapa ?? []);
-const ranking = computed(() => data.value?.ranking ?? []);
-const rankingTotal = computed(() => data.value?.qtd_medicos ?? 0);
+const selectedMunicipioIbge7 = computed(() => {
+  const value = filterStore.selectedMunicipio;
+  return value && value !== 'Todos' ? Number(value) : null;
+});
+const mapData = computed(() => mapResponse.value?.mapa ?? []);
+const ranking = computed(() => rankingResponse.value?.ranking ?? []);
+const rankingTotal = computed(() => rankingResponse.value?.qtd_medicos ?? 0);
 const rankingFirst = computed(() => (rankingPage.value - 1) * rankingPageSize.value);
+const rankingInitialLoading = computed(() => isRankingLoading.value && ranking.value.length === 0);
+const rankingPageLoading = computed(() => isRankingLoading.value && ranking.value.length > 0);
 
 watch(
   [() => filterStore.selectedUF, () => filterStore.selectedRegiaoSaude, () => filterStore.selectedMunicipio],
@@ -57,12 +67,17 @@ function onSelectUf(uf) {
 
 function onSelectMunicipio(idIbge7) {
   navigationError.value = null;
+  if (idIbge7 == null) {
+    filterStore.selectedMunicipio = 'Todos';
+    mapLevel.value = 'regiao';
+    return;
+  }
   const regionId = geoStore.getRegiaoByIbge7(idIbge7);
   if (regionId == null) {
     navigationError.value = 'Não foi possível localizar a Região de Saúde deste município.';
     return;
   }
-  filterStore.selectedMunicipio = 'Todos';
+  filterStore.selectedMunicipio = String(idIbge7);
   filterStore.selectedRegiaoSaude = String(regionId);
   mapLevel.value = 'regiao';
 }
@@ -101,15 +116,21 @@ function onRankingPage(event) {
             <span>{{ navigationError }}</span>
           </div>
 
+          <div v-if="hasIgnoredFilters" class="analysis-scope-notice" role="status">
+            <i class="pi pi-info-circle" aria-hidden="true" />
+            <span>{{ CRM_ANALYSIS_FILTER_SCOPE_NOTICE }}</span>
+          </div>
+
           <CrmPrescricoesMap
             :map-level="mapLevel"
             :map-data="mapData"
             :uf="selectedUf"
             :regiao-id="selectedRegiaoId"
-            :escopo="data?.escopo ?? 'Brasil'"
-            :qtd-medicos="data?.qtd_medicos ?? 0"
-            :is-loading="isLoading"
-            :error="error"
+            :selected-ibge7="selectedMunicipioIbge7"
+            :escopo="mapResponse?.escopo ?? 'Brasil'"
+            :qtd-medicos="mapResponse?.qtd_medicos ?? 0"
+            :is-loading="isMapLoading"
+            :error="mapError"
             @select-uf="onSelectUf"
             @select-municipio="onSelectMunicipio"
             @back="goBack"
@@ -117,11 +138,11 @@ function onRankingPage(event) {
 
           <CrmPrescricoesRanking
             :rows="ranking"
-            :escopo="data?.escopo ?? 'Brasil'"
-            :is-loading="isLoading"
-            :error="error"
-            :page-error="rankingError"
-            :is-page-loading="isRankingLoading"
+            :escopo="rankingResponse?.escopo ?? 'Brasil'"
+            :is-loading="rankingInitialLoading"
+            :error="rankingError"
+            :page-error="rankingPageError"
+            :is-page-loading="rankingPageLoading"
             :total-records="rankingTotal"
             :first="rankingFirst"
             :page-size="rankingPageSize"
@@ -146,4 +167,7 @@ function onRankingPage(event) {
 .analysis-error strong { color: var(--text-color-85); font-size: .84rem; font-weight: 600; }
 .analysis-error span { margin-top: .25rem; font-size: .75rem; }
 .analysis-error--navigation { min-height: auto; padding: .75rem 1rem; justify-content: flex-start; }
+.analysis-scope-notice { min-width: 0; padding: .7rem .9rem; display: flex; align-items: flex-start; gap: .65rem; border: 1px solid color-mix(in srgb, var(--primary-color) 30%, var(--card-border)); border-radius: 12px; background: color-mix(in srgb, var(--primary-color) 7%, var(--card-bg)); color: var(--text-muted); font-size: .75rem; line-height: 1.45; }
+.analysis-scope-notice > i { flex: 0 0 auto; margin-top: .1rem; color: var(--primary-color); font-size: .9rem; }
+.analysis-scope-notice > span { min-width: 0; overflow-wrap: anywhere; }
 </style>

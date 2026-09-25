@@ -1,23 +1,26 @@
 <script setup>
-import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRiskIndicatorsStore } from '@/stores/riskIndicators';
 import { INDICATOR_GROUPS } from '@/config/riskConfig';
-
-const props = defineProps({
-  /** Metadados do indicador ativo { label, metodologia } */
-  activeRiskIndicatorMeta: { type: Object, default: null },
-});
+import { indicatorTooltip } from '@/utils/indicatorTooltip';
 
 const emit = defineEmits(['select']);
 
 const riskIndicatorsStore = useRiskIndicatorsStore();
-const { selectedRiskIndicator, kpis, isLoading } = storeToRefs(riskIndicatorsStore);
+const { selectedRiskIndicator, isLoading } = storeToRefs(riskIndicatorsStore);
 
 
 
 function selectRiskIndicator(key) {
   emit('select', key);
+}
+
+function showTooltipOnFocus(event) {
+  event.currentTarget.dispatchEvent(new Event('mouseenter'));
+}
+
+function hideTooltipOnBlur(event) {
+  event.currentTarget.dispatchEvent(new Event('mouseleave'));
 }
 </script>
 
@@ -36,31 +39,39 @@ function selectRiskIndicator(key) {
       >
         <div class="group-title">{{ grupo.label }}</div>
 
-        <button
+        <div
           v-for="ind in grupo.indicators"
           :key="ind.key"
-          class="ind-btn"
-          :class="{ 'ind-btn--active': selectedRiskIndicator === ind.key }"
-          @click="selectRiskIndicator(ind.key)"
-          :title="ind.metodologia"
+          class="ind-row"
+          :class="{ 'ind-row--active': selectedRiskIndicator === ind.key }"
         >
-          <span class="ind-btn-label">{{ ind.label }}</span>
-
-          <i
-            v-if="isLoading && selectedRiskIndicator === ind.key"
-            class="pi pi-spin pi-spinner ind-loading-icon"
-          />
-        </button>
+          <button
+            type="button"
+            class="ind-btn"
+            :aria-current="selectedRiskIndicator === ind.key ? 'true' : null"
+            @click="selectRiskIndicator(ind.key)"
+          >
+            <span class="ind-btn-label">{{ ind.label }}</span>
+            <i
+              v-if="isLoading && selectedRiskIndicator === ind.key"
+              class="pi pi-spin pi-spinner ind-loading-icon"
+              aria-hidden="true"
+            />
+          </button>
+          <button
+            type="button"
+            class="ind-info-btn"
+            :aria-label="`Explicação do indicador ${ind.label}`"
+            v-tooltip.left="indicatorTooltip(ind)"
+            @focus="showTooltipOnFocus"
+            @blur="hideTooltipOnBlur"
+          >
+            <i class="pi pi-info-circle" aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Info do indicador ativo -->
-    <Transition name="ind-info">
-      <div v-if="activeRiskIndicatorMeta" class="ind-info-box">
-        <div class="ind-info-label">{{ activeRiskIndicatorMeta.label }}</div>
-        <p class="ind-info-metodologia">{{ activeRiskIndicatorMeta.metodologia }}</p>
-      </div>
-    </Transition>
   </aside>
 </template>
 
@@ -133,49 +144,88 @@ function selectRiskIndicator(key) {
   margin-top: 0;
 }
 
-.ind-btn {
+.ind-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.4rem;
-  padding: 0.5rem 1rem;
   min-height: 2.4rem;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s ease, color 0.15s ease;
+  padding-right: 0.55rem;
   color: var(--text-color-85);
   opacity: 0.8;
-  min-width: 0;
+  transition: background 0.15s ease, opacity 0.15s ease;
 }
 
-.ind-btn:hover {
+.ind-row:hover,
+.ind-row:focus-within {
   background: var(--table-hover);
   opacity: 1;
 }
 
-.ind-btn--active {
+.ind-row--active {
   background: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg));
   opacity: 1;
   border-left: 3px solid var(--primary-color);
-  padding-left: calc(1rem - 3px);
 }
 
-.ind-btn--active .ind-btn-label {
+.ind-row--active .ind-btn-label {
   color: var(--primary-color);
   font-weight: 600;
+}
+
+.ind-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+  min-height: 2.4rem;
+  padding: 0.5rem 0.4rem 0.5rem 1rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ind-row--active .ind-btn {
+  padding-left: calc(1rem - 3px);
 }
 
 .ind-btn-label {
   font-size: 0.78rem;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.3;
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.ind-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: help;
+  font-size: 0.8rem;
+}
+
+.ind-info-btn:hover,
+.ind-info-btn:focus-visible {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+}
+
+.ind-btn:focus-visible,
+.ind-info-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
 }
 
 
@@ -187,40 +237,4 @@ function selectRiskIndicator(key) {
   opacity: 0.7;
 }
 
-/* ── Info do indicador ativo ── */
-.ind-info-box {
-  margin: 0.5rem 0.75rem 0.75rem;
-  padding: 0.7rem 0.85rem;
-  background: color-mix(in srgb, var(--primary-color) 7%, var(--card-bg));
-  border: 1px solid color-mix(in srgb, var(--primary-color) 20%, transparent);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.ind-info-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--primary-color);
-  line-height: 1.3;
-}
-
-.ind-info-metodologia {
-  margin: 0;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-/* Transição suave ao aparecer/desaparecer */
-.ind-info-enter-active,
-.ind-info-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.ind-info-enter-from,
-.ind-info-leave-to {
-  opacity: 0;
-  transform: translateY(4px);
-}
 </style>

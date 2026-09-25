@@ -83,6 +83,8 @@ export const API_ENDPOINTS = {
   preferences: `${BASE_URL}/api/v1/preferences`,
   preferencesFilters: `${BASE_URL}/api/v1/preferences/filters`,
   preferencesWatchlist: `${BASE_URL}/api/v1/preferences/watchlist`,
+  preferencesRecoveryStatus: `${BASE_URL}/api/v1/preferences/recovery/status`,
+  preferencesRecovery: `${BASE_URL}/api/v1/preferences/recovery`,
   preferencesUi: `${BASE_URL}/api/v1/preferences/ui`,
   preferencesNotaTecnica: `${BASE_URL}/api/v1/preferences/nota-tecnica`,
   preferencesMetodologia: `${BASE_URL}/api/v1/preferences/metodologia`,

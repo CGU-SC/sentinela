@@ -3,6 +3,7 @@ import { onMounted, computed } from "vue";
 import { useRoute } from "vue-router";
 import { useThemeStore } from "@/stores/theme";
 import { useFilterStore } from "@/stores/filters";
+import { useFarmaciaListsStore } from "@/stores/farmaciaLists";
 import AppNavbar from "@/layouts/components/AppNavbar.vue";
 import AppSidebar from "@/layouts/components/AppSidebar.vue";
 import CnpjDialog from "@/layouts/components/dialogs/CnpjDialog.vue";
@@ -11,6 +12,7 @@ import SyncDialog from "@/layouts/components/dialogs/SyncDialog.vue";
 const route = useRoute();
 const themeStore = useThemeStore();
 const filterStore = useFilterStore();
+const farmaciaLists = useFarmaciaListsStore();
 
 // Lógica Profissional: Esconde a sidebar se a rota atual pedir via meta: { hideSidebar: true }
 const isSidebarHidden = computed(() => !!route.meta?.hideSidebar);
@@ -36,6 +38,11 @@ onMounted(() => {});
     <main class="main-container">
       <CnpjDialog />
       <SyncDialog />
+      <div v-if="farmaciaLists.error" class="preferences-alert" role="alert">
+        <i class="pi pi-exclamation-triangle" aria-hidden="true" />
+        <span>{{ farmaciaLists.error }}</span>
+        <router-link to="/listas">Ver opções de recuperação</router-link>
+      </div>
       <div class="page-content">
         <router-view v-slot="{ Component }">
           <Transition name="page-fade" mode="out-in">
@@ -310,6 +317,22 @@ onMounted(() => {});
   border-color: var(--sidebar-border) !important;
   color: var(--sidebar-text) !important;
 }
+
+.preferences-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1.4rem;
+  background: color-mix(in srgb, var(--risk-high) 10%, var(--card-bg));
+  border-bottom: 1px solid var(--risk-high);
+  color: var(--text-color-85);
+  font-size: 0.85rem;
+}
+
+.preferences-alert span { flex: 1; min-width: 0; }
+.preferences-alert i { color: var(--risk-high); }
+.preferences-alert a { color: var(--text-color-85); text-decoration: underline; text-underline-offset: 3px; }
+.preferences-alert a:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 3px; }
 
 :global(.admin-layout) .p-inputtext:enabled:hover,
 :global(.admin-layout) .p-dropdown:not(.p-disabled):hover {

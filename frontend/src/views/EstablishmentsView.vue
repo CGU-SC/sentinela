@@ -239,7 +239,7 @@ function onCnpjTableLazy(event) {
     </div>
 
     <!-- Painel lateral de seleção de indicadores (direita) -->
-    <RiskIndicatorSelector :active-risk-indicator-meta="activeRiskIndicatorMeta" @select="onRiskIndicatorSelect" />
+    <RiskIndicatorSelector @select="onRiskIndicatorSelect" />
     </div>
     </div>
   </div>

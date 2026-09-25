@@ -99,6 +99,27 @@ export const MAP_VISUAL_SCALE = {
   ],
 };
 
+// Participacao de medicos anomalos entre os ativos no mapa nacional de CRMs.
+// Faixas fixas preservam o significado das cores ao trocar o periodo.
+export const CRM_ANOMALY_MAP_SCALE = {
+  light: [
+    { gte: 0, lt: 0.05, label: '0–<0,05%', color: '#ffedd5', borderColor: '#fb923c' },
+    { gte: 0.05, lt: 0.1, label: '0,05–<0,10%', color: '#fed7aa', borderColor: '#f97316' },
+    { gte: 0.1, lt: 0.2, label: '0,10–<0,20%', color: '#fdba74', borderColor: '#ea580c' },
+    { gte: 0.2, lt: 0.4, label: '0,20–<0,40%', color: '#fb923c', borderColor: '#c2410c' },
+    { gte: 0.4, lt: 0.8, label: '0,40–<0,80%', color: '#f87171', borderColor: '#b91c1c' },
+    { gte: 0.8, label: '≥0,80%', color: '#dc2626', borderColor: '#991b1b' },
+  ],
+  dark: [
+    { gte: 0, lt: 0.05, label: '0–<0,05%', color: '#fed7aa', borderColor: '#ea580c' },
+    { gte: 0.05, lt: 0.1, label: '0,05–<0,10%', color: '#fdba74', borderColor: '#c2410c' },
+    { gte: 0.1, lt: 0.2, label: '0,10–<0,20%', color: '#fb923c', borderColor: '#9a3412' },
+    { gte: 0.2, lt: 0.4, label: '0,20–<0,40%', color: '#f97316', borderColor: '#7c2d12' },
+    { gte: 0.4, lt: 0.8, label: '0,40–<0,80%', color: '#ef4444', borderColor: '#991b1b' },
+    { gte: 0.8, label: '≥0,80%', color: '#b91c1c', borderColor: '#f97316' },
+  ],
+};
+
 export const GEOGRAPHIC_DISTRIBUTION_SCALE = [
   { min: 0, max: 2, color: "#FAF6F6", borderColor: "#D4B3B3" },
   { min: 2, max: 5, color: "#FCE8E8", borderColor: "#E7A8A8" },

@@ -630,32 +630,34 @@ onBeforeUnmount(() => {
 // Índice declarativo dos filtros. Cada entrada é usada para:
 //   1) control de visibilidade via busca (v-show)
 //   2) badge de matches por seção durante a busca
-//   3) persistência do estado colapsado
+//   3) restrição dos filtros contextuais à rota que os exibe
 const FILTER_INDEX = [
   { id: "uf", section: "geral", label: "UF", keywords: "unidade federativa estado sg sigla" },
   { id: "regiao", section: "geral", label: "Região de Saúde", keywords: "regiao saude id regiao saude id_regiao_saude" },
   { id: "municipio", section: "geral", label: "Município", keywords: "municipio cidade id ibge ibge7" },
-  { id: "unidadePf", section: "geral", label: "Unidade PF", keywords: "unidade pf programa saude farmacia popular" },
+  { id: "unidadePf", section: "geral", label: "Jurisdição PF", keywords: "jurisdicao da pf unidade pf delegacia policia federal regional" },
   { id: "situacao", section: "geral", label: "Situação RF", keywords: "situacao rf receita federal ativa baixada inapta" },
   { id: "ms", section: "geral", label: "Conexão MS", keywords: "ms ministerio saude tipo estabelecimento" },
-  { id: "porte", section: "geral", label: "Porte", keywords: "porte empresa tamanho" },
+  { id: "porte", section: "geral", label: "Porte CNPJ", keywords: "porte empresa tamanho" },
   { id: "grandeRede", section: "geral", label: "Grande Rede", keywords: "grande rede bandeira franquia" },
-  { id: "cnpjRaiz", section: "geral", label: "CNPJ Raiz", keywords: "cnpj raiz cnpj_raiz cnpj-raiz matriz grupo empresarial" },
-  { id: "parTeia", section: "integridade", label: "Par/Teia", keywords: "par teia socios rede societaria cnpj cpf" },
-  { id: "cnaeIncompativel", section: "integridade", label: "CNAE Incompatível", keywords: "cnae incompativel cnae atividade economica incompatibilidade" },
-  { id: "socioIdadeAtipica", section: "integridade", label: "Idade Atípica do Sócio", keywords: "idade atipica socio jovem idoso 21 80 anos" },
-  { id: "socioFalecido", section: "integridade", label: "Sócio Falecido", keywords: "socio falecido obito morte cpf base obitos" },
+  { id: "cnpjRaiz", section: "geral", label: "Estabelecimento", keywords: "cnpj raiz cnpj_raiz matriz grupo empresarial razao social nome fantasia farmacia" },
+  { id: "parTeia", section: "integridade", label: "CNPJs com PAR", keywords: "par teia socios rede societaria cnpj cpf" },
+  { id: "cnaeIncompativel", section: "integridade", label: "CNPJ com CNAE Incompatível", keywords: "cnae incompativel atividade economica incompatibilidade" },
+  { id: "socioIdadeAtipica", section: "integridade", label: "Sócio < 21 anos ou > 80 anos", keywords: "idade atipica socio jovem idoso 21 80 anos" },
+  { id: "socioFalecido", section: "integridade", label: "Sócio ativo falecido", keywords: "socio falecido obito morte cpf base obitos" },
   { id: "socioBeneficio", section: "integridade", label: "Sócio no CadÚnico/Defeso", keywords: "socio beneficio bolsa familia cadunico seguro defeso pobreza" },
   { id: "socioEsocial", section: "integridade", label: "Sócio com Vínculo eSocial", keywords: "socio esocial vinculo emprego clt vinculo trabalhista" },
   { id: "dispersaoUf", section: "integridade", label: "Vendas para UFs sem Fronteira", keywords: "dispersao uf sem fronteira geografica distancia venda autorizado" },
   { id: "volumeAtipico", section: "integridade", label: "Aumento Semestral Atípico", keywords: "volume atipico crescimento semestral faturamento auditoria aumento anomalo" },
-  { id: "percentual", section: "geral", label: "% Não Comprovação", keywords: "percentual nao comprovacao risco faixa auditoria" },
-  { id: "slider", section: "geral", label: "Período (Slider)", keywords: "periodo slider semestral mensal tempo data" },
+  { id: "percentual", section: "geral", label: "% de não comprovação", keywords: "percentual nao comprovacao risco faixa auditoria" },
+  { id: "slider", section: "geral", label: "Período de Análise", keywords: "periodo slider semestral mensal tempo data" },
   { id: "valorMin", section: "geral", label: "Valor Mínimo sem Comprovação", keywords: "valor minimo sem comprovacao reais auditoria financeiro ticket" },
-  { id: "busca", section: "geral", label: "Busca por Estabelecimento", keywords: "busca estabelecimento cnpj razao social nome fantasia search" },
-  { id: "cluster", section: "geral", label: "Cluster", keywords: "cluster agrupamento kmeans segmento" },
-  { id: "rfa", section: "geral", label: "RFA", keywords: "rfa receita federal ativos cnae" },
+  { id: "busca", section: "geral", label: "Busca Alvo", keywords: "cpf/cnpj alvo busca id cnpj pesquisar rede", routes: ["/alvos/cluster", "/alvos/rede"] },
+  { id: "cluster", section: "geral", label: "Target Cluster", keywords: "cluster agrupamento kmeans segmento", routes: ["/alvos/cluster"] },
+  { id: "rfa", section: "geral", label: "Risco (RFA)", keywords: "rfa receita federal ativos cnae", routes: ["/alvos/cluster"] },
 ];
+
+const FILTER_INDEX_BY_ID = new Map(FILTER_INDEX.map((filter) => [filter.id, filter]));
 
 const collapsedSections = ref(new Set(["integridade"]));
 const sidebarSearch = ref("");
@@ -701,10 +703,13 @@ const filterMatchesSearch = (filterMeta) => {
   return haystack.includes(searchTerm.value);
 };
 
+const isFilterAvailable = (filterMeta) =>
+  !filterMeta.routes || filterMeta.routes.includes(route.path);
+
 const shouldShowFilter = (filterId) => {
-  const meta = FILTER_INDEX.find((f) => f.id === filterId);
-  if (!meta) return true;
-  return filterMatchesSearch(meta);
+  const meta = FILTER_INDEX_BY_ID.get(filterId);
+  if (!meta) throw new Error(`Filtro ausente do índice de busca: ${filterId}`);
+  return isFilterAvailable(meta) && filterMatchesSearch(meta);
 };
 
 const shouldDisplayFilter = (sectionId, filterId) => {
@@ -714,7 +719,7 @@ const shouldDisplayFilter = (sectionId, filterId) => {
 
 const sectionMatchCount = (sectionId) =>
   FILTER_INDEX.filter(
-    (f) => f.section === sectionId && filterMatchesSearch(f),
+    (f) => f.section === sectionId && isFilterAvailable(f) && filterMatchesSearch(f),
   ).length;
 
 const shouldShowSection = (sectionId) => {
@@ -2341,14 +2346,14 @@ const clearSearch = () => {
   padding: 0.35rem 0.48rem;
   border-radius: 7px;
   border-left: 2px solid transparent;
-  background: color-mix(in srgb, var(--sidebar-text) 3%, transparent);
+  background: transparent;
   transition:
     background 0.16s ease,
     border-color 0.16s ease;
 }
 
 .filter-section:hover {
-  background: color-mix(in srgb, var(--sidebar-text) 5%, transparent);
+  background: color-mix(in srgb, var(--sidebar-text) 4%, transparent);
 }
 
 .filter-section:has(.filter-active),

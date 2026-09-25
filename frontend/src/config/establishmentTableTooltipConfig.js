@@ -2,7 +2,7 @@
 const TABLE_TOOLTIP_COPY = Object.freeze({
   nameColumn: {
     title: 'Identificação do estabelecimento',
-    body: 'A coluna reúne razão social, CNPJ, município e UF. O ícone indica matriz ou filial. Clique na linha para abrir o estabelecimento; o botão ao lado do CNPJ copia apenas o número. Clique no cabeçalho para ordenar pela razão social.',
+    body: 'A coluna reúne razão social, CNPJ, município e UF. O ícone indica matriz ou filial. Clique na linha para abrir o estabelecimento. Ao passar o mouse sobre a linha, aparecem as ações de detalhar o indicador e favoritar. Nos favoritos, a estrela e a ação de anotação permanecem visíveis. Clique no cabeçalho para ordenar pela razão social.',
     icon: 'pi-building',
   },
   riskColumn: {
@@ -110,7 +110,27 @@ const TABLE_TOOLTIP_COPY = Object.freeze({
   indicatorDetails: {
     title: 'Detalhamento do indicador',
     body: 'Abre a análise detalhada deste indicador para o estabelecimento.',
-    icon: 'pi-external-link',
+    icon: 'pi-chart-bar',
+  },
+  favoriteAdd: {
+    title: 'Adicionar às Farmácias Monitoradas',
+    body: 'Salva este estabelecimento na sua lista de favoritos para acompanhamento.',
+    icon: 'pi-star',
+  },
+  favoriteRemove: {
+    title: 'Remover das Farmácias Monitoradas',
+    body: 'Retira este estabelecimento da sua lista de favoritos.',
+    icon: 'pi-star-fill',
+  },
+  observationAdd: {
+    title: 'Adicionar anotação',
+    body: 'Abre o campo de anotação deste estabelecimento favoritado.',
+    icon: 'pi-pencil',
+  },
+  observationEdit: {
+    title: 'Editar anotação',
+    body: 'Abre a anotação já registrada para este estabelecimento favoritado.',
+    icon: 'pi-comment',
   },
 });
 

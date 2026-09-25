@@ -745,6 +745,7 @@ const heroTooltips = Object.freeze({
             class="list-btn list-btn--icon-only"
             :class="farmaciaLists.isInteresse(cnpj) ? 'list-btn--interesse-active' : 'list-btn--interesse'"
             @click="farmaciaLists.toggleInteresse(cnpj, cnpjData.razao_social)"
+            :disabled="!farmaciaLists.canEdit"
             v-tooltip.bottom="interesseHtmlTooltip"
           >
             <i :class="farmaciaLists.isInteresse(cnpj) ? 'pi pi-star-fill' : 'pi pi-star'" />
@@ -754,6 +755,7 @@ const heroTooltips = Object.freeze({
             class="list-btn list-btn--icon-only list-btn--obs"
             :class="{ 'list-btn--obs-active': hasObservacao }"
             @click="openObsDialog"
+            :disabled="!farmaciaLists.canEdit"
             v-tooltip.bottom="observacaoHtmlTooltip"
           >
             <i :class="hasObservacao ? 'pi pi-comment' : 'pi pi-pencil'" />

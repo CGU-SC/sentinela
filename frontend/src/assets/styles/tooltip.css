@@ -561,3 +561,138 @@
   letter-spacing: 0.045em;
   text-transform: uppercase;
 }
+
+/* Tooltips completos dos indicadores, usados no detalhe e no seletor lateral. */
+.p-tooltip.indicator-info-tooltip {
+  max-width: min(360px, calc(100vw - 2rem));
+  width: auto;
+  padding: 0;
+  background: var(--tooltip-bg);
+  border: 1px solid var(--tooltip-border);
+  border-radius: 9px;
+  box-shadow: var(--tooltip-shadow);
+}
+
+.p-tooltip.indicator-info-tooltip .p-tooltip-text {
+  width: 100%;
+  padding: 0;
+  white-space: normal;
+}
+
+.indicator-tooltip-content {
+  display: flex;
+  width: min(330px, calc(100vw - 2rem));
+  flex-direction: column;
+  gap: 0.62rem;
+  padding: 0.75rem 0.85rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.indicator-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-color-85);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.indicator-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--risk-medium);
+  font-size: 0.8rem;
+}
+
+.indicator-tooltip-intro {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.indicator-tooltip-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.indicator-tooltip-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--tabs-border);
+}
+
+.indicator-tooltip-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.indicator-tooltip-section-label {
+  color: var(--risk-medium);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.indicator-tooltip-section p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.indicator-tooltip-section ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.indicator-tooltip-section li::marker {
+  color: var(--risk-medium);
+}
+
+.indicator-tooltip-formula {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--tabs-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
+}
+
+.indicator-tooltip-formula span {
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.indicator-tooltip-formula strong {
+  color: var(--text-color-85);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.indicator-tooltip-value {
+  display: flex;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--tabs-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
+}
+
+.indicator-tooltip-value strong {
+  color: var(--text-color-85);
+  font-size: 0.7rem;
+  font-weight: 600;
+}

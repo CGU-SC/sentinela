@@ -6,10 +6,11 @@ from ..schemas.preferences import (
     MetodologiaPayload,
     NotaTecnicaPayload,
     PreferencesSchema,
+    PreferencesRecoveryPayload,
     UiPayload,
     WatchlistPayload,
 )
-from ..services.preferences import PreferencesService
+from ..services.preferences import PreferencesError, PreferencesService
 from ..services.analytics.indicator_rules import (
     DEFAULT_AUDIT_HIGH_VALUE,
     DEFAULT_VOLUME_ATIPICO_AUMENTO_MINIMO,
@@ -25,6 +26,13 @@ from ..services.analytics.indicator_rules import (
 from ..services.analytics.nota_tecnica_regionais import resolve_nota_tecnica_regional
 
 router = APIRouter()
+
+
+def _preferences_call(operation, *args):
+    try:
+        return operation(*args)
+    except PreferencesError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def _validate_assinantes_tecnicos(value: Any) -> list[dict[str, str]]:
@@ -61,29 +69,29 @@ def _validate_gerar_pdf_visualizacao(value: Any) -> bool:
 
 @router.get("", response_model=PreferencesSchema)
 def get_preferences():
-    return PreferencesService.read()
+    return _preferences_call(PreferencesService.read)
 
 
 @router.put("", response_model=PreferencesSchema)
 def save_preferences(payload: PreferencesSchema):
-    return PreferencesService.write(payload.model_dump())
+    return _preferences_call(PreferencesService.write, payload.model_dump())
 
 
 @router.put("/filters", response_model=PreferencesSchema)
 def save_filters(payload: FiltersPayload):
-    return PreferencesService.update_filters(payload.filters)
+    return _preferences_call(PreferencesService.update_filters, payload.filters)
 
 
 @router.put("/watchlist", response_model=PreferencesSchema)
 def save_watchlist(payload: WatchlistPayload):
-    return PreferencesService.update_watchlist(
+    return _preferences_call(PreferencesService.update_watchlist,
         [item.model_dump() for item in payload.interesse]
     )
 
 
 @router.put("/ui", response_model=PreferencesSchema)
 def save_ui(payload: UiPayload):
-    return PreferencesService.update_ui(payload.ui)
+    return _preferences_call(PreferencesService.update_ui, payload.ui)
 
 
 @router.put("/nota-tecnica", response_model=PreferencesSchema)
@@ -98,7 +106,19 @@ def save_nota_tecnica(payload: NotaTecnicaPayload):
     payload.nota_tecnica["gerar_pdf_visualizacao"] = _validate_gerar_pdf_visualizacao(
         payload.nota_tecnica.get("gerar_pdf_visualizacao")
     )
-    return PreferencesService.update_nota_tecnica(payload.nota_tecnica)
+    return _preferences_call(PreferencesService.update_nota_tecnica, payload.nota_tecnica)
+
+
+@router.get("/recovery/status")
+def preferences_recovery_status():
+    """Expõe apenas existência, validade e contagem, sem CNPJs."""
+    return _preferences_call(PreferencesService.recovery_status)
+
+
+@router.post("/recovery", response_model=PreferencesSchema)
+def restore_preferences(payload: PreferencesRecoveryPayload):
+    """Restauração explícita; preserva o arquivo principal anterior."""
+    return _preferences_call(PreferencesService.restore, payload.source)
 
 
 def _metodologia_response() -> dict[str, Any]:
@@ -147,7 +167,7 @@ def save_metodologia(payload: MetodologiaPayload):
     except RuntimeError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    PreferencesService.update_metodologia({
+    _preferences_call(PreferencesService.update_metodologia, {
         "audit_high_value": audit_high_value,
         "volume_atipico_aumento_minimo": volume_atipico_aumento_minimo,
     })

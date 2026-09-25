@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,10 @@ class WatchlistItemSchema(BaseModel):
 
 class WatchlistPayload(BaseModel):
     interesse: List[WatchlistItemSchema] = Field(default_factory=list)
+
+
+class PreferencesRecoveryPayload(BaseModel):
+    source: Literal["backup", "corrupt"]
 
 
 class FiltersPayload(BaseModel):

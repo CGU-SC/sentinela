@@ -105,15 +105,30 @@ async function fetchWatchlistAnalytics() {
 
 watch([monitoredCnpjsKey, periodKey], fetchWatchlistAnalytics, { immediate: true });
 
-onMounted(() => {
-  notaTecnicaConfig.ensureLoaded().catch((error) => {
+function isPreferencesUnavailable(error) {
+  return error?.response?.status === 503 && error?.config?.url === API_ENDPOINTS.preferences;
+}
+
+async function carregarRegional({ force = false, reportarErroPreferencias = false } = {}) {
+  try {
+    await notaTecnicaConfig.ensureLoaded({ force });
+  } catch (error) {
+    // O aviso persistente das preferências já explica esta mesma falha.
+    if (isPreferencesUnavailable(error) && !reportarErroPreferencias) return;
     toast.add({
       severity: "warn",
       summary: "Regional da Nota Técnica",
-      detail: error?.message || "Não foi possível carregar a configuração da Nota Técnica.",
+      detail: isPreferencesUnavailable(error)
+        ? "Não foi possível carregar a regional porque as preferências continuam indisponíveis."
+        : error?.response?.data?.detail || "Não foi possível carregar a configuração da Nota Técnica.",
       life: 6000,
     });
-  });
+  }
+}
+
+onMounted(() => {
+  farmaciaLists.loadRecoveryOptions();
+  carregarRegional();
 });
 
 // Map O(1): cnpj → dados analíticos da consulta dedicada da lista
@@ -151,9 +166,39 @@ const listaEnriquecida = computed(() =>
 );
 
 const totalBadge = computed(() => farmaciaLists.interesse.length);
+const regionalLabel = computed(() => {
+  if (farmaciaLists.loadState === 'error') return 'Regional da NT indisponível';
+  if (!notaTecnicaConfig.loaded) return notaTecnicaConfig.loading
+    ? 'Carregando regional da NT...'
+    : 'Regional da NT indisponível';
+  return notaTecnicaConfig.selectedRegionalLabel || 'Regional da NT não definida';
+});
+
+async function tentarCarregarNovamente() {
+  await farmaciaLists.loadFromBackend();
+  if (farmaciaLists.loadState === 'ready') {
+    await carregarRegional({ force: true, reportarErroPreferencias: true });
+  }
+}
 
 function remover(cnpj) {
   farmaciaLists.toggleInteresse(cnpj, "");
+}
+
+async function restaurarArquivo(source, count) {
+  if (window.confirm(`Restaurar ${count} farmácia(s) desta cópia? A lista atual será preservada antes da restauração.`)) {
+    if (await farmaciaLists.restoreFromFile(source)) {
+      await carregarRegional({ force: true, reportarErroPreferencias: true });
+    }
+  }
+}
+
+async function restaurarLocal() {
+  if (window.confirm(`Restaurar ${farmaciaLists.localSnapshot.length} farmácia(s) da cópia local desta janela?`)) {
+    if (await farmaciaLists.restoreFromLocal()) {
+      await carregarRegional({ force: true, reportarErroPreferencias: true });
+    }
+  }
 }
 
 function abrirEstabelecimento(cnpj) {
@@ -327,6 +372,39 @@ function formatScore(v) {
       </p>
     </div>
 
+    <section v-if="farmaciaLists.loadState === 'error' || farmaciaLists.error || farmaciaLists.localRecoveryAvailable ||
+      (farmaciaLists.loadState === 'ready' && farmaciaLists.interesse.length === 0 &&
+        (farmaciaLists.recoveryOptions?.backup?.watchlist_count > 0 || farmaciaLists.recoveryOptions?.corrupt?.watchlist_count > 0))"
+      class="preferences-recovery" aria-label="Estado das Farmácias Monitoradas">
+      <div class="preferences-recovery-copy">
+        <i class="pi pi-shield" aria-hidden="true" />
+        <div>
+          <p v-if="farmaciaLists.loadState === 'error'">Não foi possível abrir sua lista. Nenhum favorito foi apagado por esta tela.</p>
+          <p v-else-if="farmaciaLists.error">{{ farmaciaLists.error }}</p>
+          <p v-else>Há cópias da sua lista disponíveis para conferência e recuperação.</p>
+          <span>A restauração só acontece após sua confirmação. O arquivo atual é preservado.</span>
+        </div>
+      </div>
+      <div class="preferences-recovery-actions">
+        <button v-if="farmaciaLists.loadState === 'error'" type="button" :disabled="farmaciaLists.saving"
+          @click="tentarCarregarNovamente">Tentar carregar novamente</button>
+        <button v-if="farmaciaLists.recoveryOptions?.backup?.valid && farmaciaLists.recoveryOptions.backup.watchlist_count > 0"
+          type="button" :disabled="farmaciaLists.saving"
+          @click="restaurarArquivo('backup', farmaciaLists.recoveryOptions.backup.watchlist_count)">
+          Restaurar backup ({{ farmaciaLists.recoveryOptions.backup.watchlist_count }})
+        </button>
+        <button v-if="farmaciaLists.recoveryOptions?.corrupt?.valid && farmaciaLists.recoveryOptions.corrupt.watchlist_count > 0"
+          type="button" :disabled="farmaciaLists.saving"
+          @click="restaurarArquivo('corrupt', farmaciaLists.recoveryOptions.corrupt.watchlist_count)">
+          Restaurar cópia isolada ({{ farmaciaLists.recoveryOptions.corrupt.watchlist_count }})
+        </button>
+        <button v-if="farmaciaLists.localRecoveryAvailable && farmaciaLists.loadState === 'ready'"
+          type="button" :disabled="farmaciaLists.saving" @click="restaurarLocal">
+          Restaurar cópia local ({{ farmaciaLists.localSnapshot.length }})
+        </button>
+      </div>
+    </section>
+
     <div class="lists-card">
       <div class="card-header">
         <div class="card-header-left">
@@ -338,10 +416,11 @@ function formatScore(v) {
             class="regional-nt-chip"
             type="button"
             @click="regionalDialogVisible = true"
-            v-tooltip.top="'Regional emissora das Notas Técnicas'"
+            :disabled="farmaciaLists.loadState !== 'ready' || !notaTecnicaConfig.loaded"
+            v-tooltip.top="farmaciaLists.loadState === 'error' ? 'Regional indisponível enquanto as preferências não puderem ser lidas' : 'Regional emissora das Notas Técnicas'"
           >
             <i class="pi pi-building" />
-            <span>{{ notaTecnicaConfig.selectedRegionalLabel || "Regional da NT não definida" }}</span>
+            <span>{{ regionalLabel }}</span>
           </button>
           <span class="period-chip" v-tooltip.top="'Período de análise atual'">
             <i class="pi pi-calendar" />
@@ -354,7 +433,15 @@ function formatScore(v) {
       </div>
 
       <div class="lists-content">
-        <div v-if="farmaciaLists.interesse.length === 0" class="empty-state">
+        <div v-if="farmaciaLists.loadState === 'loading'" class="empty-state" role="status">
+          <i class="pi pi-spin pi-spinner empty-icon" aria-hidden="true" />
+          <p>Carregando Farmácias Monitoradas...</p>
+        </div>
+        <div v-else-if="farmaciaLists.loadState === 'error'" class="empty-state" role="status">
+          <i class="pi pi-exclamation-triangle empty-icon" aria-hidden="true" />
+          <p>Lista indisponível. Use as opções de recuperação acima.</p>
+        </div>
+        <div v-else-if="farmaciaLists.interesse.length === 0" class="empty-state">
           <i class="pi pi-star empty-icon" />
           <p>Nenhuma farmácia na Lista de Interesse.</p>
           <span>Acesse o detalhe de um estabelecimento e clique no ícone de estrela.</span>
@@ -481,6 +568,7 @@ function formatScore(v) {
                 <button
                   class="action-btn remove"
                   @click.stop="remover(item.cnpj)"
+                  :disabled="!farmaciaLists.canEdit"
                   v-tooltip.top="'Remover da lista'"
                 >
                   <i class="pi pi-trash" />
@@ -559,6 +647,37 @@ function formatScore(v) {
   opacity: 0.5;
   margin: 0;
 }
+
+.preferences-recovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--risk-high);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--risk-high) 8%, var(--card-bg));
+  color: var(--text-color-85);
+}
+
+.preferences-recovery-copy { display: flex; align-items: flex-start; gap: 0.7rem; min-width: 0; }
+.preferences-recovery-copy > i { color: var(--risk-high); margin-top: 0.1rem; }
+.preferences-recovery-copy p { margin: 0 0 0.2rem; font-size: 0.85rem; }
+.preferences-recovery-copy span { font-size: 0.75rem; opacity: 0.8; }
+.preferences-recovery-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.preferences-recovery-actions button {
+  cursor: pointer;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-color-85);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.78rem;
+}
+.preferences-recovery-actions button:hover:not(:disabled) { border-color: var(--primary-color); }
+.preferences-recovery-actions button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.preferences-recovery-actions button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .empty-state {
   display: flex;
@@ -656,6 +775,11 @@ function formatScore(v) {
 .regional-nt-chip:hover {
   border-color: var(--primary-color);
   background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+
+.regional-nt-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .card-count {
