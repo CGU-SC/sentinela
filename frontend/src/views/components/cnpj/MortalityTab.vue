@@ -7,6 +7,7 @@ import { useStableTabState } from '@/composables/useStableTabState';
 import { useFormatting } from '@/composables/useFormatting';
 import { useAnalyticsStore } from '@/stores/analytics';
 import { useFarmaciaListsStore } from '@/stores/farmaciaLists';
+import { useToggleInteresse } from '@/composables/useToggleInteresse';
 import Tag from 'primevue/tag';
 import Button from 'primevue/button';
 import MortalityTimelineOverlay from './MortalityTimelineOverlay.vue';
@@ -39,6 +40,7 @@ const {
 const { formatCurrencyFull, formatarData, formatTitleCase, formatCnpj, toLocalISO } = useFormatting();
 const analyticsStore = useAnalyticsStore();
 const farmaciaLists = useFarmaciaListsStore();
+const toggleInteresse = useToggleInteresse();
 
 const createMortalityTooltip = (title, body, methodology) => ({
   value: `
@@ -157,6 +159,57 @@ const mortalityTooltips = Object.freeze({
       'Diferença em dias entre o óbito e a data/hora da autorização.'
     ),
   }),
+});
+
+const formatNumeroBr = (valor, casas = 0) =>
+  Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+
+/**
+ * KPIs de vendas a falecidos no mesmo padrão dos cards de CRM: fundo neutro,
+ * cor só na bolinha do título (vermelho = ocorrência; laranja = participação no
+ * faturamento), número em destaque e uma linha de apoio.
+ */
+const falecidosKpiCards = computed(() => {
+  const r = cachedFalecidosData.value?.summary;
+  if (!r) return [];
+  const tone = (valor, cor = 'critico') => (Number(valor) > 0 ? cor : null);
+  return [
+    {
+      key: 'cpfs', label: 'CPFs distintos', value: formatNumeroBr(r.cpfs_distintos),
+      hint: 'beneficiários falecidos', tone: tone(r.cpfs_distintos),
+      tooltip: mortalityTooltips.cards.cpfsDistintos,
+    },
+    {
+      key: 'autorizacoes', label: 'Autorizações', value: formatNumeroBr(r.total_autorizacoes),
+      hint: 'após a data do óbito', tone: tone(r.total_autorizacoes),
+      tooltip: mortalityTooltips.cards.totalAutorizacoes,
+    },
+    {
+      key: 'prejuizo', label: 'Prejuízo estimado', value: formatCurrencyFull(r.valor_total),
+      hint: 'valor pago após o óbito', tone: tone(r.valor_total),
+      tooltip: mortalityTooltips.cards.valorTotal,
+    },
+    {
+      key: 'media', label: 'Média pós-óbito', value: formatNumeroBr(r.media_dias || 0, 1), unit: 'dias',
+      hint: 'entre o óbito e a venda', tone: tone(r.media_dias),
+      tooltip: mortalityTooltips.cards.mediaDias,
+    },
+    {
+      key: 'maximo', label: 'Máximo pós-óbito', value: formatNumeroBr(r.max_dias), unit: 'dias',
+      hint: 'maior intervalo registrado', tone: tone(r.max_dias),
+      tooltip: mortalityTooltips.cards.maxDias,
+    },
+    {
+      key: 'faturamento', label: '% do faturamento', value: `${formatNumeroBr(r.pct_faturamento * 100, 3)}%`,
+      hint: 'do valor total da farmácia', tone: tone(r.pct_faturamento, 'medio'),
+      tooltip: mortalityTooltips.cards.pctFaturamento,
+    },
+    {
+      key: 'multi', label: 'CPFs multi-CNPJ', value: formatNumeroBr(r.cpfs_multi_cnpj),
+      hint: `${formatNumeroBr(r.pct_multi_cnpj * 100, 1)}% com vendas em outras farmácias`, tone: tone(r.cpfs_multi_cnpj),
+      tooltip: mortalityTooltips.cards.cpfsMultiCnpj,
+    },
+  ];
 });
 
 // Mapa para busca O(1) de dados do CNPJ no Pinia Store para enriquecer o painel.
@@ -344,98 +397,22 @@ const falecidosAgrupadosFiltrados = computed(() => {
     <template v-else-if="falecidosLoaded">
       <!-- 7 CARDS DE KPI -->
       <div class="falecidos-kpi-grid">
-        <div class="f-kpi-card" :class="cachedFalecidosData.summary.cpfs_distintos > 0 ? 'highlight-red' : ''">
+        <div v-for="(card, idx) in falecidosKpiCards" :key="card.key" class="f-kpi-card">
           <span class="f-kpi-label">
-            <span>CPFs Distintos</span>
+            <span v-if="card.tone" class="f-kpi-dot" :class="`tone-${card.tone}`" aria-hidden="true" />
+            <span class="f-kpi-label-text">{{ card.label }}</span>
             <i
               class="pi pi-info-circle mortality-info-icon"
               role="img"
               tabindex="0"
-              aria-label="Informações sobre CPFs distintos"
-              v-tooltip.right="mortalityTooltips.cards.cpfsDistintos"
+              :aria-label="`Informações sobre ${card.label}`"
+              v-tooltip="{ ...card.tooltip, position: idx === 0 ? 'right' : idx === falecidosKpiCards.length - 1 ? 'left' : 'top' }"
             />
           </span>
-          <span class="f-kpi-val">{{ cachedFalecidosData.summary.cpfs_distintos }}</span>
-        </div>
-        <div class="f-kpi-card" :class="cachedFalecidosData.summary.total_autorizacoes > 0 ? 'highlight-red' : ''">
-          <span class="f-kpi-label">
-            <span>Núm. Autorizações</span>
-            <i
-              class="pi pi-info-circle mortality-info-icon"
-              role="img"
-              tabindex="0"
-              aria-label="Informações sobre o número de autorizações"
-              v-tooltip.top="mortalityTooltips.cards.totalAutorizacoes"
-            />
+          <span class="f-kpi-val">
+            {{ card.value }}<small v-if="card.unit"> {{ card.unit }}</small>
           </span>
-          <span class="f-kpi-val">{{ cachedFalecidosData.summary.total_autorizacoes }}</span>
-        </div>
-        <div class="f-kpi-card" :class="cachedFalecidosData.summary.valor_total > 0 ? 'highlight-red highlight-prejuizo' : ''">
-          <span class="f-kpi-label">
-            <span>Prejuízo Estimado</span>
-            <i
-              class="pi pi-info-circle mortality-info-icon"
-              role="img"
-              tabindex="0"
-              aria-label="Informações sobre o prejuízo estimado"
-              v-tooltip.top="mortalityTooltips.cards.valorTotal"
-            />
-          </span>
-          <div class="f-kpi-val-container">
-            <span class="f-kpi-val">{{ formatCurrencyFull(cachedFalecidosData.summary.valor_total) }}</span>
-          </div>
-        </div>
-        <div class="f-kpi-card" :class="(cachedFalecidosData.summary.media_dias || 0) > 0 ? 'highlight-red' : ''">
-          <span class="f-kpi-label">
-            <span>Média Dias Pós-Óbito</span>
-            <i
-              class="pi pi-info-circle mortality-info-icon"
-              role="img"
-              tabindex="0"
-              aria-label="Informações sobre a média de dias pós-óbito"
-              v-tooltip.top="mortalityTooltips.cards.mediaDias"
-            />
-          </span>
-          <span class="f-kpi-val">{{ cachedFalecidosData.summary.media_dias.toFixed(1) }} <small>dias</small></span>
-        </div>
-        <div class="f-kpi-card" :class="cachedFalecidosData.summary.max_dias > 0 ? 'highlight-red' : ''">
-          <span class="f-kpi-label">
-            <span>Máximo Dias Pós-Óbito</span>
-            <i
-              class="pi pi-info-circle mortality-info-icon"
-              role="img"
-              tabindex="0"
-              aria-label="Informações sobre o máximo de dias pós-óbito"
-              v-tooltip.top="mortalityTooltips.cards.maxDias"
-            />
-          </span>
-          <span class="f-kpi-val">{{ cachedFalecidosData.summary.max_dias }} <small>dias</small></span>
-        </div>
-        <div class="f-kpi-card" :class="cachedFalecidosData.summary.pct_faturamento > 0 ? 'highlight-orange' : ''">
-          <span class="f-kpi-label">
-            <span>% do Faturamento</span>
-            <i
-              class="pi pi-info-circle mortality-info-icon"
-              role="img"
-              tabindex="0"
-              aria-label="Informações sobre o percentual do faturamento"
-              v-tooltip.top="mortalityTooltips.cards.pctFaturamento"
-            />
-          </span>
-          <span class="f-kpi-val">{{ (cachedFalecidosData.summary.pct_faturamento * 100).toFixed(3) }}%</span>
-        </div>
-        <div class="f-kpi-card" :class="cachedFalecidosData.summary.cpfs_multi_cnpj > 0 ? 'highlight-red' : ''">
-          <span class="f-kpi-label">
-            <span>CPFs Multi-CNPJ</span>
-            <i
-              class="pi pi-info-circle mortality-info-icon"
-              role="img"
-              tabindex="0"
-              aria-label="Informações sobre CPFs Multi-CNPJ"
-              v-tooltip.left="mortalityTooltips.cards.cpfsMultiCnpj"
-            />
-          </span>
-          <span class="f-kpi-val">{{ cachedFalecidosData.summary.cpfs_multi_cnpj }} <small>({{ (cachedFalecidosData.summary.pct_multi_cnpj * 100).toFixed(1) }}%)</small></span>
+          <span class="f-kpi-hint">{{ card.hint }}</span>
         </div>
       </div>
 
@@ -493,7 +470,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   class="rank-filter-btn"
                   :class="{ active: farmaciaLists.isInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj) }"
                   v-tooltip.top="createMortalityTextTooltip(farmaciaLists.isInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj) ? 'Remover da lista de interesse' : 'Salvar na lista de interesse para acompanhamento')"
-                  @click.stop="farmaciaLists.toggleInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj, getEstabelecimentoInfo(r.estabelecimento).name)"
+                  @click.stop="toggleInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj, getEstabelecimentoInfo(r.estabelecimento).name)"
                 >
                   <i :class="farmaciaLists.isInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj) ? 'pi pi-star-fill' : 'pi pi-star'" />
                   <span>Interesse</span>
@@ -764,48 +741,47 @@ const falecidosAgrupadosFiltrados = computed(() => {
 }
 
 .f-kpi-card {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  padding: 0.85rem;
-  border-radius: 12px;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.f-kpi-card:hover {
-  /* Efeito de destaque puramente visual, sem movimento gravitacional pois não é clicável */
-  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-}
-
-.f-kpi-card.highlight-red:hover {
-  border-color: color-mix(in srgb, var(--risk-high) 60%, var(--card-border));
-  box-shadow: 0 4px 15px -4px color-mix(in srgb, var(--risk-high) 20%, transparent);
-}
-
-.f-kpi-card.highlight-orange:hover {
-  border-color: color-mix(in srgb, var(--risk-medium) 60%, var(--card-border));
-  box-shadow: 0 4px 15px -4px color-mix(in srgb, var(--risk-medium) 20%, transparent);
-}
-
-.f-kpi-card.highlight-yellow:hover {
-  border-color: color-mix(in srgb, var(--risk-low) 60%, var(--card-border));
-  box-shadow: 0 4px 15px -4px color-mix(in srgb, var(--risk-low) 20%, transparent);
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
 }
 
 .f-kpi-label {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.35rem;
+  gap: 0.4rem;
   font-size: 0.65rem;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.85;
+}
+.f-kpi-label-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.f-kpi-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.f-kpi-dot.tone-critico { background: var(--risk-critical); }
+.f-kpi-dot.tone-medio { background: var(--risk-medium); }
+.f-kpi-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 
 .f-th-label {
@@ -832,48 +808,24 @@ const falecidosAgrupadosFiltrados = computed(() => {
   opacity: 1;
 }
 
-.f-kpi-val-container {
-  display: flex;
-  margin-top: 0.2rem;
-}
 
 .f-kpi-val {
-  font-size: 1.1rem;
-  font-weight: 500;
-  color: var(--text-primary);
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-color);
+  white-space: nowrap;
 }
 
-.f-kpi-val.risk-high {
-  font-size: 0.95rem; /* Leve ajuste para caber no badge */
-  padding: 0.1rem 0.6rem;
-  border-radius: 99px;
-}
 
 .f-kpi-val small {
-  font-size: 0.7rem;
-  opacity: 0.6;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
-.highlight-red {
-  background: linear-gradient(to top, color-mix(in srgb, var(--risk-high) 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, var(--risk-high) 15%, var(--card-border));
-  border-left: none;
-  border-bottom: 3px solid color-mix(in srgb, var(--risk-high) 65%, transparent) !important;
-}
 
-.highlight-orange {
-  background: linear-gradient(to top, color-mix(in srgb, var(--risk-medium) 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, var(--risk-medium) 15%, var(--card-border));
-  border-left: none;
-  border-bottom: 3px solid color-mix(in srgb, var(--risk-medium) 65%, transparent) !important;
-}
 
-.highlight-yellow {
-  background: linear-gradient(to top, color-mix(in srgb, var(--risk-low) 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, var(--risk-low) 15%, var(--card-border));
-  border-left: none;
-  border-bottom: 3px solid color-mix(in srgb, var(--risk-low) 65%, transparent) !important;
-}
 
 .falecidos-list-container {
   background: var(--card-bg);

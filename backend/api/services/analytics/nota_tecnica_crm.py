@@ -831,15 +831,16 @@ def _build_crms_irregulares_context(
     cnpj: str,
     data_inicio: Optional[date],
     data_fim: Optional[date],
-    total_mov_quadro_02: Any = None,
     crm_data: Any = None,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Monta o contexto do subitem de CRMs irregulares ou invalidos."""
     cnpj_norm = "".join(ch for ch in str(cnpj) if ch.isdigit()).zfill(14)
     df_matriz = _build_dynamic_matriz_risco(data_inicio=data_inicio, data_fim=data_fim)
     required_matriz_cols = [
         "cnpj",
         "pct_crms_irregulares",
+        "crms_irregulares_valor_total",
+        "crms_irregulares_valor",
         "risco_crms_irregulares_reg",
         "risco_crms_irregulares_uf",
         "risco_crms_irregulares_br",
@@ -856,6 +857,21 @@ def _build_crms_irregulares_context(
     if rows.is_empty():
         raise RuntimeError(f"Matriz de risco sem registro obrigatorio para CRMs irregulares do CNPJ {cnpj_norm}.")
     matriz_row = rows.row(0, named=True)
+    total_financeiro_base = _required_positive_float(
+        matriz_row.get("crms_irregulares_valor_total"),
+        "crms_irregulares_valor_total",
+        "indicador de CRMs irregulares",
+    )
+    valor_irregular = _required_nonnegative_float(
+        matriz_row.get("crms_irregulares_valor"),
+        "crms_irregulares_valor",
+        "indicador de CRMs irregulares",
+    )
+    pct_irregular = _required_nonnegative_float(
+        matriz_row.get("pct_crms_irregulares"),
+        "pct_crms_irregulares",
+        "indicador de CRMs irregulares",
+    )
 
     def matriz_float(key: str) -> float:
         try:
@@ -876,9 +892,6 @@ def _build_crms_irregulares_context(
 
     crms = list(getattr(crm_data, "crms_interesse", None) or [])
     total_autorizacoes = sum(_as_int(row.get("nu_prescricoes")) for row in crms)
-    valor_total_crm = sum(_as_float(row.get("vl_total_prescricoes")) for row in crms)
-    total_mov_quadro_02_float = _as_float(total_mov_quadro_02)
-    total_financeiro_base = total_mov_quadro_02_float if total_mov_quadro_02_float > 0 else valor_total_crm
 
     crms_irregulares = [
         row
@@ -898,17 +911,6 @@ def _build_crms_irregulares_context(
 
     qtd_invalidos = sum(1 for row in crms if _as_int(row.get("flag_crm_invalido")) > 0)
     qtd_antes_registro = sum(1 for row in crms if _as_int(row.get("flag_prescricao_antes_registro")) > 0)
-    valor_irregular = sum(_as_float(row.get("vl_total_prescricoes")) for row in crms_irregulares)
-    pct_irregular = (
-        valor_irregular / total_financeiro_base * 100
-        if total_financeiro_base > 0 and valor_irregular > 0
-        else matriz_float("pct_crms_irregulares")
-    )
-    if valor_irregular <= 0 and total_financeiro_base > 0 and pct_irregular > 0:
-        valor_irregular = total_financeiro_base * pct_irregular / 100
-
-    if not matriz_row and not crms_irregulares:
-        return None
 
     if data_inicio is not None and data_fim is not None:
         periodo_intervalo = f'de {data_inicio.strftime("%d.%m.%Y")} a {data_fim.strftime("%d.%m.%Y")}'
@@ -2056,20 +2058,13 @@ def _add_crms_irregulares_text(
     )
 
     p2 = doc.add_paragraph()
-    _run(p2, f"Em relação à Farmácia {razao_social}, verificou-se que, do total de ", color="0F172A", size=12)
+    _run(p2, f"Em relação à Farmácia {razao_social}, verificou-se que as vendas de medicamentos monitoradas por este indicador no período {periodo_intervalo} totalizaram ", color="0F172A", size=12)
     _run(p2, f"R$ {_format_decimal_pt(total_financeiro_base, 2)}", color="334155", size=12, bold=True)
-    _run(p2, f" em vendas de medicamentos efetivadas no âmbito do PFPB no período {periodo_intervalo}, ", color="0F172A", size=12)
+    _run(p2, ". Desse valor, ", color="0F172A", size=12)
     _run(p2, f"{_format_decimal_pt(pct_irregular, 2)}%", color="334155", size=12, bold=True)
     _run(p2, " (", color="0F172A", size=12)
     _run(p2, f"R$ {_format_decimal_pt(valor_irregular, 2)}", color="334155", size=12, bold=True)
-    _run(p2, ") foram realizadas com receitas prescritas por médicos com CRMs irregulares ou inválidos", color="0F172A", size=12)
-    if has_detalhe_irregulares:
-        _run(p2, ", sendo ", color="0F172A", size=12)
-        _run(p2, f"{qtd_invalidos}", color="334155", size=12, bold=True)
-        _run(p2, " com números inválidos e ", color="0F172A", size=12)
-        _run(p2, f"{qtd_antes_registro}", color="334155", size=12, bold=True)
-        _run(p2, " com prescrição médica emitida antes da primeira inscrição do CRM na UF", color="0F172A", size=12)
-    _run(p2, ". Tal percentual corresponde a ", color="0F172A", size=12)
+    _run(p2, ") corresponderam a vendas com receitas prescritas por médicos com CRMs irregulares ou inválidos. Tal percentual corresponde a ", color="0F172A", size=12)
     _run(p2, f"{multiplicador_reg_fmt} {multiplicador_reg_unidade}", color="334155", size=12, bold=True)
     _run(p2, " o percentual mediano de vendas com essa mesma criticidade entre as farmácias de sua região. Ampliando-se o comparativo geográfico, o percentual equivale a ", color="0F172A", size=12)
     _run(p2, f"{multiplicador_uf_fmt} {multiplicador_uf_unidade}", color="334155", size=12, bold=True)
@@ -2077,11 +2072,21 @@ def _add_crms_irregulares_text(
     _run(p2, f"{multiplicador_br_fmt} {multiplicador_br_unidade}", color="334155", size=12, bold=True)
     _run(p2, " o das farmácias de todo o Brasil.", color="0F172A", size=12)
 
+    if has_detalhe_irregulares:
+        p_detalhe = doc.add_paragraph()
+        _run(p_detalhe, "No detalhamento operacional dos prescritores, foram identificados ", color="0F172A", size=12)
+        _run(p_detalhe, f"{qtd_invalidos}", color="334155", size=12, bold=True)
+        _run(p_detalhe, " CRMs não localizados e ", color="0F172A", size=12)
+        _run(p_detalhe, f"{qtd_antes_registro}", color="334155", size=12, bold=True)
+        _run(p_detalhe, " com prescrição anterior à primeira inscrição na UF. A relação abaixo apresenta os principais registros desse detalhamento.", color="0F172A", size=12)
+    else:
+        return
+
     title = doc.add_paragraph()
     _format_crm_table_title(title)
     _run(
         title,
-        f"Tabela {tabela_num} - Médicos com CRM irregular ou inválido vinculados a vendas lançadas pela Farmácia {razao_social} (CNPJ {cnpj_fmt}) no Sistema Autorizador de Vendas, no período {periodo_intervalo}.",
+        f"Tabela {tabela_num} - Principais médicos com CRM irregular ou inválido no detalhamento operacional das vendas lançadas pela Farmácia {razao_social} (CNPJ {cnpj_fmt}) no Sistema Autorizador de Vendas, no período {periodo_intervalo}.",
         color="334155",
         size=8,
         bold=True,
@@ -2093,7 +2098,7 @@ def _add_crms_irregulares_text(
         "Data da primeira inscrição na UF",
         "Irregularidade identificada",
         "Número de autorizações vinculadas ao CRM",
-        "% sobre a produção total da farmácia",
+        "% das autorizações no detalhamento",
         "Valor total pago pelo PFPB tendo como base o CRM",
     ]
     table = doc.add_table(rows=1, cols=len(headers))
@@ -2107,39 +2112,27 @@ def _add_crms_irregulares_text(
         _cell_bg(cell, "E2E8F0")
         _write_cell(cell, header, size=7.0, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
 
-    linhas_irregulares = irregulares_comp["top_irregulares"] if has_detalhe_irregulares else [None]
-    for row in linhas_irregulares:
+    for row in irregulares_comp["top_irregulares"]:
         cells = table.add_row().cells
-        if row is None:
-            values = [
-                "Consolidado",
-                "Detalhamento por CRM não disponível",
-                "Não localizada",
-                "CRMs irregulares ou inválidos",
-                "Não disponível",
-                f"{_format_decimal_pt(pct_irregular, 2)}%",
-                f"R$ {_format_decimal_pt(valor_irregular, 2)}",
-            ]
-        else:
-            crm_row, uf_row = _crm_num_uf(row.get("id_medico"))
-            crm_uf = f"{crm_row}/{uf_row}" if uf_row else crm_row
-            row_autorizacoes = _as_int(row.get("nu_prescricoes"))
-            row_valor = _as_float(row.get("vl_total_prescricoes"))
-            pct_producao_total = (row_autorizacoes / total_autorizacoes * 100) if total_autorizacoes else 0.0
-            motivos = []
-            if _as_int(row.get("flag_crm_invalido")) > 0:
-                motivos.append("CRM não localizado")
-            if _as_int(row.get("flag_prescricao_antes_registro")) > 0:
-                motivos.append("Prescrição antes da primeira inscrição na UF")
-            values = [
-                crm_uf,
-                _title_case_pt(row.get("no_medico") or "Não localizado"),
-                _format_date_br(row.get("dt_inscricao_crm")),
-                "; ".join(motivos) or "Irregularidade CRM",
-                str(row_autorizacoes),
-                f"{_format_decimal_pt(pct_producao_total, 2)}%",
-                f"R$ {_format_decimal_pt(row_valor, 2)}",
-            ]
+        crm_row, uf_row = _crm_num_uf(row.get("id_medico"))
+        crm_uf = f"{crm_row}/{uf_row}" if uf_row else crm_row
+        row_autorizacoes = _as_int(row.get("nu_prescricoes"))
+        row_valor = _as_float(row.get("vl_total_prescricoes"))
+        pct_producao_total = (row_autorizacoes / total_autorizacoes * 100) if total_autorizacoes else 0.0
+        motivos = []
+        if _as_int(row.get("flag_crm_invalido")) > 0:
+            motivos.append("CRM não localizado")
+        if _as_int(row.get("flag_prescricao_antes_registro")) > 0:
+            motivos.append("Prescrição antes da primeira inscrição na UF")
+        values = [
+            crm_uf,
+            _title_case_pt(row.get("no_medico") or "Não localizado"),
+            _format_date_br(row.get("dt_inscricao_crm")),
+            "; ".join(motivos) or "Irregularidade CRM",
+            str(row_autorizacoes),
+            f"{_format_decimal_pt(pct_producao_total, 2)}%",
+            f"R$ {_format_decimal_pt(row_valor, 2)}",
+        ]
         for idx, value in enumerate(values):
             align = WD_ALIGN_PARAGRAPH.RIGHT if idx in (4, 5, 6) else WD_ALIGN_PARAGRAPH.CENTER if idx in (0, 2, 3) else None
             _write_cell(cells[idx], value, size=7.0, align=align)

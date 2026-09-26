@@ -330,7 +330,8 @@ function goToDetail(event) {
 
 async function toggleFavoriteForRow(row) {
   const saved = await farmaciaLists.toggleInteresse(row.cnpj, row.razao_social);
-  if (!saved && farmaciaLists.loadState === 'ready') {
+  // null = remoção cancelada pelo usuário no diálogo de evidências.
+  if (saved === false && farmaciaLists.loadState === 'ready') {
     toast.add({
       severity: 'error',
       summary: 'Favorito não alterado',

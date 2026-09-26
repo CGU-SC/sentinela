@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import date
 from database import get_db, engine
 from ..schemas.analytics import (
@@ -26,7 +26,7 @@ from ..schemas.analytics import (
     NotaTecnicaPrepareResponse,
 )
 from ..services.analytics import AnalyticsService
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from loguru import logger
 from request_logging import FrontendPerformanceEvent, log_frontend_performance
 import json
@@ -649,6 +649,35 @@ def get_crm_raio_x(
 ):
     """Retorna o raio-x (transação literal) de uma hora específica ou do dia inteiro se a hora for omitida."""
     return AnalyticsService.get_crm_raio_x(cnpj, date_str, hour)
+
+
+@router.get("/cnpj/{cnpj}/crm/raio-x/exportar")
+def export_crm_raio_x(
+    cnpj: str,
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+    formato: Literal["csv", "xlsx"] = Query(..., description="Formato do arquivo: 'csv' ou 'xlsx'."),
+):
+    """Baixa as autorizações disponíveis no Raio-X dos dias alertados em CSV ou Excel."""
+    if formato == "xlsx":
+        filename, content = AnalyticsService.export_crm_raiox_xlsx(cnpj, data_inicio, data_fim)
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
+        )
+    filename, chunks = AnalyticsService.export_crm_raiox_csv(cnpj, data_inicio, data_fim)
+    return StreamingResponse(
+        chunks,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/indicadores-analise", response_model=IndicadorAnaliseResponse)

@@ -532,8 +532,8 @@ def _build_resumo_criticidade(num: str, key: str, comp: dict[str, Any], total_mo
     if key == "crms_irregulares":
         return (
             f'[Subitem {num}]: Registros de vendas de medicamentos prescritos por médicos com CRMs irregulares ou inválidos, equivalentes a '
-            f'{_format_decimal_pt(comp.get("pct_irregular") or 0.0, 2)}% das vendas totais. '
-            f'Estes registros de vendas representaram um valor total de R$ {_format_decimal_pt(comp.get("valor_irregular") or 0.0, 2)};'
+            f'{_format_decimal_pt(comp["pct_irregular"], 2)}% das vendas monitoradas pelo indicador. '
+            f'Estes registros de vendas representaram um valor total de R$ {_format_decimal_pt(comp["valor_irregular"], 2)};'
         )
     return None
 
@@ -1729,24 +1729,23 @@ def generate_nota_tecnica(
                     cnpj,
                     data_inicio,
                     data_fim,
-                    cnpj_data.get('totalMov'),
                     crm_data=crm_data_comp,
                 )
-                if crms_irregulares_comp:
+                if crms_irregulares_comp["top_irregulares"]:
                     tabela_num += 1
-                    _add_crms_irregulares_text(
-                        doc,
-                        num,
-                        razao_social,
-                        cnpj_fmt,
-                        crms_irregulares_comp,
-                        tabela_num,
-                        bookmark_name=bookmark_name,
-                    )
-                    _add_enquadramento_regional_indicador(key)
-                    resumo = _build_resumo_criticidade(num, key, crms_irregulares_comp, float(cnpj_data.get('totalMov') or 0.0))
-                    if resumo:
-                        resumos_criticidades.append(resumo)
+                _add_crms_irregulares_text(
+                    doc,
+                    num,
+                    razao_social,
+                    cnpj_fmt,
+                    crms_irregulares_comp,
+                    tabela_num,
+                    bookmark_name=bookmark_name,
+                )
+                _add_enquadramento_regional_indicador(key)
+                resumo = _build_resumo_criticidade(num, key, crms_irregulares_comp, float(cnpj_data.get('totalMov') or 0.0))
+                if resumo:
+                    resumos_criticidades.append(resumo)
                 timing.mark(f"secao 7 criticidade {key}")
                 continue
 

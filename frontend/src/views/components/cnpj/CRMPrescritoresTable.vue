@@ -3,6 +3,10 @@ import { computed, ref, watch } from "vue";
 import { useFormatting } from "@/composables/useFormatting";
 import { useCnpjDetailStore } from '@/stores/cnpjDetail';
 import { useFilterParameters } from "@/composables/useFilterParameters";
+import CrmAtuacaoDialog from './CrmAtuacaoDialog.vue';
+import { useThemeStore } from '@/stores/theme';
+import { DATA_NEUTRAL } from '@/config/colors';
+import { CRM_EXCLUSIVIDADE_THRESHOLDS } from '@/config/riskConfig';
 
 const cnpjDetailStore = useCnpjDetailStore();
 const { getApiParams } = useFilterParameters();
@@ -13,13 +17,44 @@ const props = defineProps({
   kpiFilters:       { type: Object, required: true },
   kpiFilterLabels:  { type: Object, required: true },
   currentCnpj:      { type: String, default: '' },
+  periodoCompetencias: { type: Object, default: null },
+  serieMensalFarmacia: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['clear-filters']);
 
 
-const { formatCurrencyFull, formatNumberFull, formatarData } = useFormatting();
-const formatPct = (val) => val != null ? `${Number(val).toFixed(2)}%` : "0.00%";
+const { formatCurrencyFull, formatNumberFull, formatarData, formatTitleCase } = useFormatting();
+const formatPct = (val) => val != null ? `${Number(val).toFixed(2).replace('.', ',')}%` : "0,00%";
+
+// Limite do "núcleo" de concentração (Pareto): CRMs que, somados do maior para o
+// menor, formam até 80% do valor da farmácia.
+const PARETO_LIMITE = 80;
+
+const themeStore = useThemeStore();
+// Cor de dados neutra (azul-aço) exposta como variáveis CSS para barras e mini gráficos.
+const dataColorVars = computed(() => {
+  const cores = DATA_NEUTRAL[themeStore.isDark ? 'dark' : 'light'];
+  return { '--data-color': cores.strong, '--data-color-soft': cores.soft };
+});
+
+function getExclusividadeNivel(m) {
+  const valor = Number(m.pct_volume_aqui_vs_total);
+  if (valor >= CRM_EXCLUSIVIDADE_THRESHOLDS.alto) return 'alto';
+  if (valor >= CRM_EXCLUSIVIDADE_THRESHOLDS.atencao) return 'atencao';
+  return 'normal';
+}
+
+function getParticipacao(m) {
+  const parte = Math.max(0, Math.min(100, Number(m.pct_participacao)));
+  const acumulado = Math.max(0, Math.min(100, Number(m.pct_acumulado)));
+  const anterior = Math.max(0, acumulado - parte);
+  return {
+    anterior,
+    parte,
+    nucleo: anterior < PARETO_LIMITE,
+  };
+}
 
 const escapeTooltipHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
@@ -71,14 +106,14 @@ const crmTableTooltips = Object.freeze({
     ),
     crm: createCrmTableTooltip(
       'CRM / Médico',
-      'Identificação do CRM e da UF de registro do prescritor. A linha abaixo informa a primeira inscrição no Conselho Federal de Medicina disponível para esse registro.',
+      'Identificação do CRM e da UF de registro, seguida do nome do prescritor conforme a base do Conselho Federal de Medicina. A linha abaixo informa a primeira inscrição disponível para esse registro; quando o CRM não consta da base, o nome aparece como “Não localizado na base do CFM”.',
       'O CRM é a chave usada para vincular as autorizações às análises de comportamento do prescritor.',
       'pi-id-card'
     ),
     status: createCrmTableTooltip(
       'Status / Alertas',
-      'Reúne os sinais identificados para o CRM, como volume intensivo, concentração temporal, inconsistência no CFM, exclusividade, distância atípica e uso sequencial de múltiplos CRMs.',
-      'Badges clicáveis abrem as evidências quando há detalhamento disponível.',
+      'Lista os sinais do CRM, um por linha, em ordem de gravidade: CRM não localizado ou irregular no CFM (vermelho); mais de 30 prescrições por dia, local (vermelho) ou no Brasil (laranja-escuro); Autorizações em Sequência com Único CRM (laranja) e com Múltiplos CRMs (roxo); distância superior a 400 km (verde-azulado); e CRM exclusivo deste estabelecimento (azul).',
+      'O número à direita é a quantidade de episódios detalhados. Clique na seta ou na linha para abrir as evidências.',
       'pi-shield'
     ),
     volume: createCrmTableTooltip(
@@ -88,9 +123,9 @@ const crmTableTooltips = Object.freeze({
       'pi-chart-bar'
     ),
     participation: createCrmTableTooltip(
-      'Participação / Acumulado',
-      'Participação é a parcela do faturamento do estabelecimento atribuída ao CRM. Acumulado soma as participações da primeira posição até o CRM atual e evidencia a concentração do volume financeiro.',
-      'As barras representam a participação individual e o percentual acumulado.',
+      'Participação no valor',
+      'Parcela do valor pago pela farmácia atribuída ao CRM. Na barra, o trecho cinza é o acumulado dos médicos acima dele na classificação e o trecho colorido é a participação deste médico; a ponta direita é o acumulado até ele.',
+      'Lida de cima para baixo, a coluna forma uma escada: degraus largos no topo indicam faturamento concentrado em poucos médicos. Os médicos que, somados do maior para o menor, formam os primeiros 80% do valor aparecem em cor mais forte.',
       'pi-chart-line'
     ),
     prescriptions: createCrmTableTooltip(
@@ -99,49 +134,17 @@ const crmTableTooltips = Object.freeze({
       'Médias acima de 30 prescrições por dia são sinalizadas como emissão atípica.',
       'pi-calendar-clock'
     ),
+    atuacao: createCrmTableTooltip(
+      'Atuação na farmácia',
+      'Primeiro e último mês em que o CRM teve prescrições neste estabelecimento, dentro do período filtrado, e a quantidade de meses com movimento.',
+      'O mini gráfico mostra as autorizações mês a mês, uma barra por mês, na mesma linha do tempo para todos os médicos: do primeiro ao último mês com prescrições na farmácia dentro do período filtrado. Barras alinhadas indicam atuação simultânea; a altura é relativa ao maior mês do próprio CRM.',
+      'pi-calendar'
+    ),
     exclusive: createCrmTableTooltip(
-      'Taxa de exclusividade',
-      'Percentual das prescrições do CRM no Farmácia Popular que foram autorizadas exclusivamente neste estabelecimento.',
-      'Valores próximos de 100% indicam concentração elevada da atuação do médico nesta unidade.',
+      'Exclusividade do médico nesta farmácia',
+      'Mostra quantas das autorizações deste médico no Farmácia Popular, em todo o Brasil, foram realizadas nesta farmácia. Exemplo: 87% significa que, de cada 100 autorizações do médico no programa, 87 foram realizadas aqui.',
+      `Destaque vermelho a partir de ${CRM_EXCLUSIVIDADE_THRESHOLDS.alto}% e texto em evidência entre ${CRM_EXCLUSIVIDADE_THRESHOLDS.atencao}% e ${CRM_EXCLUSIVIDADE_THRESHOLDS.alto}%. Um valor alto, sozinho, não indica irregularidade: um médico de bairro pode ter quase todas as autorizações concentradas na mesma farmácia. O sinal ganha peso quando vem acompanhado de volume alto, ou seja, participação relevante no valor e muitas prescrições por dia.`,
       'pi-lock'
-    ),
-  }),
-  issues: Object.freeze({
-    roboLocal: createCrmTableTooltip(
-      'Mais de 30 prescrições/dia — local',
-      'A média diária de prescrições deste CRM nesta farmácia ultrapassou 30 autorizações por dia.',
-      'O sinal é calculado sobre a atuação do CRM neste estabelecimento.',
-      'pi-history'
-    ),
-    roboBrasil: createCrmTableTooltip(
-      'Mais de 30 prescrições/dia — Brasil',
-      'A média diária de prescrições deste CRM no conjunto das farmácias do Farmácia Popular ultrapassou 30 autorizações por dia.',
-      'O sinal pode existir mesmo sem ocorrência acima do limite nesta unidade.',
-      'pi-globe'
-    ),
-    crmInvalido: createCrmTableTooltip(
-      'CRM não localizado',
-      'O CRM não foi encontrado na base oficial do Conselho Federal de Medicina.',
-      'O alerta aponta uma inconsistência cadastral que precisa ser confrontada com os registros da autorização.',
-      'pi-ban'
-    ),
-    antesRegistro: createCrmTableTooltip(
-      'CRM irregular',
-      'Foi identificada uma venda anterior à data de registro oficial do CRM no Conselho Federal de Medicina.',
-      'A análise compara a data da autorização com o início de registro disponível para o prescritor.',
-      'pi-calendar-times'
-    ),
-    exclusivo: createCrmTableTooltip(
-      'CRM exclusivo',
-      'No conjunto de registros do Farmácia Popular analisado, o CRM prescreveu exclusivamente para este CNPJ.',
-      'O padrão representa concentração integral da atuação observada nesta unidade.',
-      'pi-lock'
-    ),
-    semOcorrencias: createCrmTableTooltip(
-      'Sem ocorrências identificadas',
-      'Nenhum alerta ou sinal de anomalia foi identificado para este CRM no recorte analisado.',
-      'A tabela continua apresentando os dados financeiros e de participação do prescritor.',
-      'pi-check-circle'
     ),
   }),
   evidence: Object.freeze({
@@ -171,52 +174,6 @@ const crmTableTooltips = Object.freeze({
     'pi-search'
   ),
 });
-
-const alertToggleTooltipCopy = Object.freeze({
-  conc: Object.freeze({
-    collapsed: {
-      title: 'Ver episódios de Autorizações em Sequência (Único CRM)',
-      body: 'Abre os episódios em que este CRM registrou muitas autorizações em sequência em um intervalo muito curto.',
-      note: 'O painel detalha volume, janela de tempo e taxa por hora.',
-    },
-    expanded: {
-      title: 'Recolher episódios de Autorizações em Sequência (Único CRM)',
-      body: 'Oculta o painel com os episódios detalhados de autorizações em sequência registradas por este CRM.',
-      note: 'Os indicadores e alertas da linha permanecem visíveis.',
-    },
-  }),
-  geo: Object.freeze({
-    collapsed: {
-      title: 'Ver evidências de distância',
-      body: 'Abre os pares de estabelecimentos em que o mesmo CRM aparece associado a locais separados por mais de 400 km.',
-      note: 'A tabela apresenta municípios, datas, horários e distância calculada.',
-    },
-    expanded: {
-      title: 'Recolher evidências de distância',
-      body: 'Oculta o painel com as evidências geográficas associadas a este CRM.',
-      note: 'Os indicadores e alertas da linha permanecem visíveis.',
-    },
-  }),
-  surto: Object.freeze({
-    collapsed: {
-      title: 'Ver episódios de Autorizações em Sequência (Múltiplos CRMs)',
-      body: 'Abre os episódios em que a farmácia registrou muitas autorizações em sequência com participação de diferentes CRMs.',
-      note: 'A tabela apresenta os CRMs acionados, os volumes e a diversidade do episódio.',
-    },
-    expanded: {
-      title: 'Recolher episódios de Autorizações em Sequência (Múltiplos CRMs)',
-      body: 'Oculta o painel com os episódios detalhados de autorizações em sequência envolvendo diferentes CRMs.',
-      note: 'Os indicadores e alertas da linha permanecem visíveis.',
-    },
-  }),
-});
-
-function getAlertToggleTooltip(type, isExpanded) {
-  const copy = alertToggleTooltipCopy[type];
-  if (!copy) throw new Error(`Tipo de alerta CRM não configurado: ${type}.`);
-  const state = copy[isExpanded ? 'expanded' : 'collapsed'];
-  return createCrmTableTooltip(state.title, state.body, state.note, 'pi-info-circle');
-}
 
 const filterOnlyIssues = ref(false);
 const showAllCrms     = ref(false);
@@ -262,6 +219,88 @@ function qtdAlertasGeo(m) {
 function qtdAlertasMultiplos(m) {
   return requireAlertCount(m, 'qtd_alertas_crm_multiplos');
 }
+
+/**
+ * Itens da coluna Status/Alertas em ordem de gravidade: cadastro CFM, volume
+ * intensivo, sequências, distância e exclusividade. As cores seguem a Cronologia
+ * (Único CRM laranja, Múltiplos CRMs roxo).
+ */
+function getStatusItems(m) {
+  const items = [];
+  if (m.flag_crm_invalido) items.push({ key: 'crm-invalido', label: 'CRM não localizado', tone: 'critico' });
+  if (m.flag_prescricao_antes_registro) items.push({ key: 'crm-irregular', label: 'CRM irregular', tone: 'critico' });
+  if (m.flag_robo) items.push({ key: 'robo-local', label: 'Mais de 30 presc./dia (local)', tone: 'critico' });
+  if (m.flag_robo_oculto && !m.flag_robo) items.push({ key: 'robo-brasil', label: 'Mais de 30 presc./dia (Brasil)', tone: 'medio' });
+  if (m.alerta_concentracao_unico_crm) items.push({ key: 'seq-unico', label: 'Sequência · Único CRM', tone: 'unico', count: qtdAlertasUnico(m) });
+  if (m.alerta_concentracao_multiplos_crms) items.push({ key: 'seq-multi', label: 'Sequência · Múltiplos CRMs', tone: 'multi', count: qtdAlertasMultiplos(m) });
+  if (m.alerta5_geografico) items.push({ key: 'distancia', label: 'Distância > 400 km', tone: 'geo', count: qtdAlertasGeo(m) });
+  if (m.flag_crm_exclusivo > 0) items.push({ key: 'exclusivo', label: 'CRM exclusivo', tone: 'exclusivo' });
+  return items;
+}
+
+// ── Atuação na farmácia ────────────────────────────────────────────────────
+function competenciaToIndex(comp) {
+  return Math.floor(comp / 100) * 12 + (comp % 100) - 1;
+}
+
+function formatCompetencia(comp) {
+  return `${String(comp % 100).padStart(2, '0')}/${Math.floor(comp / 100)}`;
+}
+
+const periodoMeses = computed(() => {
+  const periodo = props.periodoCompetencias;
+  if (!periodo) return null;
+  const inicio = competenciaToIndex(periodo.inicio);
+  const total = competenciaToIndex(periodo.fim) - inicio + 1;
+  if (!(total > 0)) throw new Error('Período de competências inválido para a coluna de atuação.');
+  return { inicio, total };
+});
+
+/**
+ * Resumo da atuação do CRM nesta farmácia: período, meses com prescrição e a
+ * série mensal desenhada no eixo comum da movimentação da farmácia — assim os mini
+ * gráficos ficam alinhados no tempo entre as linhas.
+ */
+function buildAtuacao(m) {
+  const eixo = periodoMeses.value;
+  if (!eixo) return null;
+  if (m.competencia_inicio_atuacao == null || !Array.isArray(m.serie_mensal_atuacao)) {
+    throw new Error(`Contrato invalido em crm-data: atuação obrigatória para ${m.id_medico}.`);
+  }
+  const inicio = Number(m.competencia_inicio_atuacao);
+  const fim = Number(m.competencia_fim_atuacao);
+  const meses = Number(m.qtd_meses_atuacao);
+  const maximo = Math.max(1, ...m.serie_mensal_atuacao.map(p => Number(p.qtd)));
+  const barras = m.serie_mensal_atuacao
+    .map(p => ({
+      x: competenciaToIndex(Number(p.competencia)) - eixo.inicio,
+      h: Math.max(1.5, (Number(p.qtd) / maximo) * 16),
+    }))
+    .filter(b => b.x >= 0 && b.x < eixo.total);
+  return {
+    periodo: inicio === fim ? formatCompetencia(inicio) : `${formatCompetencia(inicio)} – ${formatCompetencia(fim)}`,
+    meses: `${meses} ${meses === 1 ? 'mês' : 'meses'}`,
+    total: eixo.total,
+    barras,
+  };
+}
+
+const atuacaoDialogMedico = ref(null);
+const atuacaoDialogVisible = computed({
+  get: () => atuacaoDialogMedico.value !== null,
+  set: (visible) => { if (!visible) atuacaoDialogMedico.value = null; },
+});
+
+function openAtuacaoDialog(m) {
+  atuacaoDialogMedico.value = m;
+}
+
+// Calculado uma vez por lista (e não a cada binding do template).
+const atuacaoByMedico = computed(() => {
+  const mapa = new Map();
+  for (const m of props.crmsInteresse) mapa.set(m.id_medico, buildAtuacao(m));
+  return mapa;
+});
 
 function hasAlertasDetalhados(m) {
   return qtdAlertasUnico(m) > 0 || qtdAlertasGeo(m) > 0 || qtdAlertasMultiplos(m) > 0;
@@ -355,7 +394,7 @@ const maxPDOverall = computed(() => {
 </script>
 
 <template>
-  <div class="section-container animate-fade-in">
+  <div class="section-container animate-fade-in" :style="dataColorVars">
     <div class="section-title" style="border-bottom: none; margin-bottom: 0">
       <div style="display: flex; align-items: center; gap: 1.5rem; width: 100%">
         <div style="display: flex; align-items: center; gap: 0.75rem">
@@ -411,7 +450,7 @@ const maxPDOverall = computed(() => {
                 aria-label="Informações sobre a classificação"
               />
             </th>
-            <th style="width: 160px;">
+            <th style="width: 270px;">
               CRM / Médico
               <i
                 class="pi pi-info-circle th-info-icon"
@@ -420,7 +459,7 @@ const maxPDOverall = computed(() => {
                 aria-label="Informações sobre CRM e médico"
               />
             </th>
-            <th style="width: 42%">
+            <th style="width: 19%">
               Status / Alertas
               <i
                 class="pi pi-info-circle th-info-icon"
@@ -429,7 +468,16 @@ const maxPDOverall = computed(() => {
                 aria-label="Informações sobre status e alertas"
               />
             </th>
-            <th class="col-right" style="width: 15%">
+            <th style="width: 26%">
+              Atuação na farmácia
+              <i
+                class="pi pi-info-circle th-info-icon"
+                v-tooltip.top="crmTableTooltips.columns.atuacao"
+                tabindex="0"
+                aria-label="Informações sobre a atuação na farmácia"
+              />
+            </th>
+            <th class="col-right" style="width: 11%">
               Volume / Valor
               <i
                 class="pi pi-info-circle th-info-icon"
@@ -439,15 +487,15 @@ const maxPDOverall = computed(() => {
               />
             </th>
             <th class="col-center" style="width: 16%">
-              Participação / Acumulado
+              Participação no valor
               <i
                 class="pi pi-info-circle th-info-icon"
                 v-tooltip.top="crmTableTooltips.columns.participation"
                 tabindex="0"
-                aria-label="Informações sobre participação e acumulado"
+                aria-label="Informações sobre a participação no valor"
               />
             </th>
-            <th class="col-center" style="width: 12%">
+            <th class="col-center" style="width: 11%">
               Prescrições por Dia
               <i
                 class="pi pi-info-circle th-info-icon"
@@ -456,8 +504,8 @@ const maxPDOverall = computed(() => {
                 aria-label="Informações sobre prescrições por dia"
               />
             </th>
-            <th class="col-center" style="width: 5%">
-              Excl.
+            <th class="col-center" style="width: 6%">
+              Exclusividade
               <i
                 class="pi pi-info-circle th-info-icon"
                 v-tooltip.left="crmTableTooltips.columns.exclusive"
@@ -479,63 +527,76 @@ const maxPDOverall = computed(() => {
                   </div>
               </td>
               <td>
-                <div class="med-id">{{ m.id_medico }}</div>
+                <div class="med-id-row">
+                  <span class="med-id">{{ m.id_medico }}</span>
+                  <span class="med-name" :class="{ 'is-missing': !m.no_medico }">
+                    {{ m.no_medico ? formatTitleCase(m.no_medico) : 'Não localizado na base do CFM' }}
+                  </span>
+                </div>
                 <div class="med-sub">1ª inscrição UF: {{ m.dt_inscricao_crm ? formatarData(m.dt_inscricao_crm) : 'ND' }}</div>
               </td>
               <td class="flags-cell">
-                <div class="tags-container">
-                  <span v-if="m.flag_robo" class="issue-tag red" v-tooltip.top="crmTableTooltips.issues.roboLocal">
-                    <i class="pi pi-history"></i> >30 PRESC/DIA (LOCAL)
+                <div class="status-cell">
+                  <ul v-if="getStatusItems(m).length" class="status-list">
+                    <li
+                      v-for="item in getStatusItems(m)"
+                      :key="item.key"
+                      class="status-item"
+                      :class="`tone-${item.tone}`"
+                    >
+                      <span class="status-dot" aria-hidden="true" />
+                      <span class="status-label">{{ item.label }}</span>
+                      <span v-if="item.count > 0" class="status-count">{{ formatNumberFull(item.count) }}×</span>
+                    </li>
+                  </ul>
+                  <span v-else class="status-empty">
+                    <i class="pi pi-check-circle" aria-hidden="true" />
+                    Sem ocorrências
                   </span>
-                  <span v-if="m.flag_robo_oculto && !m.flag_robo" class="issue-tag orange" v-tooltip.top="crmTableTooltips.issues.roboBrasil">
-                    <i class="pi pi-globe"></i> >30 PRESC/DIA (BRASIL)
-                  </span>
-                  <span
-                    v-if="m.alerta_concentracao_unico_crm"
-                    class="issue-tag violet clickable-badge"
-                    v-tooltip.top="getAlertToggleTooltip('conc', expandedAlertasMedico.has(m.id_medico))"
+                  <button
+                    v-if="hasAlertasDetalhados(m)"
+                    type="button"
+                    class="status-expand"
+                    :aria-expanded="expandedAlertasMedico.has(m.id_medico)"
+                    :aria-label="`${expandedAlertasMedico.has(m.id_medico) ? 'Ocultar' : 'Ver'} evidências de ${m.id_medico}`"
                     @click.stop="toggleAlertasDiarios(m.id_medico)"
                   >
-                    <i class="pi pi-stopwatch"></i> Autorizações em Sequência (Único CRM)
-                    <span v-if="qtdAlertasUnico(m) > 0" class="badge-count">({{ qtdAlertasUnico(m) }}x)</span>
-                    <i :class="expandedAlertasMedico.has(m.id_medico) ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" style="font-size:0.6rem; margin-left:0.2rem;" />
-                  </span>
-                  <span v-if="m.flag_crm_invalido" class="issue-tag red" v-tooltip.top="crmTableTooltips.issues.crmInvalido">
-                    <i class="pi pi-ban"></i> CRM NÃO LOCALIZADO
-                  </span>
-                  <span v-if="m.flag_prescricao_antes_registro" class="issue-tag red" v-tooltip.top="crmTableTooltips.issues.antesRegistro">
-                    <i class="pi pi-calendar-times"></i> CRM IRREGULAR
-                  </span>
-                  <span v-if="m.flag_crm_exclusivo > 0" class="issue-tag blue-network" v-tooltip.top="crmTableTooltips.issues.exclusivo">
-                    <i class="pi pi-lock"></i> CRM EXCLUSIVO
-                  </span>
-                  <span 
-                    v-if="m.alerta5_geografico" 
-                    class="issue-tag purple-geo clickable-badge" 
-                    v-tooltip.top="getAlertToggleTooltip('geo', expandedAlertasMedico.has(m.id_medico))"
-                    @click.stop="toggleAlertasDiarios(m.id_medico)"
-                  >
-                    <i class="pi pi-map-marker"></i> DISTÂNCIA >400KM
-                    <span v-if="qtdAlertasGeo(m) > 0" class="badge-count">({{ qtdAlertasGeo(m) }}x)</span>
-                    <i :class="expandedAlertasMedico.has(m.id_medico) ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" style="font-size:0.6rem; margin-left:0.2rem;" />
-                  </span>
-                  <span
-                    v-if="m.alerta_concentracao_multiplos_crms"
-                    class="issue-tag amber clickable-badge"
-                    v-tooltip.top="getAlertToggleTooltip('surto', expandedAlertasMedico.has(m.id_medico))"
-                    @click.stop="toggleAlertasDiarios(m.id_medico)"
-                  >
-                    <i class="pi pi-bolt"></i> Autorizações em Sequência (Múltiplos CRMs)
-                    <span v-if="qtdAlertasMultiplos(m) > 0" class="badge-count">({{ qtdAlertasMultiplos(m) }}x)</span>
-                    <i :class="expandedAlertasMedico.has(m.id_medico) ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" style="font-size:0.6rem; margin-left:0.2rem;" />
-                  </span>
-                  <i
-                    v-if="!hasAlertasDetalhados(m) && !m.flag_robo && !m.flag_robo_oculto && !m.flag_crm_invalido && !m.flag_prescricao_antes_registro && !m.alerta5_geografico && !m.alerta_concentracao_multiplos_crms && (!m.flag_crm_exclusivo || m.flag_crm_exclusivo === 0)"
-                    class="pi pi-check-circle"
-                    style="color: var(--text-muted); font-size: 0.85rem;"
-                    v-tooltip.top="crmTableTooltips.issues.semOcorrencias"
-                  />
+                    <i :class="expandedAlertasMedico.has(m.id_medico) ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" aria-hidden="true" />
+                  </button>
                 </div>
+              </td>
+              <td class="atuacao-cell">
+                <button
+                  v-if="atuacaoByMedico.get(m.id_medico)"
+                  type="button"
+                  class="atuacao-btn"
+                  :aria-label="`Abrir detalhe mensal da atuação de ${m.id_medico}`"
+                  @click.stop="openAtuacaoDialog(m)"
+                >
+                  <i class="pi pi-window-maximize atuacao-expand-icon" aria-hidden="true" />
+                  <span class="atuacao-texto">
+                    <span class="atuacao-periodo">{{ atuacaoByMedico.get(m.id_medico).periodo }}</span>
+                    <span class="atuacao-meses">{{ atuacaoByMedico.get(m.id_medico).meses }}</span>
+                  </span>
+                  <svg
+                    class="atuacao-spark"
+                    :viewBox="`0 0 ${atuacaoByMedico.get(m.id_medico).total} 16`"
+                    preserveAspectRatio="none"
+                    role="img"
+                    :aria-label="`Autorizações mensais de ${m.id_medico}: ${atuacaoByMedico.get(m.id_medico).periodo}, ${atuacaoByMedico.get(m.id_medico).meses}`"
+                  >
+                    <line class="atuacao-base" x1="0" y1="15.75" :x2="atuacaoByMedico.get(m.id_medico).total" y2="15.75" />
+                    <rect
+                      v-for="barra in atuacaoByMedico.get(m.id_medico).barras"
+                      :key="barra.x"
+                      class="atuacao-bar"
+                      :x="barra.x + 0.1"
+                      :y="16 - barra.h"
+                      width="0.8"
+                      :height="barra.h"
+                    />
+                  </svg>
+                </button>
               </td>
               <td class="col-right">
                 <div class="cell-stacked">
@@ -544,20 +605,24 @@ const maxPDOverall = computed(() => {
                 </div>
               </td>
               <td class="col-center">
-                <div class="multi-bar-container">
-                  <div class="bar-row">
-                    <span class="bar-label">part.</span>
-                    <div class="bar-container">
-                      <div class="bar-fill part-fill" :style="{ width: Math.min(m.pct_participacao, 100) + '%' }"></div>
-                      <span class="bar-text">{{ formatPct(m.pct_participacao) }}</span>
-                    </div>
+                <div class="pareto-cell" :class="{ 'is-nucleo': getParticipacao(m).nucleo }">
+                  <div class="pareto-texto">
+                    <span class="pareto-parte">{{ formatPct(m.pct_participacao) }}</span>
+                    <span class="pareto-acum">
+                      <span class="pareto-acum-label">Acumulado</span>
+                      <span class="pareto-acum-valor">{{ formatPct(m.pct_acumulado) }}</span>
+                    </span>
                   </div>
-                  <div class="bar-row">
-                    <span class="bar-label">acum.</span>
-                    <div class="bar-container">
-                      <div class="bar-fill acum-fill" :style="{ width: Math.min(m.pct_acumulado, 100) + '%' }"></div>
-                      <span class="bar-text">{{ formatPct(m.pct_acumulado) }}</span>
-                    </div>
+                  <div
+                    class="pareto-track"
+                    role="img"
+                    :aria-label="`Participação de ${formatPct(m.pct_participacao)}, acumulado de ${formatPct(m.pct_acumulado)} do valor da farmácia`"
+                  >
+                    <span class="pareto-anterior" :style="{ width: `${getParticipacao(m).anterior}%` }" />
+                    <span
+                      class="pareto-parte-bar"
+                      :style="{ left: `${getParticipacao(m).anterior}%`, width: `${getParticipacao(m).parte}%` }"
+                    />
                   </div>
                 </div>
               </td>
@@ -572,7 +637,7 @@ const maxPDOverall = computed(() => {
                 </div>
               </td>
               <td class="col-center">
-                <span :class="{ 'text-purple': m.pct_volume_aqui_vs_total > 90 }">{{ formatPct(m.pct_volume_aqui_vs_total) }}</span>
+                <span class="excl-valor" :class="`is-${getExclusividadeNivel(m)}`">{{ formatPct(m.pct_volume_aqui_vs_total) }}</span>
               </td>
             </tr>
 
@@ -793,7 +858,13 @@ const maxPDOverall = computed(() => {
       </button>
     </div>
 
-
+    <CrmAtuacaoDialog
+      v-model="atuacaoDialogVisible"
+      :medico="atuacaoDialogMedico"
+      :cnpj="currentCnpj"
+      :periodo="periodoCompetencias"
+      :serie-farmacia="serieMensalFarmacia"
+    />
   </div>
 </template>
 
@@ -896,66 +967,231 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
 .cell-main { font-size: 0.85rem; font-weight: 600; }
 .cell-sub { font-size: 0.7rem; color: var(--text-muted); font-weight: 400; opacity: 0.8; }
 
-.multi-bar-container { display: flex; flex-direction: column; gap: 0.5rem; width: 100%; min-width: 120px; }
-.bar-row { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
-.bar-row .bar-container { flex: 1; }
-.bar-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; min-width: 36px; text-align: left; opacity: 0.7; }
-.bar-container { position: relative; height: 1.2rem; background: rgba(0,0,0,0.06); border-radius: 6px; overflow: hidden; display: flex; align-items: center; min-width: 45px; border: 1px solid rgba(128,128,128,0.12); box-shadow: inset 0 1px 3px rgba(0,0,0,0.08); }
-:global(.dark-mode) .bar-container { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.06); }
-.bar-fill { position: absolute; top: 0; left: 0; bottom: 0; border-radius: 0 5px 5px 0; transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
-.bar-fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.04) 55%, rgba(0,0,0,0.06) 100%); border-radius: inherit; pointer-events: none; }
-.bar-text { position: relative; z-index: 1; width: 100%; text-align: center; font-size: 0.78rem; font-weight: 500; color: var(--text-color-85); text-shadow: 0 0 2px var(--bg-color), 0 0 4px var(--bg-color); }
-.part-fill { background: linear-gradient(90deg, rgba(148, 163, 184, 0.45), rgba(148, 163, 184, 0.65)) !important; opacity: 1 !important; }
-.acum-fill { background: linear-gradient(90deg, rgba(99, 102, 241, 0.7), rgba(129, 140, 248, 0.9)) !important; opacity: 1 !important; }
+.pareto-cell { display: flex; flex-direction: column; gap: 0.5rem; width: 100%; }
+.pareto-texto {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+.pareto-parte { font-size: 0.85rem; font-weight: 500; color: var(--text-color-85); }
+.pareto-acum { display: inline-flex; align-items: baseline; gap: 0.35rem; }
+.pareto-acum-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pareto-acum-valor { font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); }
+.pareto-track {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-color-85) 7%, transparent);
+}
+.pareto-anterior {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--text-color-85) 26%, transparent);
+}
+.pareto-parte-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--data-color-soft);
+  transition: left 0.4s ease, width 0.4s ease;
+}
+.pareto-cell.is-nucleo .pareto-parte-bar { background: var(--data-color); }
 
+.med-id-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  margin-bottom: 0.1rem;
+}
 .med-id {
-  font-weight: 700;
+  flex-shrink: 0;
+  font-weight: 600;
   font-size: 0.88rem;
-  color: var(--primary-color);
+  color: var(--text-color);
   text-transform: uppercase;
   letter-spacing: 0.01em;
-  margin-bottom: 0.1rem;
+}
+.med-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-color-85);
+}
+.med-name::before {
+  content: '·';
+  margin-right: 0.4rem;
+  color: var(--text-muted);
+}
+.med-name.is-missing {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 .med-sub { font-size: 0.72rem; color: var(--text-muted); font-weight: 400; opacity: 0.8; }
 
-.tags-container { display: flex; flex-wrap: wrap; gap: 0.25rem; }
-.issue-tag {
-  font-size: 0.68rem;
+.status-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.status-list {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.2rem;
+}
+.status-item {
+  --tone: var(--text-muted);
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.5rem;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--text-color-85);
+}
+.status-item.tone-critico { --tone: var(--risk-critical); }
+.status-item.tone-medio { --tone: #f97316; }
+.status-item.tone-unico { --tone: #f59e0b; }
+.status-item.tone-multi { --tone: #8b5cf6; }
+.status-item.tone-geo { --tone: #14b8a6; }
+.status-item.tone-exclusivo { --tone: #3b82f6; }
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+.status-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 500;
-  padding: 0.2rem 0.6rem;
-  border-radius: 99px;
+}
+.status-item.tone-critico .status-label { color: var(--tone); }
+.status-count {
+  min-width: 3.2rem;
+  text-align: right;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.status-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+.status-expand {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.3rem;
-  max-width: 100%;
-  white-space: normal;
-  line-height: 1.2;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.status-expand i { font-size: 0.6rem; }
+.status-expand:hover,
+.status-expand[aria-expanded="true"] {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.status-expand:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
+  outline-offset: 2px;
+}
+.atuacao-cell { vertical-align: middle; }
+.atuacao-btn {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  margin: -0.35rem -0.5rem;
+  box-sizing: content-box;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: left;
-  letter-spacing: 0.01em;
-  text-transform: none !important;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  transition: all 0.2s ease;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.atuacao-btn:hover,
+.atuacao-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+  outline: none;
+}
+.atuacao-expand-icon {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.atuacao-btn:hover .atuacao-expand-icon,
+.atuacao-btn:focus-visible .atuacao-expand-icon { opacity: 1; }
+.atuacao-btn .atuacao-texto { padding-right: 1rem; }
+.atuacao-texto {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+  white-space: nowrap;
+}
+.atuacao-periodo { font-size: 0.76rem; font-weight: 500; color: var(--text-color-85); }
+.atuacao-meses { font-size: 0.7rem; color: var(--text-muted); }
+.atuacao-spark { display: block; width: 100%; height: 35px; overflow: visible; }
+.atuacao-base { stroke: var(--card-border); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+.atuacao-bar { fill: var(--data-color); }
+.row-expandable { cursor: pointer; user-select: none; }
+.excl-valor {
+  display: inline-block;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-secondary);
   border: 1px solid transparent;
 }
-.issue-tag:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-.issue-tag i { font-size: 0.65rem; opacity: 0.7; }
-
-.issue-tag.red { background: rgba(239, 68, 68, 0.08); color: #ef4444; border-color: rgba(239, 68, 68, 0.15); }
-.issue-tag.orange { background: rgba(245, 158, 11, 0.08); color: #f59e0b; border-color: rgba(245, 158, 11, 0.15); }
-.issue-tag.blue-network { background: rgba(59, 130, 246, 0.08); color: #3b82f6; border-color: rgba(59, 130, 246, 0.15); }
-.issue-tag.purple-geo { background: rgba(139, 92, 246, 0.08); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.15); }
-.issue-tag.amber { background: rgba(245, 158, 11, 0.08); color: #f59e0b; border-color: rgba(245, 158, 11, 0.15); }
-.issue-tag.violet { background: rgba(129, 140, 248, 0.08); color: #818cf8; border-color: rgba(129, 140, 248, 0.15); }
-.issue-tag.green-ok { background: rgba(16, 185, 129, 0.08); color: #10b981; border-color: rgba(16, 185, 129, 0.15); }
-
-.badge-count { font-size: 0.7rem; font-weight: 600; opacity: 0.8; margin-left: 0.1rem; }
-.clickable-badge { cursor: pointer; user-select: none; }
-.row-expandable { cursor: pointer; user-select: none; }
+.excl-valor.is-atencao { font-weight: 600; color: var(--text-color-85); }
+.excl-valor.is-alto {
+  font-weight: 600;
+  color: var(--risk-critical);
+  background: color-mix(in srgb, var(--risk-critical) 12%, transparent);
+  border-color: color-mix(in srgb, var(--risk-critical) 30%, transparent);
+}
 
 .text-red { color: var(--risk-critical) !important; }
-.text-purple { color: #8b5cf6 !important; }
 .text-orange { color: var(--risk-medium) !important; }
 
 .alertas-diarios-row,

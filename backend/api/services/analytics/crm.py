@@ -592,6 +592,31 @@ def get_crm_data(
 
     df_med = df_med.join(df_med_estabelecimentos_ref, on="id_medico", how="left")
 
+    # Período de atuação do CRM nesta farmácia (meses com prescrição) e série mensal
+    # para a coluna "Atuação na farmácia" da tabela de CRMs de interesse.
+    df_med_atuacao = (
+        df_med_mes
+        .filter(pl.col("nu_prescricoes") > 0)
+        .sort(["id_medico", "competencia"])
+        .group_by("id_medico", maintain_order=True)
+        .agg([
+            pl.col("competencia").min().alias("competencia_inicio_atuacao"),
+            pl.col("competencia").max().alias("competencia_fim_atuacao"),
+            pl.col("competencia").n_unique().alias("qtd_meses_atuacao"),
+            pl.struct([
+                pl.col("competencia"),
+                pl.col("nu_prescricoes").alias("qtd"),
+                pl.col("vl_total_prescricoes").round(2).alias("valor"),
+                pl.col("nu_prescricoes_total_brasil").alias("qtd_brasil"),
+            ]).alias("serie_mensal_atuacao"),
+        ])
+    )
+    df_med = df_med.join(df_med_atuacao, on="id_medico", how="left")
+    sem_atuacao = df_med.filter(pl.col("competencia_inicio_atuacao").is_null())
+    if not sem_atuacao.is_empty():
+        ids = ", ".join(str(v) for v in sem_atuacao["id_medico"].head(10).to_list())
+        raise RuntimeError(f"CRM(s) sem competencia com prescricao no periodo: {ids}.")
+
     df_med = (
         df_med
         .with_columns([
@@ -680,6 +705,25 @@ def get_crm_data(
         "municipio":                      municipio,
         "uf":                             uf_str,
         "from_cache":                     from_cache,
+        # Eixo comum das séries de atuação: meses em que a farmácia teve prescrições
+        # dentro do período filtrado (não o período filtrado inteiro, que pode ter
+        # anos sem movimentação e só comprimiria os gráficos).
+        "competencia_inicio_periodo":     _to_int(df["competencia"].min()),
+        "competencia_fim_periodo":        _to_int(df["competencia"].max()),
+        # Totais mensais da farmácia (todos os CRMs), base do % de participação
+        # mensal exibido no modal de atuação do CRM.
+        "serie_mensal_farmacia": [
+            {"competencia": _to_int(r["competencia"]), "qtd": _to_int(r["qtd"]), "valor": round(_to_float(r["valor"]), 2)}
+            for r in (
+                df.group_by("competencia")
+                .agg([
+                    pl.col("nu_prescricoes_mes").sum().alias("qtd"),
+                    pl.col("vl_total_prescricoes").sum().alias("valor"),
+                ])
+                .sort("competencia")
+                .iter_rows(named=True)
+            )
+        ],
     }
 
     # â”€â”€ 7. Alertas diÃ¡rios â€” contadores por mÃ©dico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

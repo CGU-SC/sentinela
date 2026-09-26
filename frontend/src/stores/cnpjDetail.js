@@ -362,7 +362,7 @@ export const useCnpjDetailStore = defineStore('cnpjDetail', {
     repassesRequestKey:  null,
 
     // ── Navegação Deep-Link (Timeline) ──────────────────────────────────────
-    selectedTimelineEvent: null, // { date: 'YYYY-MM-DD', hour: number | 'all' }
+    selectedTimelineEvent: null, // { date: 'YYYY-MM-DD', hour: number | 'all', autorizacao: string | null }
     activeCrmViewMode:     'medicos', // 'medicos' | 'cronologia' | 'falecidos'
 
     // ── Ranking GTINs ─────────────────────────────────────────────────────────
@@ -1611,8 +1611,9 @@ export const useCnpjDetailStore = defineStore('cnpjDetail', {
     },
 
     // ── Navegação ─────────────────────────────────────────────────────────────
-    navigateTimeline(date, hour = 'all') {
-      this.selectedTimelineEvent = { date, hour, ts: Date.now() };
+    // hour: 'all' ou 0–23. autorizacao: nº da autorização a destacar no Raio-X.
+    navigateTimeline(date, hour = 'all', autorizacao = null) {
+      this.selectedTimelineEvent = { date, hour, autorizacao, ts: Date.now() };
       this.activeCrmViewMode     = 'cronologia';
     },
 

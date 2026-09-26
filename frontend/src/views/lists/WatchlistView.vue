@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import axios from "axios";
 import { useFarmaciaListsStore } from "@/stores/farmaciaLists";
 import { useFilterStore } from "@/stores/filters";
@@ -14,10 +14,22 @@ import { API_ENDPOINTS } from "@/config/api";
 import { getApiErrorMessage } from "@/utils/apiErrors";
 import { convertDocxToPdf, downloadBlobFromResponse } from "@/utils/download";
 import ObservationDialog from "@/views/components/cnpj/ObservationDialog.vue";
+import EvidenciasPanel from "@/views/components/evidencias/EvidenciasPanel.vue";
 import NotaTecnicaRegionalDialog from "@/views/components/nota-tecnica/NotaTecnicaRegionalDialog.vue";
 import { useToast } from "primevue/usetoast";
+import Dropdown from "primevue/dropdown";
+import { useEvidenciasStore } from "@/stores/evidencias";
+import {
+  TIPO_EVIDENCIA_OPCOES,
+  dataHoraCurta,
+  quandoEvidencia,
+  resumoEvidencia,
+  tipoEvidencia,
+} from "@/utils/evidencias";
 
 const router = useRouter();
+const route = useRoute();
+const evidenciasStore = useEvidenciasStore();
 const farmaciaLists = useFarmaciaListsStore();
 const filterStore = useFilterStore();
 const geoStore = useGeoStore();
@@ -343,6 +355,97 @@ function setRegionalDialogVisible(visible) {
   if (!visible) pendingNoteItem.value = null;
 }
 
+// ── Abas: Farmácias monitoradas | Evidências ─────────────────────────────
+const ABAS = ["farmacias", "evidencias"];
+const abaDaRota = () => (ABAS.includes(route.query.aba) ? route.query.aba : "farmacias");
+const aba = ref(abaDaRota());
+const filtroEvidCnpj = ref(typeof route.query.cnpj === "string" ? route.query.cnpj : null);
+const filtroEvidTipo = ref(null);
+const removendoEvidId = ref(null);
+const ocupadoEvidId = ref(null);
+
+watch(() => [route.query.aba, route.query.cnpj], () => {
+  aba.value = abaDaRota();
+  if (typeof route.query.cnpj === "string") filtroEvidCnpj.value = route.query.cnpj;
+});
+
+function setAba(valor) {
+  if (aba.value === valor) return;
+  aba.value = valor;
+  removendoEvidId.value = null;
+  const { aba: _aba, cnpj: _cnpj, ...query } = route.query;
+  router.replace({ query: valor === "farmacias" ? query : { ...query, aba: valor } });
+}
+
+const painelEvidCnpj = ref(null);
+
+onMounted(() => {
+  evidenciasStore.painelAberto = false;
+  evidenciasStore.garantirCarregado();
+});
+
+const nomePorCnpj = computed(() => {
+  const map = new Map();
+  for (const item of listaEnriquecida.value) map.set(item.cnpj, item.razaoSocial);
+  return map;
+});
+
+function nomeFarmacia(cnpj) {
+  const nome = nomePorCnpj.value.get(cnpj);
+  return nome && nome !== "—" ? nome : formatCnpj(cnpj);
+}
+
+const totalEvidencias = computed(() => evidenciasStore.itens.length);
+
+const farmaciasComEvidencia = computed(() => {
+  const cnpjs = [...new Set(evidenciasStore.itens.map((ev) => ev.cnpj))];
+  return cnpjs
+    .map((cnpj) => ({ value: cnpj, label: `${nomeFarmacia(cnpj)} (${evidenciasStore.contar(cnpj)})` }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+});
+
+const opcoesFiltroFarmacia = computed(() => [
+  { value: null, label: `Todas as farmácias (${farmaciasComEvidencia.value.length})` },
+  ...farmaciasComEvidencia.value,
+]);
+
+// Farmácia (A–Z) e, dentro dela, ordem cronológica — a ordem de leitura de um relatório.
+const evidenciasFiltradas = computed(() => {
+  const cnpjs = filtroEvidCnpj.value
+    ? [filtroEvidCnpj.value]
+    : farmaciasComEvidencia.value.map((f) => f.value);
+  return cnpjs.flatMap((cnpj) => evidenciasStore
+    .listarDoCnpj(cnpj)
+    .filter((ev) => !filtroEvidTipo.value || ev.tipo === filtroEvidTipo.value));
+});
+
+function limparFiltrosEvidencia() {
+  filtroEvidCnpj.value = null;
+  filtroEvidTipo.value = null;
+}
+
+function abrirEvidencia(ev) {
+  evidenciasStore.irPara(ev, router);
+}
+
+function abrirEvidenciasDaFarmacia(cnpj) {
+  painelEvidCnpj.value = cnpj;
+  evidenciasStore.painelAberto = true;
+}
+
+async function removerEvidencia(ev) {
+  ocupadoEvidId.value = ev.id;
+  try {
+    await evidenciasStore.remover(ev.id);
+    removendoEvidId.value = null;
+    toast.add({ severity: "info", summary: "Evidência removida", detail: quandoEvidencia(ev), life: 2500 });
+  } catch (error) {
+    toast.add({ severity: "error", summary: "Evidência não removida", detail: error.message, life: 7000 });
+  } finally {
+    ocupadoEvidId.value = null;
+  }
+}
+
 function editarObservacao(item) {
   obsTarget.value = item;
   showObsDialog.value = true;
@@ -405,7 +508,32 @@ function formatScore(v) {
       </div>
     </section>
 
-    <div class="lists-card">
+    <div class="lists-tabs" role="tablist" aria-label="Listas">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="aba === 'farmacias'"
+        :class="['lists-tab', { 'is-active': aba === 'farmacias' }]"
+        @click="setAba('farmacias')"
+      >
+        <i class="pi pi-bookmark" aria-hidden="true" />
+        Farmácias monitoradas
+        <span class="lists-tab-count">{{ totalBadge }}</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="aba === 'evidencias'"
+        :class="['lists-tab', { 'is-active': aba === 'evidencias' }]"
+        @click="setAba('evidencias')"
+      >
+        <i class="pi pi-flag" aria-hidden="true" />
+        Evidências
+        <span class="lists-tab-count">{{ evidenciasStore.loadState === 'ready' ? totalEvidencias : '—' }}</span>
+      </button>
+    </div>
+
+    <div v-if="aba === 'farmacias'" class="lists-card">
       <div class="card-header">
         <div class="card-header-left">
           <i class="pi pi-table" />
@@ -458,6 +586,7 @@ function formatScore(v) {
             <th class="col-right">% Não Comp.</th>
             <th class="col-right">Valor s/ Comp.</th>
             <th class="col-right">Total Mov.</th>
+            <th>Evidências</th>
             <th>Adicionado em</th>
             <th class="col-actions">Ações</th>
           </tr>
@@ -539,6 +668,21 @@ function formatScore(v) {
             <td class="col-right col-money col-total-mov">
               {{ item.totalMov != null ? formatBRL(item.totalMov) : '—' }}
             </td>
+            <td class="col-evid">
+              <button
+                v-if="evidenciasStore.contar(item.cnpj) > 0"
+                type="button"
+                class="evid-count-btn"
+                :aria-label="`Abrir as ${evidenciasStore.contar(item.cnpj)} evidências de ${item.razaoSocial}`"
+                @click.stop="abrirEvidenciasDaFarmacia(item.cnpj)"
+              >
+                <i class="pi pi-flag-fill" aria-hidden="true" />
+                <span class="evid-count-num">{{ evidenciasStore.contar(item.cnpj) }}</span>
+                <span class="evid-count-date">{{ dataHoraCurta(evidenciasStore.ultimaEm(item.cnpj)) }}</span>
+              </button>
+              <span v-else-if="evidenciasStore.loadState === 'error'" class="col-vazio">?</span>
+              <span v-else class="col-vazio">—</span>
+            </td>
             <td class="col-date">{{ formatDate(item.adicionadoEm) }}</td>
             <td class="col-actions">
               <div class="action-btns">
@@ -580,6 +724,132 @@ function formatScore(v) {
       </table>
       </div><!-- /lists-content -->
     </div><!-- /lists-card -->
+
+    <div v-else class="lists-card">
+      <div class="card-header">
+        <div class="card-header-left">
+          <i class="pi pi-flag" />
+          <span>Evidências marcadas</span>
+        </div>
+        <div class="card-header-right evid-toolbar">
+          <Dropdown
+            v-model="filtroEvidCnpj"
+            :options="opcoesFiltroFarmacia"
+            option-label="label"
+            option-value="value"
+            class="evid-filtro-farmacia"
+            aria-label="Filtrar por farmácia"
+            :disabled="evidenciasStore.loadState !== 'ready' || totalEvidencias === 0"
+          />
+          <div class="evid-tipos" role="radiogroup" aria-label="Filtrar por tipo">
+            <button
+              v-for="opcao in TIPO_EVIDENCIA_OPCOES"
+              :key="String(opcao.value)"
+              type="button"
+              role="radio"
+              :aria-checked="filtroEvidTipo === opcao.value"
+              :class="['evid-tipo-btn', { 'is-active': filtroEvidTipo === opcao.value }]"
+              :disabled="evidenciasStore.loadState !== 'ready' || totalEvidencias === 0"
+              @click="filtroEvidTipo = opcao.value"
+            >{{ opcao.label }}</button>
+          </div>
+          <span v-if="evidenciasStore.loadState === 'ready'" class="card-count">
+            {{ evidenciasFiltradas.length }} de {{ totalEvidencias }}
+          </span>
+        </div>
+      </div>
+
+      <div class="lists-content">
+        <div v-if="evidenciasStore.loadState === 'loading' || evidenciasStore.loadState === 'idle'" class="empty-state" role="status">
+          <i class="pi pi-spin pi-spinner empty-icon" aria-hidden="true" />
+          <p>Carregando evidências...</p>
+        </div>
+        <div v-else-if="evidenciasStore.loadState === 'error'" class="empty-state evid-error" role="alert">
+          <i class="pi pi-exclamation-triangle empty-icon" aria-hidden="true" />
+          <p>{{ evidenciasStore.error }}</p>
+          <button type="button" class="evid-retry-btn" @click="evidenciasStore.carregar()">Tentar novamente</button>
+        </div>
+        <div v-else-if="totalEvidencias === 0" class="empty-state">
+          <i class="pi pi-flag empty-icon" aria-hidden="true" />
+          <p>Nenhuma evidência marcada.</p>
+          <span>Na Cronologia de uma farmácia, marque dias, horas ou autorizações com a bandeira.</span>
+        </div>
+        <div v-else-if="evidenciasFiltradas.length === 0" class="empty-state">
+          <i class="pi pi-filter-slash empty-icon" aria-hidden="true" />
+          <p>Nenhuma evidência com estes filtros.</p>
+          <button type="button" class="evid-retry-btn" @click="limparFiltrosEvidencia">Limpar filtros</button>
+        </div>
+
+        <table v-else class="lists-table evid-table">
+          <thead>
+            <tr>
+              <th>Estabelecimento</th>
+              <th>Tipo</th>
+              <th>Data / hora</th>
+              <th>Resumo</th>
+              <th>Nota do auditor</th>
+              <th>Marcada em</th>
+              <th class="col-actions">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="ev in evidenciasFiltradas"
+              :key="ev.id"
+              class="clickable-row"
+              :class="{ 'is-busy': ocupadoEvidId === ev.id }"
+              tabindex="0"
+              @click="abrirEvidencia(ev)"
+              @keydown.enter="abrirEvidencia(ev)"
+            >
+              <td class="col-establishment">
+                <div class="establishment-block">
+                  <span class="establishment-name">{{ nomeFarmacia(ev.cnpj) }}</span>
+                  <span class="cnpj-text">{{ formatCnpj(ev.cnpj) }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="evid-tipo-tag">
+                  <i :class="['pi', tipoEvidencia(ev.tipo).icon]" aria-hidden="true" />
+                  {{ tipoEvidencia(ev.tipo).label }}
+                </span>
+              </td>
+              <td class="evid-quando">{{ quandoEvidencia(ev) }}</td>
+              <td class="evid-resumo">{{ resumoEvidencia(ev) }}</td>
+              <td>
+                <span v-if="ev.nota" class="evid-nota" v-tooltip.top="ev.nota.length > 120 ? ev.nota : null">{{ ev.nota }}</span>
+                <span v-else class="col-vazio">—</span>
+              </td>
+              <td class="col-date">{{ dataHoraCurta(ev.criado_em) }}</td>
+              <td class="col-actions">
+                <div v-if="removendoEvidId === ev.id" class="evid-confirma" @click.stop>
+                  <button type="button" class="action-btn remove is-confirm" :disabled="ocupadoEvidId === ev.id" aria-label="Confirmar remoção" @click.stop="removerEvidencia(ev)">
+                    <i class="pi pi-check" />
+                  </button>
+                  <button type="button" class="action-btn" aria-label="Cancelar remoção" @click.stop="removendoEvidId = null">
+                    <i class="pi pi-times" />
+                  </button>
+                </div>
+                <div v-else class="action-btns">
+                  <button type="button" class="action-btn open" aria-label="Abrir na Cronologia" @click.stop="abrirEvidencia(ev)">
+                    <i class="pi pi-arrow-up-right" />
+                  </button>
+                  <button type="button" class="action-btn remove" aria-label="Remover evidência" @click.stop="removendoEvidId = ev.id">
+                    <i class="pi pi-trash" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <EvidenciasPanel
+      v-if="painelEvidCnpj"
+      :cnpj="painelEvidCnpj"
+      :razao-social="nomeFarmacia(painelEvidCnpj)"
+      contexto="listas"
+    />
     <ObservationDialog
       v-if="obsTarget"
       v-model:visible="showObsDialog"
@@ -820,16 +1090,25 @@ function formatScore(v) {
 
 .lists-table th.col-right { text-align: right; }
 
-.lists-table th:nth-child(1) { width: 42px; }
-.lists-table th:nth-child(2) { width: 20%; }
-.lists-table th:nth-child(3) { width: 18%; }
-.lists-table th:nth-child(4) { width: 11%; }
-.lists-table th:nth-child(5) { width: 8%; }
-.lists-table th:nth-child(6) { width: 8%; }
-.lists-table th:nth-child(7) { width: 11%; }
-.lists-table th:nth-child(8) { width: 10%; }
-.lists-table th:nth-child(9) { width: 8%; }
-.lists-table th:nth-child(10) { width: 136px; }
+.lists-table:not(.evid-table) th:nth-child(1) { width: 42px; }
+.lists-table:not(.evid-table) th:nth-child(2) { width: 19%; }
+.lists-table:not(.evid-table) th:nth-child(3) { width: 14%; }
+.lists-table:not(.evid-table) th:nth-child(4) { width: 11%; }
+.lists-table:not(.evid-table) th:nth-child(5) { width: 8%; }
+.lists-table:not(.evid-table) th:nth-child(6) { width: 8%; }
+.lists-table:not(.evid-table) th:nth-child(7) { width: 10%; }
+.lists-table:not(.evid-table) th:nth-child(8) { width: 9%; }
+.lists-table:not(.evid-table) th:nth-child(9) { width: 9%; }
+.lists-table:not(.evid-table) th:nth-child(10) { width: 8%; }
+.lists-table:not(.evid-table) th:nth-child(11) { width: 136px; }
+
+.evid-table th:nth-child(1) { width: 20%; }
+.evid-table th:nth-child(2) { width: 9%; }
+.evid-table th:nth-child(3) { width: 12%; }
+.evid-table th:nth-child(4) { width: 25%; }
+.evid-table th:nth-child(5) { width: 20%; }
+.evid-table th:nth-child(6) { width: 8%; }
+.evid-table th:nth-child(7) { width: 96px; }
 
 .lists-table td {
   padding: 0.7rem 0.9rem;
@@ -1109,6 +1388,172 @@ function formatScore(v) {
   background: color-mix(in srgb, var(--btn-note-color) 15%, transparent);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--btn-note-color) 25%, transparent);
 }
+/* ── Abas ─────────────────────────────────────────────────────────────── */
+.lists-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: -0.75rem;
+}
+
+.lists-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 38px;
+  padding: 0 1rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.lists-tab:hover { color: var(--text-color-85); }
+
+.lists-tab.is-active {
+  color: var(--text-color-85);
+  border-color: var(--card-border);
+  background: var(--card-bg);
+}
+
+.lists-tab i { font-size: 0.85rem; }
+.lists-tab.is-active i { color: var(--evidence-color); }
+
+.lists-tab-count {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+}
+
+/* ── Coluna Evidências (farmácias) ───────────────────────────────────── */
+.evid-count-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--evidence-color) 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--evidence-color) 8%, transparent);
+  color: var(--evidence-color);
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.evid-count-btn:hover,
+.evid-count-btn:focus-visible {
+  border-color: var(--evidence-color);
+  outline: none;
+}
+
+.evid-count-btn i { font-size: 0.68rem; }
+.evid-count-num { font-size: 0.8rem; font-weight: 600; }
+.evid-count-date { font-size: 0.68rem; color: var(--text-muted); }
+
+/* ── Aba Evidências ──────────────────────────────────────────────────── */
+.evid-toolbar { gap: 0.75rem; }
+
+.evid-filtro-farmacia { width: 280px; font-size: 0.78rem; }
+:deep(.evid-filtro-farmacia .p-dropdown-label) { font-size: 0.78rem; padding: 0.35rem 0.6rem; }
+
+.evid-tipos {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+}
+
+.evid-tipo-btn {
+  height: 28px;
+  padding: 0 0.7rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.evid-tipo-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.evid-tipo-btn.is-active {
+  color: var(--evidence-color);
+  background: color-mix(in srgb, var(--evidence-color) 12%, transparent);
+}
+
+.evid-table td { vertical-align: top; }
+.evid-table tr.is-busy { opacity: 0.55; }
+
+.evid-table .cnpj-text { display: block; margin-top: 0.15rem; }
+
+.evid-tipo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-color-85);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  white-space: nowrap;
+}
+
+.evid-tipo-tag i { font-size: 0.68rem; color: var(--text-muted); }
+
+.evid-quando { white-space: nowrap; font-weight: 500; }
+
+.evid-resumo {
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.evid-nota {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.evid-confirma {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.action-btn.remove.is-confirm {
+  color: var(--risk-critical);
+  border-color: var(--risk-critical);
+  opacity: 1;
+}
+
+.evid-retry-btn {
+  margin-top: 0.5rem;
+  height: 30px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--card-bg);
+  color: var(--text-color-85);
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.evid-error { opacity: 1; }
+.evid-error .empty-icon { color: var(--risk-critical); }
+
 .action-btn.remove:hover {
   border-color: var(--risk-critical);
   color: var(--risk-critical);

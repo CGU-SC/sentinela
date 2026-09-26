@@ -40,6 +40,12 @@ export const API_ENDPOINTS = {
   analyticsCrmPrescricoesAnalise: `${BASE_URL}/api/v1/analytics/crm-prescricoes-analise`,
   analyticsCrmMedicoAlertas: (cnpj, idMedico) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/medico-alertas/${encodeURIComponent(idMedico)}`,
   analyticsCrmTimelineDataset: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/timeline-dataset`,
+  analyticsCrmRaioXExport: (cnpj, inicio, fim, formato) => {
+    const params = new URLSearchParams({ formato });
+    if (inicio) params.set('data_inicio', inicio);
+    if (fim) params.set('data_fim', fim);
+    return `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/raio-x/exportar?${params.toString()}`;
+  },
   analyticsCrmRaioX: (cnpj, dateStr, hour) => {
     let url = `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/raio-x?date_str=${dateStr}`;
     if (hour != null) url += `&hour=${hour}`;
@@ -88,6 +94,11 @@ export const API_ENDPOINTS = {
   preferencesUi: `${BASE_URL}/api/v1/preferences/ui`,
   preferencesNotaTecnica: `${BASE_URL}/api/v1/preferences/nota-tecnica`,
   preferencesMetodologia: `${BASE_URL}/api/v1/preferences/metodologia`,
+  evidencias: `${BASE_URL}/api/v1/evidencias`,
+  evidenciasResumo: `${BASE_URL}/api/v1/evidencias/resumo`,
+  evidencia: (id) => `${BASE_URL}/api/v1/evidencias/${encodeURIComponent(id)}`,
+  evidenciasDoCnpj: (cnpj) => `${BASE_URL}/api/v1/evidencias/cnpj/${cnpj}`,
+  evidenciasExportar: (cnpj) => `${BASE_URL}/api/v1/evidencias/cnpj/${cnpj}/exportar`,
   systemUpdateStatus: `${BASE_URL}/api/v1/system/update-status`,
   systemCheckUpdate:  `${BASE_URL}/api/v1/system/check-update`,
   systemDownloadUpdate:   `${BASE_URL}/api/v1/system/download-update`,

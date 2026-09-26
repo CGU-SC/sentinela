@@ -26,10 +26,11 @@ const props = defineProps({
   isActive: { type: Boolean, default: false },
   periodSummary: { type: Object, default: null },
   periodLoading: { type: Boolean, default: false },
+  razaoSocial: { type: String, default: '' },
 });
 
 const cnpjDetailStore = useCnpjDetailStore();
-const { prescritoresData, prescritoresLoading, prescritoresError, activeCrmViewMode } = storeToRefs(cnpjDetailStore);
+const { prescritoresData, prescritoresLoading, prescritoresError, activeCrmViewMode, indicadoresData, indicadoresLoadedKey, indicadoresLoading, indicadoresError } = storeToRefs(cnpjDetailStore);
 // ── Flicker-Free Cache ────────────────────────────────────────────────────
 const filterStore = useFilterStore();
 const { getApiParams } = useFilterParameters();
@@ -56,9 +57,11 @@ function hasOpenedCrmView(mode) {
 
 function loadCurrentViewIfActive() {
   if (!props.isActive) return;
-  if (!['cronologia', 'falecidos'].includes(activeCrmViewMode.value)) return;
   const { inicio, fim } = getApiParams();
-  cnpjDetailStore.ensureTabData('autorizacoes', props.cnpj, inicio, fim);
+  cnpjDetailStore.ensureTabData('indicadores', props.cnpj, inicio, fim);
+  if (['cronologia', 'falecidos'].includes(activeCrmViewMode.value)) {
+    cnpjDetailStore.ensureTabData('autorizacoes', props.cnpj, inicio, fim);
+  }
 }
 
 watch(activeCrmViewMode, (mode) => {
@@ -81,6 +84,24 @@ watch(() => props.isActive, (active) => {
 // ── Dados Base ────────────────────────────────────────────────────────────
 const summary = computed(() => cachedPrescritoresData.value?.summary || {});
 const crmsInteresse = computed(() => cachedPrescritoresData.value?.crms_interesse || []);
+// Eixo de tempo comum da coluna "Atuação na farmácia" (competências YYYYMM).
+const periodoCompetencias = computed(() => {
+  if (!crmsInteresse.value.length) return null;
+  const inicio = summary.value.competencia_inicio_periodo;
+  const fim = summary.value.competencia_fim_periodo;
+  if (inicio == null || fim == null) {
+    throw new Error('Contrato inválido em crm-data: summary sem competencia_inicio_periodo/competencia_fim_periodo.');
+  }
+  return { inicio: Number(inicio), fim: Number(fim) };
+});
+const serieMensalFarmacia = computed(() => {
+  if (!crmsInteresse.value.length) return [];
+  const serie = summary.value.serie_mensal_farmacia;
+  if (!Array.isArray(serie)) {
+    throw new Error('Contrato inválido em crm-data: summary sem serie_mensal_farmacia.');
+  }
+  return serie;
+});
 const noMovementInPeriod = computed(() =>
   !props.periodLoading &&
   Boolean(props.periodSummary) &&
@@ -121,8 +142,18 @@ const qtdPrescrIntensivaTotal   = computed(() => {
 const qtdCrmInvalido          = computed(() => crmsInteresse.value.filter(m => m.flag_crm_invalido > 0).length);
 const qtdPrescrAntesRegistro  = computed(() => crmsInteresse.value.filter(m => m.flag_prescricao_antes_registro > 0).length);
 const totalIrregularesCfm     = computed(() => qtdCrmInvalido.value + qtdPrescrAntesRegistro.value);
-const pctFraudeCrm            = computed(() => (summary.value.pct_valor_crm_invalido || 0) + (summary.value.pct_valor_crm_antes_registro || 0));
-const valorFraudeCrm          = computed(() => (summary.value.vl_crm_invalido || 0) + (summary.value.vl_crm_antes_registro || 0));
+const indicadorCrmsIrregulares = computed(() => {
+  const { inicio, fim } = getApiParams();
+  const requestKey = `${props.cnpj.replace(/\D/g, '').padStart(14, '0')}|${inicio || ''}|${fim || ''}`;
+  if (indicadoresLoadedKey.value !== requestKey) return null;
+  const indicador = indicadoresData.value?.indicadores?.crms_irregulares;
+  if (indicador?.valor == null || indicador?.valor_financeiro == null) {
+    throw new Error('Contrato inválido: indicador de CRMs irregulares sem percentual ou valor financeiro.');
+  }
+  return indicador;
+});
+const pctFraudeCrm            = computed(() => indicadorCrmsIrregulares.value?.valor ?? null);
+const valorFraudeCrm          = computed(() => indicadorCrmsIrregulares.value?.valor_financeiro ?? null);
 
 const qtdCrmExclusivo         = computed(() => crmsInteresse.value.filter(m => m.flag_crm_exclusivo > 0).length);
 const qtdLancamentosAgrupados = computed(() => crmsInteresse.value.filter(m => m.alerta_concentracao_unico_crm).length);
@@ -147,6 +178,8 @@ const kpiData = computed(() => ({
   qtdPrescrAntesRegistro: qtdPrescrAntesRegistro.value,
   valorFraudeCrm: valorFraudeCrm.value,
   pctFraudeCrm: pctFraudeCrm.value,
+  indicadorCrmCarregando: indicadoresLoading.value,
+  indicadorCrmErro: Boolean(indicadoresError.value),
   qtdAcima400km: qtdAcima400km.value,
   totalSurtosCnpj: totalSurtosCnpj.value,
   diasComSurtosCnpj: diasComSurtosCnpj.value,
@@ -282,6 +315,8 @@ defineExpose({
             :kpi-filters="kpiFilters"
             :kpi-filter-labels="kpiFilterLabels"
             :current-cnpj="cnpj"
+            :periodo-competencias="periodoCompetencias"
+            :serie-mensal-farmacia="serieMensalFarmacia"
             @clear-filters="clearFilters"
           />
         </template>
@@ -293,6 +328,7 @@ defineExpose({
         :cnpj="cnpj"
         :period-summary="periodSummary"
         :period-loading="periodLoading"
+        :razao-social="razaoSocial"
       />
 
       <MortalityTab

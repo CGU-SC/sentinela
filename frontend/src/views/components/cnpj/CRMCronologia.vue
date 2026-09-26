@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { storeToRefs } from 'pinia';
 import { useCnpjDetailStore } from '@/stores/cnpjDetail';
 import { useFilterStore } from '@/stores/filters';
@@ -8,30 +8,43 @@ import { useDelayedLoading } from '@/composables/useDelayedLoading';
 import { useFormatting } from "@/composables/useFormatting";
 import { useChartTheme } from '@/config/chartTheme';
 import { API_ENDPOINTS } from '@/config/api';
+import { downloadBlobFromResponse } from '@/utils/download';
+import { getApiErrorMessage } from '@/utils/apiErrors';
+import { useToast } from 'primevue/usetoast';
+import Menu from 'primevue/menu';
+import { CRM_RAIOX_INTERVALO_CURTO_SEGUNDOS } from '@/config/riskConfig';
+import { CRM_IDENTITY_PALETTE } from '@/config/colors';
 import TabPlaceholder from './TabPlaceholder.vue';
+import EvidenciaFlag from '@/views/components/evidencias/EvidenciaFlag.vue';
+import { alertasDaJanela } from '@/utils/evidencias';
 
 import VChart from 'vue-echarts';
 import { use } from 'echarts/core';
 import { BarChart, LineChart } from 'echarts/charts';
-import { GridComponent, TooltipComponent, DataZoomComponent, MarkLineComponent, LegendComponent } from 'echarts/components';
+import { GridComponent, TooltipComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, LegendComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
-use([BarChart, LineChart, GridComponent, TooltipComponent, DataZoomComponent, MarkLineComponent, LegendComponent, CanvasRenderer]);
+use([BarChart, LineChart, GridComponent, TooltipComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, LegendComponent, CanvasRenderer]);
 
 const props = defineProps({
   cnpj: { type: String, required: true },
   periodSummary: { type: Object, default: null },
   periodLoading: { type: Boolean, default: false },
+  razaoSocial: { type: String, default: '' },
 });
 
 const cnpjDetailStore = useCnpjDetailStore();
 const filterStore = useFilterStore();
+const toast = useToast();
+const exportLoading = ref(false);
+
 const {
   crmTimelineDataset,
+  crmTimelineDatasetLoaded,
   crmTimelineDatasetLoading,
   selectedTimelineEvent,
 } = storeToRefs(cnpjDetailStore);
-const { formatarData, toLocalISO } = useFormatting();
+const { formatarData, toLocalISO, formatTitleCase, formatCurrencyFull } = useFormatting();
 const { chartTheme, chartUFAccents } = useChartTheme();
 const themeStore = useThemeStore();
 const raioxBg = computed(() => themeStore.isDark ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.6)');
@@ -89,23 +102,103 @@ function normalizeDailyDay(d) {
 const unifiedDays = computed(() =>
   (timelineDailyDataset.value?.days ?? []).map(normalizeDailyDay)
 );
+const isRaioxAlertDay = (day) =>
+  day.is_dia_com_volume_horario_anomalo === 1 || day.is_anomalo_unico === 1 || day.is_crm_multiplo === 1;
 
-
-// Índice por data para lookup O(1) no tooltip (evita scan linear a cada hover)
-const hourlyByDate = computed(() => {
-  const map = new Map();
-  for (const pt of timelineHourlyDataset.value?.points ?? []) {
-    const key = String(pt.dt_janela).slice(0, 10);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(pt);
+const raioxExportState = computed(() => {
+  const { inicio, fim } = filterStore.apiParams;
+  const cnpj = props.cnpj.replace(/\D/g, '').padStart(14, '0');
+  const datasetKey = `${cnpj}|${inicio ?? ''}|${fim ?? ''}`;
+  if (crmTimelineDatasetLoading.value || crmTimelineDatasetLoaded.value !== datasetKey) {
+    return { enabled: false, reason: 'Aguarde o carregamento da cronologia do período.' };
   }
-  return map;
+  const alertDays = (crmTimelineDataset.value?.days ?? []).filter(isRaioxAlertDay).length;
+  if (!alertDays) {
+    return { enabled: false, reason: 'Nenhum dia alertado no período selecionado.' };
+  }
+  return {
+    enabled: true,
+    reason: `Exporta todas as autorizações de ${alertDays} ${alertDays === 1 ? 'dia alertado' : 'dias alertados'} no período.`,
+  };
 });
+const canExportRaiox = computed(() => raioxExportState.value.enabled);
+const raioxExportTooltip = computed(() => {
+  const { inicio, fim } = filterStore.apiParams;
+  const periodo = inicio && fim ? `${formatarData(inicio)} a ${formatarData(fim)}` : 'Período filtrado';
+  const alertDays = (crmTimelineDataset.value?.days ?? []).filter(isRaioxAlertDay).length;
+  const { enabled, reason } = raioxExportState.value;
+  return createCronologiaInfoTooltip(
+    'Exportar · Dias alertados',
+    enabled
+      ? 'Gera um arquivo com todas as autorizações registradas nos dias que apresentaram alerta no período filtrado.'
+      : reason,
+    [
+      ['Período', periodo],
+      ['Dias alertados', enabled ? String(alertDays) : '—'],
+      ['Alertas considerados', 'Volume Atípico e Autorizações em Sequência (Único CRM / Múltiplos CRMs)'],
+      ['Excel', 'Planilha formatada com totais e resumos por dia e por médico'],
+      ['CSV', 'Texto separado por ponto e vírgula, para outras ferramentas'],
+    ],
+    'O arquivo traz o dia inteiro, não apenas o horário do alerta.'
+  );
+});
+
+const RAIOX_EXPORT_FORMATS = Object.freeze({
+  xlsx: { label: 'Excel', extension: 'xlsx', icon: 'pi-file-excel' },
+  csv: { label: 'CSV', extension: 'csv', icon: 'pi-file' },
+});
+const exportMenu = ref(null);
+const exportMenuItems = [
+  { label: 'Excel (.xlsx) · planilha formatada', icon: 'pi pi-file-excel', command: () => exportRaiox('xlsx') },
+  { label: 'CSV (.csv) · texto simples', icon: 'pi pi-file', command: () => exportRaiox('csv') },
+];
+
+function toggleExportMenu(event) {
+  exportMenu.value?.toggle(event);
+}
+
+async function exportRaiox(formato) {
+  if (!canExportRaiox.value || exportLoading.value) return;
+  const format = RAIOX_EXPORT_FORMATS[formato];
+  if (!format) throw new Error(`Formato de exportação desconhecido: ${formato}`);
+  const { inicio, fim } = filterStore.apiParams;
+  const cnpj = props.cnpj.replace(/\D/g, '').padStart(14, '0');
+  exportLoading.value = true;
+  try {
+    const response = await fetch(API_ENDPOINTS.analyticsCrmRaioXExport(cnpj, inicio, fim, formato));
+    if (!response.ok) {
+      throw new Error(
+        await getApiErrorMessage(response, `Falha HTTP ${response.status} ao gerar o ${format.label} do Raio-X.`),
+      );
+    }
+    const downloadResult = await downloadBlobFromResponse(
+      response,
+      `crm_raiox_dias_alertados_${cnpj}.${format.extension}`,
+    );
+    if (downloadResult?.desktop) {
+      toast.add({
+        group: 'download',
+        severity: 'success',
+        summary: `${format.label} do Raio-X salvo`,
+        detail: `Arquivo salvo em notas_tecnicas\\${downloadResult.filename}.`,
+        data: { path: downloadResult.path, icon: format.icon },
+      });
+    } else {
+      toast.add({ severity: 'success', summary: `${format.label} do Raio-X baixado`, detail: downloadResult?.filename, life: 4000 });
+    }
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Falha na exportação', detail: error.message || `Não foi possível salvar o ${format.label}.`, life: 7000 });
+  } finally {
+    exportLoading.value = false;
+  }
+}
+
 
 // ── Filtro e Zoom do Gráfico Diário ───────────────────────────────────────
 const filterDailyOnlyAnomalous = ref(false);
-const dailyRankMode = ref(null);
-const dailyRankLimit = ref(10);
+// Padrão: piores dias por Volume Atípico, Top 20.
+const dailyRankMode = ref('volume');
+const dailyRankLimit = ref(20);
 const dailyZoomStart = ref(0);
 const dailyZoomEnd = ref(100);
 const dailyRankLimitOptions = [
@@ -206,14 +299,48 @@ function formatDailyRankBadge(day, mode = dailyRankMode.value) {
   return '';
 }
 
-function toggleDailyRankMode(mode) {
-  dailyRankMode.value = dailyRankMode.value === mode ? null : mode;
-  if (dailyRankMode.value) filterDailyOnlyAnomalous.value = false;
+const dailyRankOptions = computed(() => [
+  { value: null, label: 'Nenhum', className: 'is-none', tooltip: null },
+  { value: 'unico', label: 'Sequência · Único CRM', className: 'is-unico', tooltip: cronologiaInfoTooltips.rankUnico },
+  { value: 'multiplo', label: 'Sequência · Múltiplos CRMs', className: 'is-multiplo', tooltip: cronologiaInfoTooltips.rankMultiplo },
+  { value: 'volume', label: 'Volume Atípico', className: 'is-volume', tooltip: cronologiaInfoTooltips.rankVolume },
+]);
+
+// No modo ranking com Top N (ou com poucos dias) todos os dias já estão visíveis:
+// as setas de mês não têm efeito e ficam desabilitadas.
+const dailyNavDisabled = computed(() =>
+  Boolean(dailyRankMode.value)
+  && (dailyRankLimit.value > 0 || filteredDailyDays.value.length <= DAILY_RANK_VISIBLE_LIMIT)
+);
+const dailyNavInfoTooltip = computed(() => (dailyNavDisabled.value
+  ? createCronologiaInfoTooltip(
+    'Navegação indisponível',
+    'Todos os dias do ranking já estão visíveis no gráfico.',
+    [['Para navegar', 'Escolha “Nenhum” ou a opção “Todos” no ranking']],
+  )
+  : createCronologiaInfoTooltip(
+    'Navegar entre meses',
+    'As setas deslocam a janela do histórico diário para o período anterior ou seguinte.',
+    [['Ação', 'Recuar ou avançar aproximadamente 30 dias']],
+    'A navegação altera somente a janela visual do gráfico e preserva os filtros ativos.'
+  )));
+
+function resetDailySelection() {
   selectedDay.value = null;
   selectedHourlyHour.value = null;
-  dailyZoomStart.value = 0;
-  dailyZoomEnd.value = 100;
 }
+
+function setDailyRankMode(mode) {
+  if (dailyRankMode.value === mode) return;
+  // Limpa a seleção ANTES de trocar a lista: assim o watch de filteredDailyDays
+  // refaz a auto-seleção e reposiciona o zoom para a nova lista. Sem isso, o
+  // zoom da visão anterior (ex.: últimos 30 de 300 dias = 90–100%) era aplicado
+  // ao Top 10 e só 1 barra aparecia.
+  resetDailySelection();
+  dailyRankMode.value = mode;
+  if (mode) filterDailyOnlyAnomalous.value = false;
+}
+
 
 function setDailyZoomWindow(total, centerIdx = null, maxVisible = 30) {
   if (total <= 0) return;
@@ -355,6 +482,62 @@ const multiAlertasNumerados = computed(() => {
     });
 });
 
+const SEVERIDADE_ALERTA = {
+  EXTREMO: { label: 'Extremo', className: 'is-extremo' },
+  CRITICO: { label: 'Crítico', className: 'is-critico' },
+  GRAVE: { label: 'Grave', className: 'is-grave' },
+  ALTO: { label: 'Alto', className: 'is-alto' },
+  ALERTA: { label: 'Alerta', className: 'is-alerta' },
+};
+
+function formatSeveridadeAlerta(severidade) {
+  const key = String(severidade || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  return SEVERIDADE_ALERTA[key] ?? { label: severidade || '—', className: 'is-alerta' };
+}
+
+// Lista única dos alertas de sequência (Único CRM + Múltiplos CRMs), em ordem de início.
+const alertasSequencia = computed(() => {
+  const unicos = unicoAlertasAgrupados.value.flatMap(grupo => grupo.alertas).map(alerta => ({
+    key: `U-${alerta.numero_alerta}`,
+    tipo: 'unico',
+    codigo: `U#${alerta.numero_alerta}`,
+    tipoLabel: 'Único CRM',
+    inicio: alerta.dt_ini_hora,
+    fim: alerta.dt_fim_hora,
+    medico: alerta.id_medico,
+    medicoColor: getCRMColor(alerta.id_medico),
+    qtd: alerta.ritmo_qtd_display,
+    minutos: alerta.ritmo_minutos_display,
+    severidade: formatSeveridadeAlerta(alerta.severidade),
+    tooltip: formatUnicoAlertTitle(alerta),
+    hover: () => setHoveredUnicoAlert(alerta),
+  }));
+  const multiplos = multiAlertasNumerados.value.map(alerta => ({
+    key: `M-${alerta.numero_alerta}`,
+    tipo: 'multi',
+    codigo: `M#${alerta.numero_alerta}`,
+    tipoLabel: 'Múltiplos CRMs',
+    inicio: alerta.dt_ini_hora,
+    fim: alerta.dt_fim_hora,
+    medico: `${alerta.nu_crms_display} CRMs`,
+    medicoColor: null,
+    qtd: alerta.nu_prescricoes_display,
+    minutos: alerta.ritmo_minutos_display,
+    severidade: formatSeveridadeAlerta(alerta.severidade),
+    tooltip: formatMultiAlertTitle(alerta),
+    hover: () => setHoveredMultiAlert(alerta),
+  }));
+  return [...unicos, ...multiplos].sort((a, b) =>
+    String(a.inicio || '').localeCompare(String(b.inicio || '')) || a.tipo.localeCompare(b.tipo) || a.key.localeCompare(b.key)
+  );
+});
+
+const alertasSequenciaTitulo = computed(() => (
+  selectedHourlyHour.value === 'all' || selectedHourlyHour.value === null
+    ? 'Alertas do dia'
+    : `Alertas das ${String(selectedHourlyHour.value).padStart(2, '0')}h`
+));
+
 function getHoraMinuto(value) {
   if (!value) return '';
   const text = String(value);
@@ -386,7 +569,7 @@ function createCronologiaInfoTooltip(title, intro, details = [], note = '') {
     ? `
       <div class="crm-info-tooltip-details">
         ${details.map(([label, value]) => `
-          <div>
+          <div class="${String(value).length > 32 ? 'is-long' : ''}">
             <span>${escapeTooltipHtml(label)}</span>
             <strong>${escapeTooltipHtml(value)}</strong>
           </div>
@@ -417,18 +600,6 @@ function createCronologiaInfoTooltip(title, intro, details = [], note = '') {
 }
 
 const cronologiaInfoTooltips = Object.freeze({
-  previousMonth: createCronologiaInfoTooltip(
-    'Mês anterior',
-    'Desloca a janela de visualização do histórico diário para o período anterior.',
-    [['Ação', 'Recuar aproximadamente 30 dias']],
-    'A navegação altera somente a janela visual do gráfico e preserva os filtros ativos.'
-  ),
-  nextMonth: createCronologiaInfoTooltip(
-    'Próximo mês',
-    'Desloca a janela de visualização do histórico diário para o período seguinte.',
-    [['Ação', 'Avançar aproximadamente 30 dias']],
-    'A navegação altera somente a janela visual do gráfico e preserva os filtros ativos.'
-  ),
   rankUnico: createCronologiaInfoTooltip(
     'Ranqueamento · Autorizações em Sequência (Único CRM)',
     'Classifica os dias pela maior intensidade de autorizações emitidas em sequência com o mesmo CRM em um intervalo reduzido.',
@@ -442,7 +613,7 @@ const cronologiaInfoTooltips = Object.freeze({
     'O ranking considera o maior ritmo horário associado ao acionamento sequencial de diferentes CRMs.'
   ),
   rankVolume: createCronologiaInfoTooltip(
-    'Ranqueamento · Volume',
+    'Ranqueamento · Volume Atípico',
     'Classifica os dias pelos maiores picos de dispensações por hora em comparação com a mediana histórica da operação.',
     [['Critério', 'Volume horário acima do padrão'], ['Resultado', 'Dias com maior multiplicador']],
     'O multiplicador compara o volume da hora com a mediana horária de referência.'
@@ -459,17 +630,43 @@ const cronologiaInfoTooltips = Object.freeze({
     [['Inclui', 'Dias com pelo menos uma anomalia'], ['Oculta', 'Dias de operação normal']],
     'Ao selecionar um critério de ranqueamento, este filtro é desativado para que o ranking controle o recorte exibido.'
   ),
-  unicoSection: createCronologiaInfoTooltip(
-    'Alertas de Autorizações em Sequência (Único CRM) no período',
-    'Apresenta as janelas em que o mesmo CRM registrou muitas autorizações em sequência.',
-    [['Exibe', 'Janela, volume e duração'], ['Também informa', 'Ritmo e classificação de severidade']],
-    'Cada alerta pode ser selecionado para acompanhar as autorizações correspondentes no Raio-X.'
+  raioxTransacoes: createCronologiaInfoTooltip(
+    'Raio-X: transações',
+    'Lista cada autorização do dia (ou da hora selecionada) em ordem cronológica, com CRM, médico e valor.',
+    [
+      ['CRM colorido', 'Identifica os médicos que mais se repetem na janela (até 6 cores)'],
+      ['CRM sem cor', 'Médico com uma única autorização ou fora dos 6 mais frequentes'],
+      ['Contagem (ex.: 50×)', 'Total de autorizações do médico na janela, exibido na primeira aparição'],
+      ['U#1 / M#1', 'Alerta de sequência (Único / Múltiplos CRMs) do qual a autorização participa'],
+      ['Intervalo', 'Tempo desde a autorização anterior; curtos em destaque'],
+    ],
+    'Passe o mouse sobre um alerta na lista acima ou sobre um código U#/M# para destacar as autorizações correspondentes.'
   ),
-  multiploSection: createCronologiaInfoTooltip(
-    'Alertas de Autorizações em Sequência (Múltiplos CRMs) no período',
-    'Apresenta as janelas em que a farmácia registrou muitas autorizações em sequência com participação de diferentes CRMs.',
-    [['Exibe', 'CRMs distintos, volume e duração'], ['Também informa', 'Ritmo e classificação de severidade']],
-    'Cada alerta pode ser selecionado para acompanhar as autorizações correspondentes no Raio-X.'
+  raioxIntervalo: createCronologiaInfoTooltip(
+    'Intervalo entre autorizações',
+    'Tempo decorrido desde a autorização anterior na lista, em minutos e segundos (ou horas, minutos e segundos).',
+    [['Destaque', `Intervalos abaixo de ${CRM_RAIOX_INTERVALO_CURTO_SEGUNDOS} segundos`], ['Primeira linha', 'Sem autorização anterior (—)']],
+    'Sequências de intervalos curtos indicam lançamentos em rajada, típicos das autorizações em sequência. Quando uma hora está selecionada, o intervalo considera apenas as autorizações daquela hora.'
+  ),
+  raioxEvidencia: createCronologiaInfoTooltip(
+    'Marcar como evidência',
+    'A bandeira guarda a autorização na cesta de evidências desta farmácia, com uma nota opcional.',
+    [
+      ['Bandeira vazia', 'Clique para marcar'],
+      ['Bandeira preenchida', 'Já marcada: clique para editar a nota ou remover'],
+      ['Dia e hora', 'Use “Marcar evidência” acima dos gráficos dos painéis 1 (dia selecionado) e 2 (hora selecionada)'],
+    ],
+    'As evidências ficam no painel Evidências do estabelecimento e em Listas › Evidências. Marcar a primeira evidência adiciona a farmácia às Farmácias Monitoradas.'
+  ),
+  alertasSection: createCronologiaInfoTooltip(
+    'Alertas de Autorizações em Sequência',
+    'Janelas em que muitas autorizações foram emitidas em sequência, em um intervalo reduzido.',
+    [
+      ['Único CRM (U#)', 'Sequência com o mesmo médico'],
+      ['Múltiplos CRMs (M#)', 'Sequência com participação de diferentes médicos'],
+      ['Ritmo', 'Autorizações na janela e sua duração'],
+    ],
+    'Passe o mouse sobre um alerta para destacar as autorizações correspondentes na tabela abaixo; os códigos U# e M# também aparecem nas autorizações.'
   ),
 });
 
@@ -554,6 +751,39 @@ const groupedRaiox = computed(() => {
     .sort((a, b) => a.data_hora.localeCompare(b.data_hora));
 });
 
+function segundosDoDia(dataHora) {
+  const match = String(dataHora ?? '').match(/(\d{2}):(\d{2}):(\d{2})/);
+  if (!match) throw new Error(`Horário inválido no Raio-X: ${dataHora}`);
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+}
+
+function formatIntervalo(segundos) {
+  const h = Math.floor(segundos / 3600);
+  const m = Math.floor((segundos % 3600) / 60);
+  const s = String(segundos % 60).padStart(2, '0');
+  return h > 0 ? `+${h}:${String(m).padStart(2, '0')}:${s}` : `+${m}:${s}`;
+}
+
+// Intervalo desde a autorização anterior (lista já em ordem cronológica).
+const raioxIntervalos = computed(() => {
+  const mapa = new Map();
+  let anterior = null;
+  for (const tx of groupedRaiox.value) {
+    const atual = segundosDoDia(tx.data_hora);
+    if (anterior === null) {
+      mapa.set(tx.num_autorizacao, null);
+    } else {
+      const delta = Math.max(0, atual - anterior);
+      mapa.set(tx.num_autorizacao, {
+        texto: formatIntervalo(delta),
+        curto: delta < CRM_RAIOX_INTERVALO_CURTO_SEGUNDOS,
+      });
+    }
+    anterior = atual;
+  }
+  return mapa;
+});
+
 const crmFrequencies = computed(() => {
   const freqs = {};
   groupedRaiox.value.forEach(tx => { freqs[tx.id_medico] = (freqs[tx.id_medico] || 0) + 1; });
@@ -564,15 +794,39 @@ const raioxTotalValue = computed(() => {
   return groupedRaiox.value.reduce((sum, tx) => sum + tx.vl_autorizacao, 0);
 });
 
+// Cor de identidade por médico: paleta fixa atribuída por frequência na janela
+// do Raio-X (mais frequente = 1ª cor). Médicos que aparecem uma única vez, ou
+// além da quantidade de cores da paleta, ficam sem cor (null).
+const crmColorMap = computed(() => {
+  const paleta = CRM_IDENTITY_PALETTE[themeStore.isDark ? 'dark' : 'light'];
+  const primeiraPosicao = new Map();
+  groupedRaiox.value.forEach((tx, idx) => {
+    if (!primeiraPosicao.has(tx.id_medico)) primeiraPosicao.set(tx.id_medico, idx);
+  });
+  const ordenados = Object.entries(crmFrequencies.value)
+    .filter(([, qtd]) => qtd > 1)
+    .sort((a, b) => b[1] - a[1] || primeiraPosicao.get(a[0]) - primeiraPosicao.get(b[0]));
+  const mapa = new Map();
+  ordenados.slice(0, paleta.length).forEach(([id], idx) => mapa.set(id, paleta[idx]));
+  return mapa;
+});
+
 function getCRMColor(idMedico) {
-  if (!idMedico) return 'var(--primary-color)';
-  idMedico = String(idMedico);
-  let hash = 0;
-  for (let i = 0; i < idMedico.length; i++) { hash = idMedico.charCodeAt(i) + ((hash << 5) - hash); }
-  const h = Math.abs(hash % 360);
-  const lightness = themeStore.isDark ? 65 : 35;
-  return `hsl(${h}, 75%, ${lightness}%)`;
+  return crmColorMap.value.get(String(idMedico)) ?? null;
 }
+
+// Primeira autorização de cada médico na janela: só nela aparece a contagem (N×).
+const primeiraAutorizacaoPorCrm = computed(() => {
+  const set = new Set();
+  const vistos = new Set();
+  for (const tx of groupedRaiox.value) {
+    if (!vistos.has(tx.id_medico)) {
+      vistos.add(tx.id_medico);
+      set.add(tx.num_autorizacao);
+    }
+  }
+  return set;
+});
 
 function buildRaioxKey(dt_janela, hourInt) {
   return `${props.cnpj}|${dt_janela}|${hourInt ?? 'all'}`;
@@ -708,6 +962,12 @@ const chartOptionDaily = computed(() => {
     volume: { bg: 'rgba(16, 185, 129, 0.18)', text: '#10b981', border: 'rgba(16, 185, 129, 0.38)' },
   };
   const rankBadgeColor = rankBadgeColors[dailyRankMode.value] ?? rankBadgeColors.unico;
+  const dates = dailyDates.value;
+  // Ano no eixo: sempre no ranking (datas fora de ordem) e na linha do tempo que cruza anos.
+  const showYearOnAxis = Boolean(dailyRankMode.value)
+    || (dates.length > 0 && String(dates[0]).slice(0, 4) !== String(dates[dates.length - 1]).slice(0, 4));
+  const selectedDate = selectedDay.value?.dt_janela ?? null;
+  const selectedLabelColor = themeStore.isDark ? '#f8fafc' : '#0f172a';
 
   return {
     ...chartTheme.value,
@@ -727,11 +987,20 @@ const chartOptionDaily = computed(() => {
         handle: { show: false }
       },
       axisLabel: {
-        formatter: (v) => v ? `${v.slice(8, 10)}/${v.slice(5, 7)}` : '',
+        formatter: (v) => {
+          if (!v) return '';
+          const label = showYearOnAxis
+            ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(2, 4)}`
+            : `${v.slice(8, 10)}/${v.slice(5, 7)}`;
+          return v === selectedDate ? `{sel|${label}}` : label;
+        },
         interval: 'auto',
         rotate: 45,
         fontSize: 10,
-        color: chartTheme.value.muted
+        color: chartTheme.value.muted,
+        rich: {
+          sel: { fontSize: 11, fontWeight: 600, color: selectedLabelColor },
+        },
       },
       axisLine: { lineStyle: { color: chartTheme.value.border } },
     },
@@ -757,17 +1026,15 @@ const chartOptionDaily = computed(() => {
       borderWidth: 1,
       padding: [12, 16],
       confine: true,
+      // Ancorado no topo, no lado oposto ao cursor: não cobre a barra em foco nem as vizinhas.
       position: (point, params, dom, rect, size) => {
-        const gap = 16;
+        const gap = 12;
         const viewWidth = size.viewSize[0];
-        const viewHeight = size.viewSize[1];
         const tooltipWidth = size.contentSize[0];
-        const tooltipHeight = size.contentSize[1];
-        const x = point[0] + tooltipWidth + gap > viewWidth
-          ? Math.max(gap, point[0] - tooltipWidth - gap)
-          : point[0] + gap;
-        const y = Math.min(Math.max(gap, point[1] + gap), viewHeight - tooltipHeight - gap);
-        return [x, y];
+        const x = point[0] < viewWidth / 2
+          ? viewWidth - tooltipWidth - gap
+          : gap + 40;
+        return [Math.max(gap, x), 4];
       },
       textStyle: { color: chartTheme.value.tooltipText, fontFamily: 'Inter, sans-serif', fontSize: 12 },
       shadowBlur: 10,
@@ -777,27 +1044,9 @@ const chartOptionDaily = computed(() => {
         const day = filteredDailyDays.value?.[idx];
         if (!day) return '';
         const c = chartTheme.value;
-        const points = hourlyByDate.value.get(day.dt_janela) ?? [];
-        let sparklineHtml = '';
-        if (points.length > 0) {
-          const maxVal = Math.max(...points.map(pt => pt.nu_prescricoes), 1);
-          const bars = Array.from({ length: 24 }, (_, h) => {
-            const pt = points.find(x => x.hr_janela === h);
-            const hPerc = pt ? (pt.nu_prescricoes / maxVal) * 100 : 0;
-            const isAnomalo = pt?.is_hora_com_alerta === 1;
-            const color = isAnomalo ? '#ef4444' : c.muted;
-            const opacity = hPerc > 0 ? 1 : 0.3;
-            return `<div style="flex:1; height:${Math.max(hPerc, 2)}%; background:${color}; border-radius:1px; opacity:${opacity};"></div>`;
-          }).join('');
-          sparklineHtml = `
-            <div style="margin-top:10px; border-top:1px solid ${c.tooltipBorder}; padding-top:10px;">
-              <div style="font-size:10px; opacity:.6; letter-spacing:.04em; text-transform:uppercase; margin-bottom:6px; text-align:center;">Distribuição Horária</div>
-              <div style="display:flex; align-items:flex-end; gap:2px; height:40px;">${bars}</div>
-            </div>`;
-        }
         const badges = [];
         if (day.is_volume_horario_anomalo === 1) {
-          badges.push('<span style="font-size:10px; background:rgba(239, 68, 68, 0.15); color:#ef4444; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid rgba(239, 68, 68, 0.3); margin-left:8px;">⚠ SURTO</span>');
+          badges.push('<span style="font-size:10px; background:rgba(16, 185, 129, 0.15); color:#10b981; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid rgba(16, 185, 129, 0.3); margin-left:8px;">⚠ Volume Atípico</span>');
         }
         if (day.is_crm_unico === 1) {
           badges.push('<span style="font-size:10px; background:rgba(245, 158, 11, 0.15); color:#f59e0b; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid rgba(245, 158, 11, 0.3); margin-left:8px;">⚠ Autorizações em Sequência (Único CRM)</span>');
@@ -829,8 +1078,7 @@ const chartOptionDaily = computed(() => {
               </div>
               ${rankMetricHtml}
             </div>
-            ${sparklineHtml}
-            ${(day.is_volume_horario_anomalo === 1 || day.is_crm_unico === 1 || day.is_crm_multiplo === 1) ? '<div style="margin-top:10px; font-size:10px; color:#6366f1; text-align:center; opacity:.8; font-style:italic;">Clique para drill-down detalhado</div>' : ''}
+            ${(day.is_volume_horario_anomalo === 1 || day.is_crm_unico === 1 || day.is_crm_multiplo === 1) ? `<div style="margin-top:10px; font-size:11px; color:${c.tooltipText}; opacity:.85; text-align:center;">Clique na barra para abrir a análise horária</div>` : ''}
           </div>`;
       },
     },
@@ -869,7 +1117,15 @@ const chartOptionDaily = computed(() => {
         })),
         tooltip: { show: false },
         emphasis: { disabled: true },
-        silent: false
+        silent: false,
+        // Faixa de fundo suave na coluna do dia selecionado (atrás das barras).
+        markArea: selectedDate
+          ? {
+              silent: true,
+              itemStyle: { color: themeStore.isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(15, 23, 42, 0.06)' },
+              data: [[{ xAxis: selectedDate }, { xAxis: selectedDate }]],
+            }
+          : undefined,
       },
       {
         name: 'Prescrições',
@@ -905,7 +1161,7 @@ const chartOptionDaily = computed(() => {
         },
         data: dailyValues.value.map((v, i) => {
           const day = filteredDailyDays.value[i];
-          const isSelected = selectedDay.value && selectedDay.value.dt_janela === day.dt_janela;
+          const isSelected = selectedDate === day.dt_janela;
           const hasSelection = !!selectedDay.value;
           const isAnomalo = day.is_volume_horario_anomalo === 1 || day.is_crm_unico === 1 || day.is_crm_multiplo === 1;
           const color = isAnomalo
@@ -916,7 +1172,7 @@ const chartOptionDaily = computed(() => {
             rankBadge: formatDailyRankBadge(day),
             cursor: (day.is_volume_horario_anomalo === 1 || day.is_crm_unico === 1 || day.is_crm_multiplo === 1) ? 'pointer' : 'default',
             itemStyle: {
-              opacity: hasSelection && !isSelected ? 0.5 : 1,
+              opacity: hasSelection && !isSelected ? 0.55 : 1,
               color,
             },
           };
@@ -927,7 +1183,8 @@ const chartOptionDaily = computed(() => {
         type: 'line',
         step: 'end',
         symbol: 'none',
-        data: dailyMedians.value,
+        // No ranking os dias não são vizinhos no tempo: a linha em degrau não teria significado.
+        data: dailyRankMode.value ? [] : dailyMedians.value,
         lineStyle: { color: '#f59e0b', type: 'dashed', width: 1.5, opacity: 0.8 },
         z: 10,
         silent: true,
@@ -952,6 +1209,10 @@ const chartOptionHourly = computed(() => {
   if (!selectedDay.value || !hourlyPoints.value.length) return {};
   const c = chartTheme.value;
   const fullPoints = hourlyPoints.value;
+  const hourLabel = (h) => `${String(h).padStart(2, '0')}h`;
+  const hasSelectedHour = selectedHourlyHour.value !== 'all' && selectedHourlyHour.value !== null;
+  const selectedHourLabel = hasSelectedHour ? hourLabel(selectedHourlyHour.value) : null;
+  const selectedLabelColor = themeStore.isDark ? '#f8fafc' : '#0f172a';
 
   const barColors = fullPoints.map(p => {
     if (p.is_hora_com_alerta === 1 && p.nu_prescricoes > 0) {
@@ -978,7 +1239,15 @@ const chartOptionHourly = computed(() => {
         data: fullPoints.map(p => `${String(p.hr_janela).padStart(2, '0')}h`),
         axisLine: { lineStyle: { color: c.grid } },
         axisTick: { show: false },
-        axisLabel: { color: c.muted, fontSize: 10, fontWeight: 600, fontFamily: 'Inter, sans-serif', interval: 1, formatter: (v, i) => (i % 2 === 0 ? v : '') },
+        axisLabel: {
+          color: c.muted,
+          fontSize: 10,
+          fontWeight: 600,
+          fontFamily: 'Inter, sans-serif',
+          interval: 0,
+          formatter: (v, i) => (v === selectedHourLabel ? `{sel|${v}}` : (i % 2 === 0 ? v : '')),
+          rich: { sel: { fontSize: 11, fontWeight: 600, color: selectedLabelColor } },
+        },
       },
       {
         gridIndex: 1,
@@ -1123,10 +1392,18 @@ const chartOptionHourly = computed(() => {
             value: p.nu_prescricoes,
             itemStyle: { 
               color: barColors[i],
-              opacity: hasSelection && !isSelected ? 0.3 : 1
+              opacity: hasSelection && !isSelected ? 0.55 : 1
             } 
           };
         }),
+        // Faixa de fundo suave na coluna da hora selecionada (mesmo padrão do Histórico Diário).
+        markArea: selectedHourLabel
+          ? {
+              silent: true,
+              itemStyle: { color: themeStore.isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(15, 23, 42, 0.06)' },
+              data: [[{ xAxis: selectedHourLabel }, { xAxis: selectedHourLabel }]],
+            }
+          : undefined,
       },
       {
         name: 'Mediana Referência (Hora)',
@@ -1200,11 +1477,16 @@ watch(filteredDailyDays, (newDays) => {
   }
 }, { immediate: true });
 
+// flush 'sync': a seleção precisa ser limpa antes do watch de filteredDailyDays
+// rodar, para que ele recalcule a auto-seleção e o zoom da nova lista.
 watch(dailyRankLimit, () => {
   if (!dailyRankMode.value) return;
-  selectedDay.value = null;
-  selectedHourlyHour.value = null;
-});
+  resetDailySelection();
+}, { flush: 'sync' });
+
+watch(filterDailyOnlyAnomalous, () => {
+  resetDailySelection();
+}, { flush: 'sync' });
 
 // ── Retrigger quando o dataset horario fica pronto (race condition com auto-selecao) ──
 // O timeline-dataset aquece o parquet do Raio-X antes de responder.
@@ -1232,37 +1514,125 @@ watch(activeCrmViewMode, (mode) => {
 // Observa AMBOS: o evento de navegação e o cache de dados.
 // Isso garante que mesmo se o evento disparar antes do cache estar pronto,
 // o handler tentará novamente assim que os dados chegarem.
+// immediate: a navegação pode chegar antes de este componente montar (ex.: vindo
+// do painel de evidências com a Cronologia ainda fechada e os dados já em cache).
 watch([selectedTimelineEvent, timelineDailyDataset], async ([evt, profile]) => {
   if (!evt || !profile) return;
+  // Limpa já: permite nova navegação para o mesmo alvo e evita reprocessar.
+  cnpjDetailStore.clearTimelineNavigation();
 
   const rawDayObj = profile.days.find(d => d.dt_janela === evt.date);
-  const dayObj = rawDayObj ? normalizeDailyDay(rawDayObj) : null;
-  if (!dayObj) return;
+  if (!rawDayObj) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Dia fora do período em análise',
+      detail: `${formatarData(evt.date)} não está no período filtrado. Ajuste o período para abrir este item.`,
+      life: 8000,
+    });
+    return;
+  }
+  const dayObj = normalizeDailyDay(rawDayObj);
 
-  // 1. Seleciona o dia — mostra o dia todo sem filtrar por hora
-  selectedDay.value = dayObj;
-  selectedHourlyHour.value = 'all';
-
-  // 2. Carrega as transações do dia inteiro
-  await ensureRaioxLoaded(evt.date, null);
-
-  // 3. Centraliza o zoom
-  const idx = profile.days.findIndex(d => d.dt_janela === evt.date);
-  if (idx !== -1) {
-    const total = profile.days.length;
-    const windowSize = 30;
-    const halfWindow = windowSize / 2;
-    let startIdx = Math.max(0, idx - halfWindow);
-    let endIdx = Math.min(total, startIdx + windowSize);
-    if (endIdx === total) startIdx = Math.max(0, total - windowSize);
-
-    dailyZoomStart.value = (startIdx / total) * 100;
-    dailyZoomEnd.value = (endIdx / total) * 100;
+  // No ranking (ou com "apenas anomalias") o dia pode não estar entre os exibidos:
+  // volta para a série completa antes de selecionar.
+  if (!filteredDailyDays.value.some(d => d.dt_janela === evt.date)) {
+    dailyRankMode.value = null;
+    filterDailyOnlyAnomalous.value = false;
   }
 
-  // 4. Limpa o evento para permitir futuras navegações
-  cnpjDetailStore.clearTimelineNavigation();
-});
+  // 1. Seleciona o dia e, se informada, a hora
+  const hour = parseTimelineHour(evt.hour);
+  selectedDay.value = dayObj;
+  selectedHourlyHour.value = hour ?? 'all';
+
+  // 2. Centraliza o zoom na lista exibida
+  const lista = filteredDailyDays.value;
+  const idx = lista.findIndex(d => d.dt_janela === evt.date);
+  if (idx !== -1) {
+    setDailyZoomWindow(lista.length, idx, dailyRankMode.value ? DAILY_RANK_VISIBLE_LIMIT : 30);
+  }
+
+  // 3. Carrega as transações e, se for o caso, destaca a autorização
+  await ensureRaioxLoaded(evt.date, hour);
+  if (evt.autorizacao) await focarAutorizacao(String(evt.autorizacao));
+}, { immediate: true });
+
+function parseTimelineHour(value) {
+  if (value === null || value === undefined || value === 'all') return null;
+  const hour = Number.parseInt(String(value), 10);
+  return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : null;
+}
+
+// ── Destaque de autorização (navegação vinda da cesta de evidências) ──────
+const focoAutorizacao = ref(null);
+let focoTimer = null;
+
+async function focarAutorizacao(numAutorizacao) {
+  await nextTick();
+  const existe = activeGroupedRaiox.value.some(tx => String(tx.num_autorizacao) === numAutorizacao);
+  if (!existe) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Autorização não encontrada',
+      detail: `A autorização nº ${numAutorizacao} não aparece nesta janela do Raio-X.`,
+      life: 8000,
+    });
+    return;
+  }
+  focoAutorizacao.value = numAutorizacao;
+  await nextTick();
+  document
+    .querySelector(`[data-autorizacao="${CSS.escape(numAutorizacao)}"]`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  window.clearTimeout(focoTimer);
+  focoTimer = window.setTimeout(() => { focoAutorizacao.value = null; }, 2600);
+}
+
+// ── Cesta de evidências: alvos e retratos dos itens marcados ──────────────
+const cnpjDigits = computed(() => props.cnpj.replace(/\D/g, '').padStart(14, '0'));
+
+function horarioDaTx(tx) {
+  return (tx.data_hora.split(' ')[1] || tx.data_hora).split('.')[0];
+}
+
+function horaDaTx(tx) {
+  const hour = Number.parseInt(horarioDaTx(tx).slice(0, 2), 10);
+  if (!Number.isInteger(hour)) throw new Error(`Horário inválido na autorização ${tx.num_autorizacao}.`);
+  return hour;
+}
+
+function alvoDaTx(tx) {
+  return {
+    cnpj: cnpjDigits.value,
+    tipo: 'autorizacao',
+    dt_janela: selectedDay.value.dt_janela,
+    hora: horaDaTx(tx),
+    num_autorizacao: String(tx.num_autorizacao),
+  };
+}
+
+function snapshotDia() {
+  const dia = selectedDay.value;
+  if (!dia) throw new Error('Nenhum dia selecionado.');
+  return { qtd: Number(dia.nu_prescricoes_dia ?? 0), alertas: alertasDaJanela(dia) };
+}
+
+function snapshotHora() {
+  const ponto = hourlyPoints.value.find(p => p.hr_janela === selectedHourlyHour.value);
+  if (!ponto) throw new Error('Os dados da hora selecionada não estão disponíveis.');
+  return { qtd: Number(ponto.nu_prescricoes ?? 0), alertas: alertasDaJanela(ponto) };
+}
+
+function snapshotDaTx(tx) {
+  return () => ({
+    horario: horarioDaTx(tx),
+    crm: tx.id_medico == null ? null : String(tx.id_medico),
+    medico: tx.no_medico ? formatTitleCase(tx.no_medico) : null,
+    valor: Number(tx.vl_autorizacao ?? 0),
+    intervalo: raioxIntervalos.value.get(tx.num_autorizacao)?.texto ?? null,
+    alertas: getAlertasDaTx(tx).map(alerta => alerta.label),
+  });
+}
 
 const hourlyChartRef = ref(null);
 const hoveredHourlyHour = ref(null);
@@ -1357,7 +1727,8 @@ function getAlertasDaTx(tx) {
 function getHoveredAlertaType(tx) {
   const alert = hoveredAlert.value;
   if (!alert) return null;
-  if (alert.type === 'unico') return tx.id_medico === alert.id_medico ? 'unico' : null;
+  // Só as autorizações dentro da janela do alerta (não todas as do médico).
+  if (alert.type === 'unico') return getUnicoAlertasDaTx(tx).some(a => `U-${a.numero_alerta}` === alert.key) ? 'unico' : null;
   return getMultiAlertasDaTx(tx).some(a => `M-${a.numero_alerta}` === alert.key) ? 'multi' : null;
 }
 
@@ -1375,8 +1746,9 @@ function getRaioxRowClasses(tx) {
   return {
     'row-gatilho': hasUnico,
     'row-multi-alerta': isMultiAlertaTx(tx) && !hasUnico,
-    'row-alert-highlight-unico': hoveredType === 'unico',
-    'row-alert-highlight-multi': hoveredType === 'multi',
+    // Ao passar o mouse num alerta, as linhas de fora dele recuam; as do alerta ficam como estão.
+    'row-alert-dimmed': hoveredAlert.value !== null && hoveredType === null,
+    'row-evidencia-foco': focoAutorizacao.value === String(tx.num_autorizacao),
   };
 }
 
@@ -1419,108 +1791,134 @@ const activeTransactionsLoading = computed(() =>
   <div v-else class="cronologia-flow animate-fade-in">
     
     <!-- Breadcrumb de Navegação Dinâmico -->
-    <div class="drill-breadcrumb">
-      <span class="crumb-item" :class="{ 'is-current': !selectedDay }">
-        <i class="pi pi-chart-bar crumb-icon" />
-        <span>Histórico Diário</span>
+    <div class="drill-navigation-row">
+      <div class="drill-breadcrumb">
+        <span class="crumb-item" :class="{ 'is-current': !selectedDay }">
+          <i class="pi pi-chart-bar crumb-icon" />
+          <span>Histórico Diário</span>
+        </span>
+        <template v-if="selectedDay">
+          <i class="pi pi-chevron-right crumb-arrow" />
+          <span class="crumb-item" :class="{ 'is-current': selectedDay && selectedHourlyHour === null }">
+            <i class="pi pi-calendar crumb-icon" />
+            <span>{{ formatarData(selectedDay.dt_janela) }}</span>
+            <span v-if="selectedDay.is_anomalo" class="crumb-anomaly-dot" />
+          </span>
+        </template>
+        <template v-if="selectedHourlyHour !== null">
+          <i class="pi pi-chevron-right crumb-arrow" />
+          <span class="crumb-item is-current">
+            <i class="pi pi-search crumb-icon" />
+            <span>Raio-X · {{ selectedHourlyHour === 'all' ? 'Dia Todo' : `${String(selectedHourlyHour).padStart(2, '0')}h` }}</span>
+          </span>
+        </template>
+      </div>
+      <span class="crm-export-wrapper">
+        <button
+          class="crm-export-button"
+          type="button"
+          :disabled="!canExportRaiox || exportLoading"
+          :aria-busy="exportLoading"
+          aria-haspopup="menu"
+          aria-controls="crm-export-menu"
+          :aria-label="`Exportar dias alertados. ${raioxExportState.reason}`"
+          @click="toggleExportMenu"
+        >
+          <i :class="exportLoading ? 'pi pi-spinner pi-spin' : 'pi pi-download'" aria-hidden="true" />
+          <span>{{ exportLoading ? 'Exportando…' : 'Exportar dias alertados' }}</span>
+          <i v-if="!exportLoading" class="pi pi-chevron-down crm-export-caret" aria-hidden="true" />
+        </button>
+        <Menu id="crm-export-menu" ref="exportMenu" :model="exportMenuItems" :popup="true" />
+        <i
+          class="pi pi-info-circle control-info-icon crm-export-info"
+          role="img"
+          tabindex="0"
+          aria-label="Informações sobre a exportação dos dias alertados"
+          v-tooltip.left="raioxExportTooltip"
+        />
       </span>
-      <template v-if="selectedDay">
-        <i class="pi pi-chevron-right crumb-arrow" />
-        <span class="crumb-item" :class="{ 'is-current': selectedDay && selectedHourlyHour === null }">
-          <i class="pi pi-calendar crumb-icon" />
-          <span>{{ formatarData(selectedDay.dt_janela) }}</span>
-          <span v-if="selectedDay.is_anomalo" class="crumb-anomaly-dot" />
-        </span>
-      </template>
-      <template v-if="selectedHourlyHour !== null">
-        <i class="pi pi-chevron-right crumb-arrow" />
-        <span class="crumb-item is-current">
-          <i class="pi pi-search crumb-icon" />
-          <span>Raio-X · {{ selectedHourlyHour === 'all' ? 'Dia Todo' : `${String(selectedHourlyHour).padStart(2, '0')}h` }}</span>
-        </span>
-      </template>
     </div>
 
     <!-- NÍVEL 1: Histórico Diário -->
     <div class="drill-panel level-daily" :class="{ 'is-refreshing': showRefreshingDaily }">
       <div class="drill-panel-header">
         <div class="drill-panel-title">
-          <i class="pi pi-chart-bar" />
+          <span class="drill-step" aria-hidden="true">1</span>
           <span>HISTÓRICO DIÁRIO DE DISPENSAÇÕES</span>
           <span v-if="crmTimelineDatasetLoading" class="chart-loading-badge">
             <i class="pi pi-spinner pi-spin"></i> Carregando...
           </span>
         </div>
-        <div class="filter-controls">
-          <div class="chart-nav-buttons">
+      </div>
+      <p class="subtitle daily-subtitle">
+        Autorizações por dia. Barras vermelhas indicam dias com alerta —
+        <strong>clique em uma barra</strong> para abrir a análise horária do dia.
+      </p>
+      <div class="daily-toolbar" role="group" aria-label="Controles do histórico diário">
+        <div class="daily-toolbar-group daily-toolbar-nav">
+          <span class="daily-toolbar-label daily-toolbar-label-info">
+            Navegar
+            <i
+              class="pi pi-info-circle control-info-icon"
+              role="img"
+              aria-label="Informações sobre a navegação entre meses"
+              tabindex="0"
+              v-tooltip.right="dailyNavInfoTooltip"
+            />
+          </span>
+          <div class="daily-toolbar-nav-buttons">
             <button
               class="nav-btn"
+              type="button"
+              :disabled="dailyNavDisabled"
               @click="shiftZoom('prev')"
-              v-tooltip.bottom="cronologiaInfoTooltips.previousMonth"
               aria-label="Mês anterior"
             >
               <i class="pi pi-chevron-left" />
             </button>
             <button
               class="nav-btn"
+              type="button"
+              :disabled="dailyNavDisabled"
               @click="shiftZoom('next')"
-              v-tooltip.bottom="cronologiaInfoTooltips.nextMonth"
               aria-label="Próximo mês"
             >
               <i class="pi pi-chevron-right" />
             </button>
           </div>
-          <div class="filter-divider"></div>
-          <div class="daily-rank-controls" aria-label="Piores dias por">
-            <button
-              class="rank-btn is-unico"
-              :class="{ 'is-active': dailyRankMode === 'unico' }"
-              @click="toggleDailyRankMode('unico')"
-            >
-              <i class="pi pi-user" />
-              <span>Autorizações em Sequência (Único CRM)</span>
-              <i
-                class="pi pi-info-circle control-info-icon"
-                role="img"
-                aria-label="Informações sobre o ranqueamento por autorizações em sequência por um único CRM"
-                v-tooltip.top="cronologiaInfoTooltips.rankUnico"
-                @click.stop
-              />
-            </button>
-            <button
-              class="rank-btn is-multiplo"
-              :class="{ 'is-active': dailyRankMode === 'multiplo' }"
-              @click="toggleDailyRankMode('multiplo')"
-            >
-              <i class="pi pi-users" />
-              <span>Autorizações em Sequência (Múltiplos CRMs)</span>
-              <i
-                class="pi pi-info-circle control-info-icon"
-                role="img"
-                aria-label="Informações sobre o ranqueamento por autorizações em sequência por múltiplos CRMs"
-                v-tooltip.top="cronologiaInfoTooltips.rankMultiplo"
-                @click.stop
-              />
-            </button>
-            <button
-              class="rank-btn is-volume"
-              :class="{ 'is-active': dailyRankMode === 'volume' }"
-              @click="toggleDailyRankMode('volume')"
-            >
-              <i class="pi pi-chart-bar" />
-              <span>Volume</span>
-              <i
-                class="pi pi-info-circle control-info-icon"
-                role="img"
-                aria-label="Informações sobre o ranqueamento por volume"
-                v-tooltip.top="cronologiaInfoTooltips.rankVolume"
-                @click.stop
-              />
-            </button>
+        </div>
+
+        <div class="daily-toolbar-group daily-toolbar-rank">
+          <span id="daily-rank-label" class="daily-toolbar-label">Piores dias por</span>
+          <div class="daily-toolbar-row">
+            <div class="rank-segmented" role="radiogroup" aria-labelledby="daily-rank-label">
+              <button
+                v-for="option in dailyRankOptions"
+                :key="option.value ?? 'nenhum'"
+                type="button"
+                role="radio"
+                class="rank-seg"
+                :class="[option.className, { 'is-active': dailyRankMode === option.value }]"
+                :aria-checked="dailyRankMode === option.value"
+                @click="setDailyRankMode(option.value)"
+              >
+                <span v-if="option.value" class="rank-seg-dot" aria-hidden="true" />
+                <span>{{ option.label }}</span>
+                <i
+                  v-if="option.tooltip"
+                  class="pi pi-info-circle control-info-icon"
+                  role="img"
+                  :aria-label="`Informações sobre ${option.label}`"
+                  v-tooltip.top="option.tooltip"
+                  @click.stop
+                />
+              </button>
+            </div>
             <div class="rank-limit-control">
               <select
                 v-model.number="dailyRankLimit"
                 class="rank-limit-select"
+                aria-label="Quantidade de dias exibidos"
                 :disabled="!dailyRankMode"
               >
                 <option v-for="option in dailyRankLimitOptions" :key="option.value" :value="option.value">
@@ -1536,34 +1934,35 @@ const activeTransactionsLoading = computed(() =>
               />
             </div>
           </div>
-          <div class="filter-divider"></div>
-          <label
-            class="filter-toggle"
-            :class="{ 'is-disabled': dailyRankMode }"
-          >
+        </div>
+
+        <div class="daily-toolbar-group daily-toolbar-filter">
+          <span class="daily-toolbar-label">Filtro</span>
+          <label class="filter-toggle" :class="{ 'is-disabled': dailyRankMode }">
             <input type="checkbox" v-model="filterDailyOnlyAnomalous" :disabled="dailyRankMode !== null" />
             <span class="toggle-slider"></span>
-            <span class="toggle-label">Apenas Anomalias</span>
+            <span class="toggle-label">Apenas anomalias</span>
             <i
               class="pi pi-info-circle control-info-icon anomaly-filter-info"
               role="img"
-              aria-label="Informações sobre o filtro Apenas Anomalias"
+              aria-label="Informações sobre o filtro Apenas anomalias"
               tabindex="0"
-                  v-tooltip.left="cronologiaInfoTooltips.onlyAnomalies"
+              v-tooltip.left="cronologiaInfoTooltips.onlyAnomalies"
               @click.prevent.stop
             />
           </label>
+          <span class="daily-toolbar-help">
+            {{ dailyRankMode ? 'Indisponível com ranking ativo — escolha “Nenhum”.' : 'Oculta os dias de operação normal.' }}
+          </span>
         </div>
       </div>
-      <p class="subtitle" style="padding-left: 1.75rem; margin-top: 0; margin-bottom: 0.75rem">
-        Evolução diária de autorizações. Barras vermelhas indicam dias com algum tipo de anomalia. Os alertas podem refletir volume atípico, autorizações em sequência com uso de um único CRM ou autorizações em sequência com uso de múltiplos CRMs. Clique em um dia sinalizado para análise detalhada.
-      </p>
       
       <div v-if="!timelineDatasetReady && !crmTimelineDatasetLoading" class="chart-empty">
         <i class="pi pi-chart-bar" style="font-size:1.5rem; opacity:.4"></i>
         <span>Sem dados da linha do tempo CRM disponíveis.</span>
       </div>
       <div class="daily-chart-wrapper" :class="{ 'cursor-pointer-active': hoveredDailyDayIndex !== null }">
+        <div class="legend-bar-evid">
         <div class="chart-legend-html">
           <span class="legend-item">
             <span class="legend-swatch legend-bar" style="background: #ef4444;"></span>
@@ -1573,10 +1972,22 @@ const activeTransactionsLoading = computed(() =>
             <span class="legend-swatch legend-bar" :style="{ background: chartUFAccents.bar1 }"></span>
             Dia Normal
           </span>
-          <span class="legend-item">
+          <span v-if="!dailyRankMode" class="legend-item">
             <span class="legend-swatch legend-dashed"></span>
             Mediana de Referência
           </span>
+        </div>
+        <div v-if="selectedDay" class="legend-evid">
+          <span class="legend-evid-contexto">
+            Dia selecionado: <strong>{{ formatarData(selectedDay.dt_janela) }}</strong>
+          </span>
+          <EvidenciaFlag
+            :alvo="{ cnpj: cnpjDigits, tipo: 'dia', dt_janela: selectedDay.dt_janela }"
+            :snapshot="snapshotDia"
+            :descricao="`Dia ${formatarData(selectedDay.dt_janela)}`"
+            :razao-social="razaoSocial"
+          />
+        </div>
         </div>
         <VChart
           :option="chartOptionDaily"
@@ -1593,19 +2004,31 @@ const activeTransactionsLoading = computed(() =>
       </div>
     </div>
 
-    <!-- Conector Diário → Horário -->
-    <div v-if="selectedDay" class="drill-connector">
-      <div class="connector-line" />
-      <div class="connector-dot">
-        <i class="pi pi-clock" />
-      </div>
+
+    <!-- Ligação entre etapas: seta em SVG com o contexto da seleção -->
+    <div v-if="selectedDay" class="drill-link" aria-hidden="true">
+      <svg class="drill-link-svg" viewBox="0 0 24 60" width="24" height="60">
+        <defs>
+          <linearGradient id="drillLinkFadeDia" gradientUnits="userSpaceOnUse" x1="12" y1="0" x2="12" y2="50">
+            <stop offset="0" stop-color="currentColor" stop-opacity="0" />
+            <stop offset="0.3" stop-color="currentColor" stop-opacity="0.55" />
+            <stop offset="1" stop-color="currentColor" stop-opacity="0.95" />
+          </linearGradient>
+        </defs>
+        <path class="drill-link-line" d="M12 0 V50" stroke="url(#drillLinkFadeDia)" />
+        <path class="drill-link-head" d="M7.5 48 L12 55 L16.5 48 Z" />
+      </svg>
+      <span class="drill-link-chip">
+        <i class="pi pi-calendar" />
+        {{ formatarData(selectedDay.dt_janela) }}
+      </span>
     </div>
 
     <!-- NÍVEL 2: Análise Horária -->
     <div v-if="selectedDay" class="drill-panel level-hourly animate-fade-in" :class="{ 'is-refreshing': showRefreshingHourly }">
       <div class="drill-panel-header">
         <div class="drill-panel-title">
-          <i class="pi pi-clock" style="color: #6366f1;" />
+          <span class="drill-step" aria-hidden="true">2</span>
           <span>ANÁLISE HORÁRIA</span>
           <span class="drill-context-tag">{{ formatarData(selectedDay.dt_janela) }}</span>
         </div>
@@ -1627,6 +2050,7 @@ const activeTransactionsLoading = computed(() =>
         Distribuição das <strong>{{ selectedDay.nu_prescricoes_dia }} autorizações</strong> ao longo do dia.
       </p>
       <div class="daily-chart-wrapper" :class="{ 'cursor-pointer-active': hoveredHourlyHour !== null }">
+        <div class="legend-bar-evid">
         <div class="chart-legend-html">
           <div class="legend-group">
             <span class="legend-item">
@@ -1649,6 +2073,18 @@ const activeTransactionsLoading = computed(() =>
             <span v-if="selectedDay.is_crm_multiplo === 1" class="track-badge is-multiplo">Autorizações em Sequência (Múltiplos CRMs)</span>
           </div>
         </div>
+        <div v-if="Number.isInteger(selectedHourlyHour)" class="legend-evid">
+          <span class="legend-evid-contexto">
+            Hora selecionada: <strong>{{ String(selectedHourlyHour).padStart(2, '0') }}h</strong>
+          </span>
+          <EvidenciaFlag
+            :alvo="{ cnpj: cnpjDigits, tipo: 'hora', dt_janela: selectedDay.dt_janela, hora: selectedHourlyHour }"
+            :snapshot="snapshotHora"
+            :descricao="`${formatarData(selectedDay.dt_janela)}, das ${String(selectedHourlyHour).padStart(2, '0')}h às ${String(selectedHourlyHour).padStart(2, '0')}h59`"
+            :razao-social="razaoSocial"
+          />
+        </div>
+        </div>
         <VChart
           v-if="selectedDay"
           ref="hourlyChartRef"
@@ -1666,21 +2102,40 @@ const activeTransactionsLoading = computed(() =>
       </div>
     </div>
 
-    <!-- Conector Horário → Raio-X -->
-    <div v-if="selectedHourlyHour !== null" class="drill-connector">
-      <div class="connector-line" />
-      <div class="connector-dot connector-dot-raiox">
-        <i class="pi pi-search" />
-      </div>
+
+    <!-- Ligação entre etapas: seta em SVG com o contexto da seleção -->
+    <div v-if="selectedHourlyHour !== null" class="drill-link" aria-hidden="true">
+      <svg class="drill-link-svg" viewBox="0 0 24 60" width="24" height="60">
+        <defs>
+          <linearGradient id="drillLinkFadeHora" gradientUnits="userSpaceOnUse" x1="12" y1="0" x2="12" y2="50">
+            <stop offset="0" stop-color="currentColor" stop-opacity="0" />
+            <stop offset="0.3" stop-color="currentColor" stop-opacity="0.55" />
+            <stop offset="1" stop-color="currentColor" stop-opacity="0.95" />
+          </linearGradient>
+        </defs>
+        <path class="drill-link-line" d="M12 0 V50" stroke="url(#drillLinkFadeHora)" />
+        <path class="drill-link-head" d="M7.5 48 L12 55 L16.5 48 Z" />
+      </svg>
+      <span class="drill-link-chip">
+        <i class="pi pi-clock" />
+        {{ selectedHourlyHour === 'all' ? 'Dia todo' : `${String(selectedHourlyHour).padStart(2, '0')}h` }}
+      </span>
     </div>
 
     <!-- NÍVEL 3: Raio-X (unificado: CRM Múltiplos ou CRM Único) -->
     <div v-if="selectedHourlyHour !== null" class="drill-panel level-raiox animate-fade-in">
       <div class="drill-panel-header">
         <div class="drill-panel-title">
-          <i class="pi pi-search" style="color: #8b5cf6;" />
+          <span class="drill-step" aria-hidden="true">3</span>
           <span>RAIO-X: TRANSAÇÕES</span>
-          <span class="drill-context-tag drill-context-tag-raiox">
+          <i
+            class="pi pi-info-circle control-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Informações sobre o Raio-X de transações"
+            v-tooltip.right="cronologiaInfoTooltips.raioxTransacoes"
+          />
+          <span class="drill-context-tag">
             {{ selectedHourlyHour === 'all' ? 'Dia Todo' : `${String(selectedHourlyHour).padStart(2, '0')}h` }}
           </span>
           <span v-if="!activeTransactionsLoading && activeGroupedRaiox.length > 0" class="raiox-count-badge">
@@ -1690,104 +2145,66 @@ const activeTransactionsLoading = computed(() =>
         </div>
       </div>
 
-      <!-- Médicos Gatilho (CRM Único) -->
-      <div v-if="unicoAlertas.length > 0" class="unico-alertas-section alertas-unico-section">
-        <div class="unico-alertas-header">
-          <i class="pi pi-exclamation-triangle" />
-          <span>Alertas de Autorizações em Sequência (Único CRM) no Período</span>
+      <!-- Alertas de Autorizações em Sequência (Único CRM + Múltiplos CRMs) -->
+      <section v-if="alertasSequencia.length > 0" class="alertas-sequencia" aria-labelledby="alertas-sequencia-titulo">
+        <header class="alertas-sequencia-header">
+          <h3 id="alertas-sequencia-titulo">
+            {{ alertasSequenciaTitulo }}
+            <span class="alertas-sequencia-count">{{ alertasSequencia.length }}</span>
+          </h3>
           <i
             class="pi pi-info-circle section-info-icon"
             role="img"
-            aria-label="Informações sobre os alertas de autorizações em sequência por um único CRM"
+            aria-label="Informações sobre os alertas de autorizações em sequência"
             tabindex="0"
-            v-tooltip.top="cronologiaInfoTooltips.unicoSection"
+            v-tooltip.top="cronologiaInfoTooltips.alertasSection"
           />
-        </div>
-        <div class="unico-alertas-grouped-list">
-          <div v-for="grupo in unicoAlertasAgrupados" :key="grupo.id_medico" class="unico-alerta-group">
-            <div class="unico-alerta-group-title">
-              <span class="alerta-crm" :style="{ color: getCRMColor(grupo.id_medico) }">{{ grupo.id_medico }}</span>
-              <span class="unico-alerta-group-count">
-                {{ grupo.alertas.length }} alerta{{ grupo.alertas.length !== 1 ? 's' : '' }}
-              </span>
-            </div>
-            <div class="unico-alerta-group-items">
-              <div
-                v-for="alerta in grupo.alertas"
-                :key="`${alerta.id_medico}-${alerta.dt_ini_hora}-${alerta.dt_fim_hora}-${alerta.numero_alerta}`"
-                class="unico-alerta-row"
-              >
-                <span
-                  class="alerta-alert-id"
-                  v-tooltip.right="{ value: formatUnicoAlertTitle(alerta), escape: false, class: 'crm-alert-tooltip', showDelay: 120, hideDelay: 80 }"
-                  @pointerenter="setHoveredUnicoAlert(alerta)"
-                  @pointerleave="clearHoveredAlert"
-                >
-                  #{{ alerta.numero_alerta }}
-                </span>
-                <span class="alerta-stat">{{ alerta.dt_ini_hora }} -> {{ alerta.dt_fim_hora }}</span>
-                <span v-if="alerta.severidade" class="alerta-severity">{{ alerta.severidade }}</span>
-                <span class="alerta-stat">{{ alerta.ritmo_qtd_display }} em {{ alerta.ritmo_minutos_display }}min</span>
-                <span class="alerta-stat">{{ alerta.ritmo_hora_num.toFixed(1) }}/h</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Surtos Coordenados (Multi-CRM) -->
-      <div v-if="multiAlertas.length > 0" class="unico-alertas-section alertas-multi-section">
-        <div class="unico-alertas-header">
-          <i class="pi pi-users" />
-          <span>Alertas de Autorizações em Sequência (Múltiplos CRMs) no Período</span>
-          <i
-            class="pi pi-info-circle section-info-icon"
-            role="img"
-            aria-label="Informações sobre os alertas de autorizações em sequência por múltiplos CRMs"
-            tabindex="0"
-            v-tooltip.top="cronologiaInfoTooltips.multiploSection"
-          />
-        </div>
-        <div class="multi-alertas-numbered-list">
-          <div
-            v-for="alerta in multiAlertasNumerados"
-            :key="`${alerta.dt_janela}-${alerta.hr_janela}-${alerta.dt_ini_hora}-${alerta.numero_alerta}`"
-            class="multi-alerta-row"
-          >
-            <span
-              class="multi-alerta-id"
-              v-tooltip.right="{ value: formatMultiAlertTitle(alerta), escape: false, class: 'crm-alert-tooltip', showDelay: 120, hideDelay: 80 }"
-              @pointerenter="setHoveredMultiAlert(alerta)"
+        </header>
+        <table class="alertas-sequencia-table">
+          <thead>
+            <tr>
+              <th scope="col">Tipo</th>
+              <th scope="col">Janela</th>
+              <th scope="col">Médico(s)</th>
+              <th scope="col">Ritmo</th>
+              <th scope="col">Gravidade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="alerta in alertasSequencia"
+              :key="alerta.key"
+              :class="['alerta-seq-row', `is-${alerta.tipo}`, { 'is-hovered': hoveredAlert?.key === alerta.key }]"
+              @pointerenter="alerta.hover()"
               @pointerleave="clearHoveredAlert"
             >
-              #{{ alerta.numero_alerta }}
-            </span>
-            <span class="alerta-crm alerta-crm-multi">{{ alerta.nu_crms_display }} CRMs</span>
-            <span class="alerta-stat">{{ alerta.dt_ini_hora }} -> {{ alerta.dt_fim_hora }}</span>
-            <span v-if="alerta.severidade" class="multi-alerta-severity">{{ alerta.severidade }}</span>
-            <span class="alerta-stat">{{ alerta.nu_prescricoes_display }} em {{ alerta.ritmo_minutos_display }}min</span>
-            <span class="alerta-stat">{{ alerta.ritmo_hora_num.toFixed(1) }}/h</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Legenda de Apoio Visual -->
-      <div class="raiox-legend-tip animate-fade-in">
-        <div class="legend-tip-item">
-          <i class="pi pi-palette" />
-          <span>Cores identificam <strong>médicos diferentes</strong> para destacar padrões de concentração.</span>
-        </div>
-        <div class="legend-tip-divider" />
-        <div v-if="unicoAlertas.length > 0 || multiAlertas.length > 0" class="legend-tip-item">
-          <span class="alerta-participacao-badge is-unico">U#1</span>
-          <span class="alerta-participacao-badge is-multi">M#1</span>
-          <span>Badges indicam a <strong>janela de alerta</strong> da qual a autorização participa.</span>
-        </div>
-        <div v-else class="legend-tip-item">
-          <span class="sample-badge">2x</span>
-          <span>Indica a <strong>recorrência</strong> deste médico na mesma janela horária.</span>
-        </div>
-      </div>
+              <td>
+                <span class="alerta-seq-tipo">
+                  <span
+                    class="alerta-seq-codigo"
+                    tabindex="0"
+                    v-tooltip.right="{ value: alerta.tooltip, escape: false, class: 'crm-alert-tooltip', showDelay: 120, hideDelay: 80 }"
+                    @focus="alerta.hover()"
+                    @blur="clearHoveredAlert"
+                  >{{ alerta.codigo }}</span>
+                  <span class="alerta-seq-dot" aria-hidden="true" />
+                  {{ alerta.tipoLabel }}
+                </span>
+              </td>
+              <td class="alerta-seq-num">{{ alerta.inicio }} – {{ alerta.fim }}</td>
+              <td>
+                <span class="alerta-seq-medico" :style="alerta.medicoColor ? { color: alerta.medicoColor } : null">{{ alerta.medico }}</span>
+              </td>
+              <td class="alerta-seq-num">
+                {{ alerta.qtd }} autorizaç{{ Number(alerta.qtd) === 1 ? 'ão' : 'ões' }} em {{ alerta.minutos }} min
+              </td>
+              <td>
+                <span :class="['alerta-seq-severidade', alerta.severidade.className]">{{ alerta.severidade.label }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
 
       <div v-if="!activeTransactionsLoading && activeTransactions.length === 0" class="raiox-empty">
         <i class="pi pi-inbox raiox-empty-icon" />
@@ -1798,35 +2215,68 @@ const activeTransactionsLoading = computed(() =>
         <table class="premium-table row-hover raiox-table flat-mode">
           <thead class="sticky-thead">
             <tr>
-              <th width="12%" class="col-center">Horário</th>
-              <th width="18%">Nº Autorização</th>
+              <th width="5%" class="col-center">
+                <span class="sr-only">Evidência</span>
+                <i
+                  class="pi pi-info-circle control-info-icon"
+                  role="img"
+                  tabindex="0"
+                  aria-label="Informações sobre a marcação de evidências"
+                  v-tooltip.right="cronologiaInfoTooltips.raioxEvidencia"
+                />
+              </th>
+              <th width="10%" class="col-center">Horário</th>
+              <th width="10%" class="col-center">
+                Intervalo
+                <i
+                  class="pi pi-info-circle control-info-icon"
+                  role="img"
+                  tabindex="0"
+                  aria-label="Informações sobre o intervalo entre autorizações"
+                  v-tooltip.top="cronologiaInfoTooltips.raioxIntervalo"
+                />
+              </th>
+              <th width="16%">Nº Autorização</th>
               <th width="16%">CRM</th>
-              <th width="34%">Médico</th>
-              <th width="20%" class="col-right">Valor Total</th>
+              <th width="25%">Médico</th>
+              <th width="18%" class="col-right">Valor Total</th>
             </tr>
           </thead>
           <tbody>
             <template v-for="tx in activeGroupedRaiox" :key="tx.num_autorizacao">
-              <tr :class="getRaioxRowClasses(tx)">
+              <tr :class="getRaioxRowClasses(tx)" :data-autorizacao="tx.num_autorizacao">
+                <td class="col-center align-top raiox-evid-cell">
+                  <EvidenciaFlag
+                    variant="icon"
+                    :alvo="alvoDaTx(tx)"
+                    :snapshot="snapshotDaTx(tx)"
+                    :descricao="`Autorização nº ${tx.num_autorizacao}, ${formatarData(selectedDay.dt_janela)} às ${horarioDaTx(tx)}`"
+                    :razao-social="razaoSocial"
+                  />
+                </td>
                 <td class="col-center raiox-time align-top">
                   {{ (tx.data_hora.split(' ')[1] || tx.data_hora).split('.')[0] }}
+                </td>
+                <td class="col-center align-top">
+                  <span
+                    v-if="raioxIntervalos.get(tx.num_autorizacao)"
+                    class="raiox-intervalo"
+                    :class="{ 'is-curto': raioxIntervalos.get(tx.num_autorizacao).curto }"
+                  >{{ raioxIntervalos.get(tx.num_autorizacao).texto }}</span>
+                  <span v-else class="raiox-intervalo is-vazio">—</span>
                 </td>
                 <td class="raiox-auth align-top">{{ tx.num_autorizacao }}</td>
                 <td class="align-top">
                   <div class="crm-badge-container">
-                    <span class="issue-tag raiox-crm-tag"
-                          :style="activeCrmFrequencies[tx.id_medico] > 1 ? {
-                            borderColor: getCRMColor(tx.id_medico),
-                            color: getCRMColor(tx.id_medico),
-                            background: `color-mix(in srgb, ${getCRMColor(tx.id_medico)} 15%, transparent)`
-                          } : {}">
-                      {{ tx.id_medico }}
-                    </span>
-                    <span v-if="activeCrmFrequencies[tx.id_medico] > 1"
-                          class="crm-recurrence-badge"
-                          :style="{ border: `1px solid ${getCRMColor(tx.id_medico)}`, color: getCRMColor(tx.id_medico) }">
-                      {{ activeCrmFrequencies[tx.id_medico] }}x
-                    </span>
+                    <span
+                      class="raiox-crm-id"
+                      :class="{ 'is-grupo': getCRMColor(tx.id_medico) }"
+                      :style="getCRMColor(tx.id_medico) ? { color: getCRMColor(tx.id_medico) } : null"
+                    >{{ tx.id_medico }}</span>
+                    <span
+                      v-if="activeCrmFrequencies[tx.id_medico] > 1 && primeiraAutorizacaoPorCrm.has(tx.num_autorizacao)"
+                      class="crm-recurrence-count"
+                    >{{ activeCrmFrequencies[tx.id_medico] }}×</span>
                     <span
                       v-for="alerta in getAlertasDaTx(tx)"
                       :key="alerta.key"
@@ -1841,18 +2291,18 @@ const activeTransactionsLoading = computed(() =>
                   </div>
                 </td>
                 <td class="align-top">
-                  <span class="raiox-doctor-name">{{ truncate(tx.no_medico || 'Médico não identificado', 48) }}</span>
+                  <span class="raiox-doctor-name">{{ truncate(tx.no_medico ? formatTitleCase(tx.no_medico) : 'Médico não identificado', 48) }}</span>
                 </td>
                 <td class="col-right raiox-val-cell align-top">
-                  R$ {{ tx.vl_autorizacao.toFixed(2) }}
+                  {{ formatCurrencyFull(tx.vl_autorizacao) }}
                 </td>
               </tr>
             </template>
           </tbody>
           <tfoot v-if="activeGroupedRaiox.length > 0">
             <tr class="raiox-footer-row">
-              <td colspan="4" class="col-right footer-label">VALOR TOTAL DO PERÍODO SELECIONADO:</td>
-              <td class="col-right footer-value">R$ {{ activeRaioxTotalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</td>
+              <td colspan="6" class="col-right footer-label">VALOR TOTAL DO PERÍODO SELECIONADO:</td>
+              <td class="col-right footer-value">{{ formatCurrencyFull(activeRaioxTotalValue) }}</td>
             </tr>
           </tfoot>
         </table>
@@ -1881,7 +2331,15 @@ const activeTransactionsLoading = computed(() =>
 }
 
 /* ── Breadcrumb Dinâmico ─────────────────────────────────────────────────── */
+.drill-navigation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
 .drill-breadcrumb {
+  grid-column: 2;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1889,11 +2347,66 @@ const activeTransactionsLoading = computed(() =>
   background: var(--surface-card);
   border: 1px solid var(--card-border);
   border-radius: 99px;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0;
   width: fit-content;
   align-self: center;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   backdrop-filter: blur(8px);
+}
+.crm-export-wrapper {
+  grid-column: 3;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.crm-export-info { font-size: 0.75rem; }
+.crm-export-caret { font-size: 0.6rem; opacity: 0.7; }
+.crm-export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.crm-export-button:hover:not(:disabled),
+.crm-export-button:focus-visible {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+.crm-export-button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+.crm-export-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+@media (max-width: 900px) {
+  .drill-navigation-row {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 0.75rem;
+  }
+  .drill-breadcrumb,
+  .crm-export-wrapper {
+    grid-column: 1;
+  }
+  .drill-breadcrumb {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .crm-export-wrapper {
+    justify-self: center;
+  }
 }
 .crumb-item {
   display: flex;
@@ -1928,18 +2441,8 @@ const activeTransactionsLoading = computed(() =>
   flex-direction: column;
 }
 
-.level-daily { border-left: 4px solid var(--primary-color); }
-.level-hourly { 
-  border-left: 4px solid #6366f1; 
-  background: color-mix(in srgb, var(--card-bg) 85%, transparent); 
-}
-.level-raiox { 
-  border-left: 4px solid #8b5cf6; 
-  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  min-height: 650px !important;
-}
+/* Os três níveis usam a mesma superfície neutra; a ordem do fluxo vem do número de etapa no título. */
+.level-raiox { min-height: 650px !important; }
 
 .drill-panel-header {
   display: flex;
@@ -1952,57 +2455,101 @@ const activeTransactionsLoading = computed(() =>
   align-items: center;
   gap: 0.75rem;
   font-size: 0.85rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-color-85);
 }
 .drill-panel-title i { font-size: 1.1rem; }
+.drill-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--text-color-85) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
 
 .drill-context-tag {
   font-size: 0.75rem;
-  background: rgba(99, 102, 241, 0.15);
-  color: #818cf8;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--text-color-85) 6%, transparent);
+  color: var(--text-color-85);
   padding: 2px 10px;
   border-radius: 6px;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  border: 1px solid var(--card-border);
   margin-left: 0.5rem;
   text-transform: none;
   letter-spacing: 0;
 }
-.drill-context-tag-raiox { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border-color: rgba(139, 92, 246, 0.3); }
 
-/* ── Conectores Visuais ─────────────────────────────────────────────────── */
-.drill-connector {
-  height: 40px;
+/* ── Ligação entre etapas (seta SVG + contexto) ─────────────────────────── */
+.drill-link {
   position: relative;
   display: flex;
   justify-content: center;
-  align-items: center;
+  height: 60px;
+  color: var(--text-muted);
 }
-.connector-line {
+.drill-link-svg {
+  display: block;
+  overflow: visible;
+}
+.drill-link-line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: drill-link-draw 0.45s ease-out forwards;
+}
+.drill-link-head {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  opacity: 0;
+  transform-origin: 12px 51px;
+  transform: scale(0.6);
+  animation: drill-link-pop 0.25s ease-out 0.4s forwards;
+}
+/* Chip com a seleção, sobre a linha (o fundo "recorta" o traço). */
+.drill-link-chip {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: linear-gradient(to bottom, var(--card-border), var(--primary-color), var(--card-border));
-  opacity: 0.5;
-}
-.connector-dot {
-  width: 28px;
-  height: 28px;
-  background: var(--surface-card);
-  border: 2px solid var(--primary-color);
-  border-radius: 50%;
-  display: flex;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  z-index: 2;
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+  gap: 0.35rem;
+  padding: 2px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  animation: drill-link-fade 0.3s ease-out 0.25s forwards;
 }
-.connector-dot i { font-size: 0.75rem; color: var(--primary-color); }
-.connector-dot-raiox { border-color: #8b5cf6; box-shadow: 0 0 15px rgba(139, 92, 246, 0.3); }
-.connector-dot-raiox i { color: #8b5cf6; }
+.drill-link-chip i { font-size: 0.64rem; color: var(--text-muted); }
+@keyframes drill-link-draw { to { stroke-dashoffset: 0; } }
+@keyframes drill-link-pop { to { opacity: 1; transform: scale(1); } }
+@keyframes drill-link-fade { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .drill-link-line { animation: none; stroke-dashoffset: 0; }
+  .drill-link-head { animation: none; opacity: 1; transform: none; }
+  .drill-link-chip { animation: none; opacity: 1; }
+}
 
 /* ── Elementos Internos ─────────────────────────────────────────────────── */
 .drill-hint {
@@ -2028,6 +2575,23 @@ const activeTransactionsLoading = computed(() =>
 .is-refreshing { opacity: 0.6; pointer-events: none; }
 
 .daily-chart-wrapper { display: flex; flex-direction: column; gap: 0.5rem; }
+/* Legenda centralizada; a marcação de evidência (dia ou hora selecionados) fica à direita, junto ao gráfico. */
+.legend-bar-evid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+}
+.legend-bar-evid .chart-legend-html { grid-column: 2; }
+.legend-evid {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.legend-evid-contexto { font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; }
+.legend-evid-contexto strong { font-weight: 600; color: var(--text-color-85); }
 .chart-legend-html { 
   display: flex; 
   align-items: center; 
@@ -2057,26 +2621,13 @@ const activeTransactionsLoading = computed(() =>
 .chart-loading-badge { margin-left: 0.75rem; font-size: 0.78rem; color: var(--text-muted); }
 .chart-empty { display: flex; align-items: center; gap: 0.6rem; padding: 2rem; color: var(--text-muted); justify-content: center; }
 
-.filter-controls { display: flex; align-items: center; flex-wrap: wrap; row-gap: 0.5rem; }
 .filter-toggle { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.75rem; color: var(--text-secondary); }
 .filter-toggle.is-disabled { opacity: 0.45; cursor: not-allowed; }
 .filter-toggle.is-disabled .toggle-slider,
 .filter-toggle.is-disabled .toggle-label { cursor: not-allowed; }
 
 /* ── Botões de Navegação do Gráfico ── */
-.chart-nav-buttons {
-  display: flex;
-  gap: 2px;
-  background: rgba(0, 0, 0, 0.04);
-  padding: 2px;
-  border-radius: 8px;
-  border: 1px solid var(--card-border);
-}
 
-:global(.dark-mode) .chart-nav-buttons {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-}
 
 .nav-btn {
   background: transparent !important;
@@ -2096,78 +2647,136 @@ const activeTransactionsLoading = computed(() =>
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-.nav-btn:hover {
+.nav-btn:hover:not(:disabled) {
   background: var(--primary-color) !important;
   color: white !important;
   transform: translateY(-1px);
 }
+.nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.daily-subtitle {
+  padding-left: 1.75rem;
+  margin: 0 0 0.75rem;
+  max-width: 90ch;
+}
+.daily-subtitle strong { font-weight: 700; color: var(--text-color-85); }
 
 .nav-btn:active {
   transform: translateY(0);
 }
 
-.filter-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--card-border);
-  margin: 0 12px;
-  opacity: 0.6;
-}
 
-:global(.dark-mode) .filter-divider {
-  background: rgba(255, 255, 255, 0.1);
-}
-.daily-rank-controls {
+/* ── Barra de controles do Histórico Diário ── */
+.daily-toolbar {
   display: flex;
-  gap: 4px;
-  background: rgba(0, 0, 0, 0.04);
-  padding: 2px;
+  align-items: stretch;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+  background: rgba(0, 0, 0, 0.03);
   border: 1px solid var(--card-border);
-  border-radius: 8px;
+  border-radius: 10px;
 }
-:global(.dark-mode) .daily-rank-controls {
-  background: rgba(255, 255, 255, 0.06);
+:global(.dark-mode) .daily-toolbar {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.daily-toolbar-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1rem;
+  border-left: 1px solid var(--card-border);
+}
+:global(.dark-mode) .daily-toolbar-group { border-left-color: rgba(255, 255, 255, 0.08); }
+.daily-toolbar-group:first-child { border-left: 0; }
+.daily-toolbar-nav-buttons { display: flex; align-items: center; gap: 4px; }
+.daily-toolbar-label-info { display: inline-flex; align-items: center; gap: 0.35rem; }
+.daily-toolbar-label-info .control-info-icon { font-size: 0.65rem; letter-spacing: 0; }
+.daily-toolbar-rank { flex: 1 1 auto; }
+.daily-toolbar-filter { min-width: 230px; }
+.daily-toolbar-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.daily-toolbar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.daily-toolbar-help {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  min-height: 1em;
+}
+.daily-toolbar .nav-btn { border: 1px solid var(--card-border); }
+:global(.dark-mode) .daily-toolbar .nav-btn { border-color: rgba(255, 255, 255, 0.1) !important; }
+.rank-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+}
+:global(.dark-mode) .rank-segmented {
+  background: rgba(0, 0, 0, 0.25);
   border-color: rgba(255, 255, 255, 0.1);
 }
-.rank-btn {
+.rank-seg {
+  --rank-color: var(--primary-color);
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  min-height: 28px;
-  padding: 0 0.55rem;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  gap: 0.45rem;
+  min-height: 30px;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 7px;
   background: transparent;
   color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 0.7rem;
-  font-weight: 700;
-  white-space: normal;
-  line-height: 1.2;
-  text-align: left;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
-.rank-btn i { font-size: 0.75rem; }
-.rank-btn .control-info-icon { font-size: 0.65rem; }
-.rank-btn:hover {
-  background: color-mix(in srgb, var(--text-color-85) 8%, transparent);
+.rank-seg.is-unico { --rank-color: #f59e0b; }
+.rank-seg.is-multiplo { --rank-color: #8b5cf6; }
+.rank-seg.is-volume { --rank-color: #10b981; }
+.rank-seg:hover {
+  color: var(--text-color-85);
+  background: color-mix(in srgb, var(--text-color-85) 6%, transparent);
+}
+.rank-seg:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
+  outline-offset: 2px;
+}
+.rank-seg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rank-color);
+  flex-shrink: 0;
+}
+.rank-seg.is-active {
+  background: color-mix(in srgb, var(--rank-color) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rank-color) 50%, transparent);
+  color: var(--rank-color);
+}
+.rank-seg.is-none.is-active {
+  background: color-mix(in srgb, var(--text-color-85) 14%, transparent);
+  box-shadow: none;
   color: var(--text-color-85);
 }
-.rank-btn.is-unico.is-active {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: rgba(245, 158, 11, 0.3);
-  color: #f59e0b;
-}
-.rank-btn.is-multiplo.is-active {
-  background: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.3);
-  color: #8b5cf6;
-}
-.rank-btn.is-volume.is-active {
-  background: rgba(16, 185, 129, 0.15);
-  border-color: rgba(16, 185, 129, 0.3);
-  color: #10b981;
-}
+.rank-seg .control-info-icon { font-size: 0.65rem; color: inherit; }
+.rank-seg:hover .control-info-icon { opacity: 1; }
 .rank-limit-select {
   min-height: 28px;
   border: 1px solid var(--card-border);
@@ -2206,8 +2815,6 @@ const activeTransactionsLoading = computed(() =>
   outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
   outline-offset: 2px;
 }
-.rank-btn .control-info-icon { color: inherit; }
-.rank-btn:hover .control-info-icon { opacity: 1; }
 .rank-limit-info { margin-right: 0.15rem; }
 .anomaly-filter-info { margin-left: 0.05rem; }
 :global(.dark-mode) .rank-limit-select {
@@ -2271,52 +2878,20 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
   flex-direction: column;
 }
 .premium-table { width: 100%; border-collapse: collapse; }
-.premium-table th { padding: 0.75rem 0.5rem; background: var(--card-bg); color: var(--text-secondary); font-size: 0.65rem; text-transform: uppercase; border-bottom: 2px solid var(--tabs-border); }
+.premium-table th { padding: 0.75rem 0.5rem; background: var(--card-bg); color: var(--text-secondary); font-size: 0.65rem; text-transform: uppercase; border-bottom: 2px solid var(--tabs-border); text-align: left; white-space: nowrap; }
+/* O navegador centraliza <th> por padrão; os cabeçalhos seguem o alinhamento das células. */
+.premium-table th.col-center { text-align: center; }
+.premium-table th.col-right { text-align: right; }
 .premium-table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--tabs-border); color: var(--text-color-85); font-size: 0.78rem; }
 .premium-table tbody tr:hover { background: rgba(255,255,255,0.03); cursor: pointer; }
 .premium-table tbody tr.raiox-details-expanded-row:hover { background: transparent !important; cursor: default; }
 
-.raiox-count-badge { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 99px; font-size: 0.65rem; padding: 1px 8px; margin-left: 0.75rem; }
+.raiox-count-badge { background: transparent; color: var(--text-secondary); border: 1px solid var(--card-border); border-radius: 99px; font-size: 0.65rem; font-weight: 500; padding: 1px 8px; margin-left: 0.25rem; }
 .raiox-spinner { font-size: 0.8rem; margin-left: 0.5rem; }
-.raiox-legend-tip {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.25rem;
-  background: rgba(139, 92, 246, 0.05);
-  border: 1px dashed rgba(139, 92, 246, 0.2);
-  border-radius: 8px;
-  margin-bottom: 1.25rem;
-}
 
-.legend-tip-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 0.72rem;
-  color: var(--text-secondary);
-}
 
-.legend-tip-item i {
-  color: #8b5cf6;
-  font-size: 0.85rem;
-}
 
-.legend-tip-divider {
-  width: 1px;
-  height: 16px;
-  background: rgba(139, 92, 246, 0.15);
-}
 
-.sample-badge {
-  font-size: 0.6rem;
-  font-weight: 800;
-  color: #8b5cf6;
-  border: 1px solid #8b5cf6;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: rgba(139, 92, 246, 0.1);
-}
 
 .raiox-empty { 
   display: flex; 
@@ -2349,9 +2924,10 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
   font-family: var(--font-mono);
 }
 
-.crm-badge-container { display: flex; align-items: center; gap: 0.4rem; }
-.issue-tag { font-size: 0.68rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 4px; }
-.crm-recurrence-badge { font-size: 0.6rem; font-weight: 800; padding: 1px 4px; border-radius: 3px; }
+.crm-badge-container { display: flex; align-items: center; gap: 0.45rem; }
+.raiox-crm-id { font-size: 0.78rem; font-weight: 500; color: var(--text-color-85); }
+.raiox-crm-id.is-grupo { font-weight: 600; }
+.crm-recurrence-count { font-size: 0.7rem; color: var(--text-muted); }
 .count-pill { background: var(--tabs-border); padding: 1px 6px; border-radius: 4px; font-weight: 600; font-size: 0.7rem; }
 .raiox-doctor-name { color: var(--text-color-85); font-weight: 600; }
 .raiox-val-cell { font-weight: 700; font-family: var(--font-mono); }
@@ -2387,39 +2963,9 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
   white-space: nowrap;
 }
 
-.level-unico { border-left: 4px solid #f59e0b; }
-.level-raiox-unico {
-  border-left: 4px solid #d97706;
-  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
 
-.connector-dot-unico { border-color: #f59e0b; box-shadow: 0 0 15px rgba(245,158,11,0.3); }
-.connector-dot-unico i { color: #f59e0b; }
 
-.drill-context-tag-unico { background: rgba(245,158,11,0.12); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
-.unico-count-badge { background: rgba(245,158,11,0.12); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
 
-/* Médicos Gatilho */
-.unico-alertas-section {
-  background: rgba(245,158,11,0.05);
-  border: 1px dashed rgba(245,158,11,0.25);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1.25rem;
-}
-.unico-alertas-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #f59e0b;
-  margin-bottom: 0.75rem;
-}
 .section-info-icon {
   font-size: 0.7rem;
   color: inherit;
@@ -2431,127 +2977,137 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
   color: var(--text-color-85);
   opacity: 1;
 }
-.unico-alertas-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.unico-alerta-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: rgba(245,158,11,0.08);
-  border: 1px solid rgba(245,158,11,0.22);
-  border-radius: 6px;
-  padding: 0.3rem 0.75rem;
-  font-size: 0.72rem;
+
+/* Intervalo entre autorizações no Raio-X */
+.raiox-intervalo {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  border: 1px solid transparent;
 }
-.unico-alertas-grouped-list {
-  display: grid;
-  gap: 0.75rem;
+.raiox-intervalo.is-curto {
+  font-weight: 600;
+  color: var(--risk-critical);
+  background: color-mix(in srgb, var(--risk-critical) 12%, transparent);
+  border-color: color-mix(in srgb, var(--risk-critical) 30%, transparent);
 }
-.unico-alerta-group {
-  display: grid;
-  gap: 0.35rem;
+.raiox-intervalo.is-vazio { opacity: 0.5; }
+
+/* Alertas de Autorizações em Sequência */
+.alertas-sequencia {
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.02);
+  overflow-x: auto;
 }
-.unico-alerta-group-title {
+:global(.dark-mode) .alertas-sequencia {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.alertas-sequencia-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 1.3rem;
-}
-.unico-alerta-group-title .alerta-crm {
-  font-size: 0.86rem;
-  line-height: 1.2;
-}
-.unico-alerta-group-count {
+  padding: 0.65rem 1rem 0.4rem;
   color: var(--text-secondary);
-  background: rgba(245,158,11,0.08);
-  border: 1px solid rgba(245,158,11,0.22);
-  border-radius: 4px;
-  padding: 0.1rem 0.45rem;
-  font-size: 0.62rem;
+}
+.alertas-sequencia-header h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.72rem;
   font-weight: 700;
-  line-height: 1.2;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--text-color-85);
+}
+.alertas-sequencia-count {
+  min-width: 1.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--text-color-85) 12%, transparent);
+  font-size: 0.66rem;
+  text-align: center;
+  letter-spacing: 0;
+}
+.alertas-sequencia-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+.alertas-sequencia-table th {
+  padding: 0.35rem 1rem;
+  text-align: left;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--card-border);
   white-space: nowrap;
 }
-.unico-alerta-group-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+.alertas-sequencia-table td {
+  padding: 0.5rem 1rem;
+  color: var(--text-color-85);
+  border-bottom: 1px solid color-mix(in srgb, var(--card-border) 60%, transparent);
+  white-space: nowrap;
 }
-.unico-alerta-row {
+.alerta-seq-row:last-child td { border-bottom: 0; }
+.alerta-seq-row { --alerta-color: #f59e0b; transition: background 0.15s ease; }
+.alerta-seq-row.is-multi { --alerta-color: #8b5cf6; }
+.alerta-seq-row:hover,
+.alerta-seq-row.is-hovered {
+  background: color-mix(in srgb, var(--alerta-color) 9%, transparent);
+}
+.alerta-seq-tipo {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  background: rgba(245,158,11,0.08);
-  border: 1px solid rgba(245,158,11,0.22);
-  border-radius: 6px;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.72rem;
-  min-height: 1.7rem;
-  white-space: nowrap;
+  gap: 0.5rem;
+  font-weight: 600;
 }
-.alerta-alert-id {
-  color: #f59e0b;
-  background: rgba(245,158,11,0.12);
-  border: 1px solid rgba(245,158,11,0.28);
+.alerta-seq-codigo {
+  padding: 0.05rem 0.4rem;
   border-radius: 4px;
-  padding: 0.05rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--alerta-color) 40%, transparent);
+  background: color-mix(in srgb, var(--alerta-color) 14%, transparent);
+  color: var(--alerta-color);
+  font-size: 0.66rem;
+  font-weight: 800;
+  cursor: help;
+}
+.alerta-seq-codigo:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
+  outline-offset: 2px;
+}
+.alerta-seq-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--alerta-color);
+  flex-shrink: 0;
+}
+.alerta-seq-num { font-variant-numeric: tabular-nums; }
+.alerta-seq-medico { font-weight: 700; }
+.alerta-seq-row.is-multi .alerta-seq-medico { color: var(--text-color-85); }
+.alerta-seq-severidade {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 99px;
   font-size: 0.68rem;
-  font-weight: 800;
-  line-height: 1.2;
+  font-weight: 700;
+  color: var(--sev-color);
+  background: color-mix(in srgb, var(--sev-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sev-color) 35%, transparent);
 }
-.alerta-severity {
-  color: #f59e0b;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-.alertas-multi-section {
-  background: rgba(139, 92, 246, 0.05);
-  border-color: rgba(139, 92, 246, 0.25);
-}
-.alertas-multi-section .unico-alertas-header {
-  color: #8b5cf6;
-}
-.alertas-multi-section .unico-alerta-chip {
-  background: rgba(139, 92, 246, 0.08);
-  border-color: rgba(139, 92, 246, 0.22);
-}
-.multi-alertas-numbered-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-.multi-alerta-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  background: rgba(139, 92, 246, 0.08);
-  border: 1px solid rgba(139, 92, 246, 0.22);
-  border-radius: 6px;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.72rem;
-  min-height: 1.7rem;
-  white-space: nowrap;
-}
-.multi-alerta-id {
-  color: #a78bfa;
-  background: rgba(139, 92, 246, 0.14);
-  border: 1px solid rgba(139, 92, 246, 0.32);
-  border-radius: 4px;
-  padding: 0.05rem 0.35rem;
-  font-size: 0.68rem;
-  font-weight: 800;
-  line-height: 1.2;
-}
-.multi-alerta-severity {
-  color: #a78bfa;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-.alerta-crm-multi { color: #8b5cf6; }
-.alerta-crm { font-weight: 700; }
-.alerta-stat { color: var(--text-secondary); }
-.alerta-sep { opacity: 0.3; }
-.alerta-nivel { color: #f59e0b; font-size: 0.65rem; font-weight: 600; opacity: 0.8; }
+.alerta-seq-severidade.is-extremo { --sev-color: #ef4444; }
+.alerta-seq-severidade.is-critico { --sev-color: #f97316; }
+.alerta-seq-severidade.is-grave { --sev-color: #f59e0b; }
+.alerta-seq-severidade.is-alto { --sev-color: #eab308; }
+.alerta-seq-severidade.is-alerta { --sev-color: #94a3b8; }
 
 :global(.p-tooltip.crm-alert-tooltip) {
   max-width: min(360px, calc(100vw - 2rem));
@@ -2670,13 +3226,36 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
   gap: 1rem;
 }
 :global(.crm-info-tooltip-details span) {
+  flex-shrink: 0;
   color: var(--text-muted);
   font-size: 0.67rem;
+  white-space: nowrap;
 }
 :global(.crm-info-tooltip-details strong) {
   color: var(--text-color-85);
   font-size: 0.7rem;
+  font-weight: 600;
   text-align: right;
+}
+/* Valores longos: rótulo em cima e descrição embaixo, alinhada à esquerda. */
+:global(.crm-info-tooltip-details > div.is-long) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+:global(.crm-info-tooltip-details > div.is-long + div),
+:global(.crm-info-tooltip-details > div + div.is-long) {
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--tabs-border);
+}
+:global(.crm-info-tooltip-details > div.is-long span) {
+  color: var(--text-color-85);
+  font-weight: 600;
+}
+:global(.crm-info-tooltip-details > div.is-long strong) {
+  color: var(--text-secondary);
+  font-weight: 400;
+  text-align: left;
 }
 :global(.crm-info-tooltip-note) {
   display: flex;
@@ -2693,27 +3272,38 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
 }
 
 /* Legenda CRM Único */
-.unico-legend-tip {
-  background: rgba(245,158,11,0.05);
-  border-color: rgba(245,158,11,0.2);
-}
-.unico-legend-tip .legend-tip-item i { color: #f59e0b; }
-.unico-gatilho-sample { font-size: 0.85rem; color: #f59e0b; line-height: 1; }
 
 /* Linha gatilho na tabela */
 .row-gatilho td:first-child { border-left: 3px solid #f59e0b; }
 .row-multi-alerta td:first-child { border-left: 3px solid #8b5cf6; }
-.premium-table tbody tr.row-alert-highlight-unico {
-  background: rgba(245,158,11,0.12) !important;
+.premium-table tbody tr { transition: opacity 0.15s ease; }
+.premium-table tbody tr.row-alert-dimmed { opacity: 0.4; }
+
+/* Cesta de evidências */
+.raiox-evid-cell { padding-left: 0.25rem !important; padding-right: 0.25rem !important; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
-.premium-table tbody tr.row-alert-highlight-multi {
-  background: rgba(139, 92, 246, 0.13) !important;
+.premium-table tbody tr.row-evidencia-foco td {
+  animation: evidenciaFoco 2.6s ease-out;
 }
-.premium-table tbody tr.row-alert-highlight-unico td:first-child {
-  border-left-color: #f59e0b;
+@keyframes evidenciaFoco {
+  0%, 35% { background: color-mix(in srgb, var(--evidence-color) 22%, transparent); }
+  100% { background: transparent; }
 }
-.premium-table tbody tr.row-alert-highlight-multi td:first-child {
-  border-left-color: #8b5cf6;
+@media (prefers-reduced-motion: reduce) {
+  .premium-table tbody tr.row-evidencia-foco td {
+    animation: none;
+    background: color-mix(in srgb, var(--evidence-color) 16%, transparent);
+  }
 }
 
 .alerta-participacao-badge {
@@ -2722,21 +3312,21 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
   justify-content: center;
   min-width: 2.1rem;
   border-radius: 4px;
-  padding: 2px 6px;
+  padding: 1px 5px;
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.1;
   white-space: nowrap;
 }
 .alerta-participacao-badge.is-unico {
   color: #f59e0b;
-  background: rgba(245,158,11,0.12);
-  border: 1px solid rgba(245,158,11,0.3);
+  background: transparent;
+  border: 1px solid rgba(245,158,11,0.45);
 }
 .alerta-participacao-badge.is-multi {
   color: #a78bfa;
-  background: rgba(139, 92, 246, 0.12);
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: transparent;
+  border: 1px solid rgba(139, 92, 246, 0.45);
 }
 
 :global(.p-tooltip) {

@@ -163,8 +163,27 @@ export const CHART_UF_ACCENTS = {
   },
 };
 
-// Escala contínua da taxa diária de prescrições na análise geográfica de CRMs.
-export const CRM_PRESCRICOES_SCALE = {
-  dark: [PALETTE.blue[500], PALETTE.indigo[500], PALETTE.violet[500], PALETTE.fuchsia[500]],
-  light: [PALETTE.blue[600], PALETTE.indigo[600], PALETTE.violet[600], PALETTE.fuchsia[600]],
+// ── Cor neutra de dados (azul-aço) ──────────────────────────────────────────
+// Para barras e mini gráficos de volume/participação. Independe da paleta do
+// tema e não compete com as cores semânticas de alerta (vermelho, laranja, roxo).
+export const DATA_NEUTRAL = {
+  dark: {
+    strong: "#7C9CBF",
+    soft: "rgba(124, 156, 191, 0.42)",
+    line: "#CBD5E1",
+  },
+  light: {
+    strong: "#4A6A8A",
+    soft: "rgba(74, 106, 138, 0.38)",
+    line: "#334155",
+  },
+};
+
+// ── Identidade de médicos no Raio-X CRM ────────────────────────────────────
+// Paleta categórica fixa (6 cores bem distintas) para identificar os médicos que
+// se repetem numa janela. Evita vermelho, laranja/âmbar e roxo, reservados aos
+// alertas. Atribuída por ordem de frequência; demais médicos ficam sem cor.
+export const CRM_IDENTITY_PALETTE = {
+  dark: ["#60A5FA", "#22D3EE", "#4ADE80", "#F472B6", "#FDE047", "#D4A373"],
+  light: ["#2563EB", "#0891B2", "#16A34A", "#DB2777", "#65A30D", "#8B5E34"],
 };

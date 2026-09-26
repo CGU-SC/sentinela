@@ -1063,6 +1063,10 @@ export function usePdfExport() {
       const summary = crmPayload.summary || {};
       const top20 = (crmPayload.crmsInteresse || []).slice(0, 20);
       const kpis = crmPayload.kpis || {};
+      const crmIndicator = reportData.indicadores.indicadores.crms_irregulares;
+      if (crmIndicator?.valor == null || crmIndicator?.valor_financeiro == null) {
+        throw new Error('Relatório PDF sem percentual ou valor financeiro do indicador de CRMs irregulares.');
+      }
 
       if (top20.length > 0) {
           pdf.addPage();
@@ -1086,7 +1090,7 @@ export function usePdfExport() {
             { label: '>30 PRESCRIÇÕES/DIA NESTE CNPJ', val: String(kpis.qtdPrescrIntensivaLocal   || 0),               color: kpis.qtdPrescrIntensivaLocal  > 0  ? red    : green, subtitle: 'Na unidade local' },
             { label: '>30 PRESCRIÇÕES/DIA NO BRASIL',  val: String(kpis.qtdPrescrIntensivaOcultos || 0),               color: kpis.qtdPrescrIntensivaOcultos > 0 ? red    : green, subtitle: 'Soma de todo o Brasil' },
             { label: 'MULTI-FARMÁCIA',                  val: String(kpis.qtdMultiFarmacia          || 0),               color: kpis.qtdMultiFarmacia         > 0  ? red    : green, subtitle: 'CRMs com registro em > 70 farmácias distintas' },
-            { label: 'FRAUDES CRM',                     val: String(kpis.totalIrregularesCfm       || 0),               color: kpis.totalIrregularesCfm      > 0  ? red    : green, subtitle: `${kpis.qtdCrmInvalido || 0} Não localizados | ${kpis.qtdPrescrAntesRegistro || 0} Irreg. | ${formatCurrencyFull((summary2.vl_crm_invalido || 0) + (summary2.vl_crm_antes_registro || 0))}` },
+            { label: 'CRMs NO DETALHAMENTO',            val: String(kpis.totalIrregularesCfm       || 0),               color: crmIndicator.valor_financeiro > 0 ? red : green, subtitle: `${formatCurrencyFull(crmIndicator.valor_financeiro)} (${Number(crmIndicator.valor).toFixed(2).replace('.', ',')}%) no indicador` },
             { label: 'DISTÂNCIA (>400KM)',              val: String(kpis.qtdAcima400km             || 0),               color: kpis.qtdAcima400km            > 0  ? orange : green, subtitle: 'Prescrições em locais distantes' },
           ];
 

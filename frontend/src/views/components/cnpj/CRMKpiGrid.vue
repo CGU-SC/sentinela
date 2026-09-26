@@ -1,5 +1,7 @@
 <script setup>
+import { computed } from "vue";
 import { useFormatting } from "@/composables/useFormatting";
+import { CRM_KPI_THRESHOLDS } from "@/config/riskConfig";
 
 const props = defineProps({
   kpiData: { type: Object, required: true },
@@ -8,8 +10,8 @@ const props = defineProps({
 
 const emit = defineEmits(['kpi-click']);
 
-const { formatCurrencyFull } = useFormatting();
-const formatPct = (val) => val != null ? `${Number(val).toFixed(2)}%` : "0.00%";
+const { formatCurrencyFull, formatNumberFull } = useFormatting();
+const formatPct = (val) => val != null ? `${Number(val).toFixed(2).replace('.', ',')}%` : "0,00%";
 
 const escapeTooltipHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
@@ -39,258 +41,182 @@ const createCrmKpiTooltip = (title, body, note) => ({
   hideDelay: 80,
 });
 
-const crmKpiTooltips = Object.freeze({
-  top1: createCrmKpiTooltip(
-    'Top 1 CRM — volume financeiro',
-    'Percentual do valor total de autorizações da farmácia concentrado no prescritor com maior participação financeira no período selecionado.',
-    'O valor de apoio identifica o CRM líder e o montante associado às suas autorizações.'
-  ),
-  top5: createCrmKpiTooltip(
-    'Top 5 CRMs — volume financeiro',
-    'Percentual do volume financeiro acumulado pelos cinco prescritores com maior valor autorizado no estabelecimento.',
-    'O percentual mostra quanto do volume financeiro do estabelecimento está concentrado nos cinco principais prescritores.'
-  ),
-  agrupamento: createCrmKpiTooltip(
-    'Autorizações em Sequência (Único CRM)',
-    'Quantidade de ocorrências em que o mesmo CRM registrou muitas autorizações em sequência em um intervalo de tempo muito curto.',
-    'Clique no card para filtrar a tabela pelos médicos relacionados e consultar os episódios detalhados.'
-  ),
-  intensiva: createCrmKpiTooltip(
-    'Mais de 30 prescrições por dia',
-    'Quantidade de médicos cuja média diária de prescrições ultrapassou 30 autorizações. O indicador considera a atuação local e a atuação do CRM em todo o Brasil no Farmácia Popular.',
-    'O apoio do card separa as ocorrências identificadas nesta unidade das encontradas no Brasil.'
-  ),
-  exclusivo: createCrmKpiTooltip(
-    'CRMs exclusivos',
-    'Quantidade de médicos cujas autorizações no Farmácia Popular foram registradas exclusivamente neste estabelecimento no conjunto de registros analisado.',
-    'A linha de apoio informa a proporção de exclusividade local associada ao indicador.'
-  ),
-  fraudeCrm: createCrmKpiTooltip(
-    'Fraudes CRM',
-    'Quantidade de CRMs com inconsistência cadastral ou temporal na base do Conselho Federal de Medicina: CRM não localizado ou prescrição anterior ao registro oficial.',
-    'O valor financeiro em destaque representa o montante associado às ocorrências identificadas.'
-  ),
-  distancia: createCrmKpiTooltip(
-    'Distância superior a 400 km',
-    'Quantidade de médicos associados a prescrições em estabelecimentos separados por mais de 400 quilômetros.',
-    'O card sinaliza o volume de prescritores relacionados; as evidências geográficas podem ser consultadas na tabela.'
-  ),
-  surtosCnpj: createCrmKpiTooltip(
-    'Autorizações em Sequência (Múltiplos CRMs)',
-    'Quantidade de ocorrências em que a farmácia registrou muitas autorizações em sequência com participação de alguns CRMs.',
-    'A linha de apoio informa em quantos dias distintos esse padrão foi identificado.'
-  ),
+const plural = (n, singular, pluralForm) => `${formatNumberFull(n)} ${Number(n) === 1 ? singular : pluralForm}`;
+
+function concentracaoTone(valor, limites) {
+  if (valor > limites.critico) return 'critico';
+  if (valor > limites.atencao) return 'medio';
+  return null;
+}
+
+/**
+ * Cards em duas linhas temáticas. Cor apenas na bolinha do título, com as mesmas
+ * cores da coluna Status/Alertas da tabela; cards de alerta zerados ficam apagados.
+ */
+const grupos = computed(() => {
+  const k = props.kpiData;
+  const crmIrregularHint = k.valorFraudeCrm != null && k.pctFraudeCrm != null
+    ? `${formatCurrencyFull(k.valorFraudeCrm)} (${formatPct(k.pctFraudeCrm)}) das vendas monitoradas`
+    : k.indicadorCrmErro ? 'Falha ao carregar indicador financeiro'
+      : k.indicadorCrmCarregando ? 'Carregando indicador financeiro…' : 'Indicador financeiro indisponível';
+
+  return [
+    {
+      id: 'perfil',
+      titulo: 'Perfil dos prescritores',
+      cards: [
+        {
+          key: 'top1',
+          label: 'Top 1 CRM · valor',
+          value: formatPct(k.concentracaoTop1),
+          hint: `${k.idTop1Prescritor || 'ND'} · ${formatCurrencyFull(k.valorTop1)}`,
+          tone: concentracaoTone(k.concentracaoTop1, CRM_KPI_THRESHOLDS.concentracaoTop1),
+          enabled: true,
+          tooltip: createCrmKpiTooltip(
+            'Top 1 CRM — valor',
+            'Percentual do valor total de autorizações da farmácia concentrado no prescritor de maior participação no período selecionado.',
+            `A bolinha fica laranja acima de ${CRM_KPI_THRESHOLDS.concentracaoTop1.atencao}% e vermelha acima de ${CRM_KPI_THRESHOLDS.concentracaoTop1.critico}%. A linha de apoio identifica o CRM e o valor associado.`
+          ),
+        },
+        {
+          key: 'top5',
+          label: 'Top 5 CRMs · valor',
+          value: formatPct(k.concentracaoTop5),
+          hint: formatCurrencyFull(k.valorTop5),
+          tone: concentracaoTone(k.concentracaoTop5, CRM_KPI_THRESHOLDS.concentracaoTop5),
+          enabled: true,
+          tooltip: createCrmKpiTooltip(
+            'Top 5 CRMs — valor',
+            'Percentual do valor total de autorizações da farmácia concentrado nos cinco prescritores de maior participação.',
+            `A bolinha fica laranja acima de ${CRM_KPI_THRESHOLDS.concentracaoTop5.atencao}% e vermelha acima de ${CRM_KPI_THRESHOLDS.concentracaoTop5.critico}%.`
+          ),
+        },
+        {
+          key: 'exclusivo',
+          label: 'CRMs exclusivos',
+          value: formatNumberFull(k.qtdCrmExclusivo),
+          hint: 'com todas as autorizações nesta farmácia',
+          tone: k.qtdCrmExclusivo > 0 ? 'exclusivo' : null,
+          enabled: k.qtdCrmExclusivo > 0,
+          tooltip: createCrmKpiTooltip(
+            'CRMs exclusivos',
+            'Quantidade de médicos cujas autorizações no Farmácia Popular foram todas registradas neste estabelecimento.',
+            'Clique no card para filtrar a tabela por esses médicos.'
+          ),
+        },
+        {
+          key: 'fraude_crm',
+          label: 'CRMs irregulares',
+          value: formatNumberFull(k.totalIrregularesCfm),
+          hint: crmIrregularHint,
+          tone: (k.totalIrregularesCfm > 0 || k.valorFraudeCrm > 0) ? 'critico' : null,
+          enabled: k.totalIrregularesCfm > 0 || k.valorFraudeCrm > 0,
+          tooltip: createCrmKpiTooltip(
+            'CRMs irregulares',
+            `Médicos com inconsistência no CFM no detalhamento de prescritores: ${plural(k.qtdCrmInvalido, 'CRM não localizado', 'CRMs não localizados')} e ${plural(k.qtdPrescrAntesRegistro, 'CRM com venda anterior ao registro', 'CRMs com venda anterior ao registro')}.`,
+            'O valor e o percentual vêm do indicador completo de CRMs irregulares da matriz de risco; a lista de médicos da tabela é um detalhamento e não compõe, sozinha, o total financeiro.'
+          ),
+        },
+      ],
+    },
+    {
+      id: 'lancamento',
+      titulo: 'Padrões de lançamento',
+      cards: [
+        {
+          key: 'agrupamento',
+          label: 'Sequência · Único CRM',
+          value: formatNumberFull(k.qtdLancamentosAgrupados),
+          hint: 'médicos com autorizações em sequência',
+          tone: k.qtdLancamentosAgrupados > 0 ? 'unico' : null,
+          enabled: k.qtdLancamentosAgrupados > 0,
+          tooltip: createCrmKpiTooltip(
+            'Autorizações em Sequência (Único CRM)',
+            'Quantidade de médicos que registraram muitas autorizações em sequência, em intervalo de tempo muito curto, com o próprio CRM.',
+            'Clique no card para filtrar a tabela pelos médicos relacionados e consultar os episódios detalhados.'
+          ),
+        },
+        {
+          key: 'surtos_cnpj',
+          label: 'Sequência · Múltiplos CRMs',
+          value: formatNumberFull(k.totalSurtosCnpj),
+          hint: `em ${plural(k.diasComSurtosCnpj, 'dia distinto', 'dias distintos')}`,
+          tone: k.totalSurtosCnpj > 0 ? 'multi' : null,
+          enabled: k.totalSurtosCnpj > 0,
+          tooltip: createCrmKpiTooltip(
+            'Autorizações em Sequência (Múltiplos CRMs)',
+            'Quantidade de episódios em que a farmácia registrou muitas autorizações em sequência com participação de diferentes CRMs.',
+            'A linha de apoio informa em quantos dias distintos esse padrão foi identificado.'
+          ),
+        },
+        {
+          key: 'intensiva',
+          label: 'Mais de 30 presc./dia',
+          value: formatNumberFull(k.qtdPrescrIntensivaTotal),
+          hint: `${formatNumberFull(k.qtdPrescrIntensivaLocal)} local · ${formatNumberFull(k.qtdPrescrIntensivaOcultos)} Brasil`,
+          tone: k.qtdPrescrIntensivaTotal > 0 ? 'critico' : null,
+          enabled: k.qtdPrescrIntensivaTotal > 0,
+          tooltip: createCrmKpiTooltip(
+            'Mais de 30 prescrições por dia',
+            'Quantidade de médicos cuja média diária de prescrições ultrapassou 30 autorizações, nesta farmácia (local) ou considerando todo o Brasil no Farmácia Popular.',
+            'A linha de apoio separa as ocorrências nesta unidade das encontradas apenas no Brasil.'
+          ),
+        },
+        {
+          key: 'distancia',
+          label: 'Distância > 400 km',
+          value: formatNumberFull(k.qtdAcima400km),
+          hint: 'médicos com prescrições em locais distantes',
+          tone: k.qtdAcima400km > 0 ? 'geo' : null,
+          enabled: k.qtdAcima400km > 0,
+          tooltip: createCrmKpiTooltip(
+            'Distância superior a 400 km',
+            'Quantidade de médicos associados a prescrições em estabelecimentos separados por mais de 400 quilômetros em intervalo incompatível.',
+            'As evidências geográficas podem ser consultadas na tabela, abrindo o detalhe do médico.'
+          ),
+        },
+      ],
+    },
+  ];
 });
+
+function onCardClick(card) {
+  if (card.enabled) emit('kpi-click', card.key);
+}
 </script>
 
 <template>
-  <div class="alerts-kpi-grid animate-fade-in">
-    <!-- Concentração TOP 1 -->
-    <div
-      class="alert-kpi-card"
-      :class="[
-        kpiData.concentracaoTop1 > 40 ? 'highlight-red' : kpiData.concentracaoTop1 > 20 ? 'highlight-orange' : '',
-        activeKpiFilter === 'top1' ? 'kpi-active' : '',
-      ]"
-      @click="emit('kpi-click', 'top1')"
-    >
-      <div class="alert-kpi-header">
-        <span class="alert-kpi-label">TOP 1 CRM - VOLUME R$</span>
-        <i
-          class="pi pi-info-circle kpi-info-icon"
-          v-tooltip.top="crmKpiTooltips.top1"
-          tabindex="0"
-          aria-label="Informações sobre Top 1 CRM — volume financeiro"
-        />
-      </div>
-      <div class="alert-kpi-body">
-        <span class="alert-kpi-val">{{ formatPct(kpiData.concentracaoTop1) }}</span>
-        <span class="alert-kpi-hint">
-          CRM: {{ kpiData.idTop1Prescritor || 'ND' }}
-          <strong style="color: var(--text-color-85)"> · {{ formatCurrencyFull(kpiData.valorTop1) }}</strong>
-        </span>
-      </div>
-    </div>
-
-    <!-- Concentração TOP 5 -->
-    <div
-      class="alert-kpi-card"
-      :class="[
-        kpiData.concentracaoTop5 > 70 ? 'highlight-red' : kpiData.concentracaoTop5 > 50 ? 'highlight-orange' : '',
-        activeKpiFilter === 'top5' ? 'kpi-active' : '',
-      ]"
-      @click="emit('kpi-click', 'top5')"
-    >
-      <div class="alert-kpi-header">
-        <span class="alert-kpi-label">TOP 5 CRMs - VOLUME R$</span>
-        <i
-          class="pi pi-info-circle kpi-info-icon"
-          v-tooltip.top="crmKpiTooltips.top5"
-          tabindex="0"
-          aria-label="Informações sobre Top 5 CRMs — volume financeiro"
-        />
-      </div>
-      <div class="alert-kpi-body">
-        <span class="alert-kpi-val">{{ formatPct(kpiData.concentracaoTop5) }}</span>
-        <span class="alert-kpi-hint">
-          <strong style="color: var(--text-color-85)">{{ formatCurrencyFull(kpiData.valorTop5) }}</strong>
-        </span>
-      </div>
-    </div>
-
-    <!-- Agrupamento de Lançamentos -->
-    <div
-      class="alert-kpi-card"
-      :class="[
-        kpiData.qtdLancamentosAgrupados > 0 ? 'highlight-violet' : 'kpi-disabled',
-        activeKpiFilter === 'agrupamento' ? 'kpi-active' : '',
-      ]"
-      @click="emit('kpi-click', 'agrupamento')"
-    >
-      <div class="alert-kpi-header">
-        <span class="alert-kpi-label">Autorizações em Sequência (Único CRM)</span>
-        <i
-          class="pi pi-info-circle kpi-info-icon"
-          v-tooltip.top="crmKpiTooltips.agrupamento"
-          tabindex="0"
-          aria-label="Informações sobre autorizações em sequência por um único CRM"
-        />
-      </div>
-      <div class="alert-kpi-body">
-        <span class="alert-kpi-val">{{ kpiData.qtdLancamentosAgrupados }}</span>
-        <span class="alert-kpi-hint">Muitas Autorizações em Intervalo Curto</span>
-      </div>
-    </div>
-
-    <!-- Prescrição Intensiva -->
-    <div
-      class="alert-kpi-card"
-      :class="[
-        kpiData.qtdPrescrIntensivaTotal > 0 ? 'highlight-red' : 'kpi-disabled',
-        activeKpiFilter === 'intensiva' ? 'kpi-active' : '',
-      ]"
-      @click="emit('kpi-click', 'intensiva')"
-    >
-      <div class="alert-kpi-header">
-        <span class="alert-kpi-label">>30 PRESCRIÇÕES/DIA</span>
-        <i
-          class="pi pi-info-circle kpi-info-icon"
-          v-tooltip.left="crmKpiTooltips.intensiva"
-          tabindex="0"
-          aria-label="Informações sobre mais de 30 prescrições por dia"
-        />
-      </div>
-      <div class="alert-kpi-body">
-        <span class="alert-kpi-val">{{ kpiData.qtdPrescrIntensivaTotal }}</span>
-        <span class="alert-kpi-hint">
-          {{ kpiData.qtdPrescrIntensivaLocal }} local · {{ kpiData.qtdPrescrIntensivaOcultos }} Brasil
-        </span>
-      </div>
-    </div>
-
-    <!-- CRMs Exclusivos -->
-    <div
-      class="alert-kpi-card"
-      :class="[
-        kpiData.qtdCrmExclusivo > 0 ? 'highlight-purple' : 'kpi-disabled',
-        activeKpiFilter === 'exclusivo' ? 'kpi-active' : '',
-      ]"
-      @click="emit('kpi-click', 'exclusivo')"
-    >
-      <div class="alert-kpi-header">
-        <span class="alert-kpi-label">CRMs EXCLUSIVOS</span>
-        <i
-          class="pi pi-info-circle kpi-info-icon"
-          v-tooltip.top="crmKpiTooltips.exclusivo"
-          tabindex="0"
-          aria-label="Informações sobre CRMs exclusivos"
-        />
-      </div>
-      <div class="alert-kpi-body">
-        <span class="alert-kpi-val">{{ kpiData.qtdCrmExclusivo }}</span>
-        <span class="alert-kpi-hint">100% de exclusividade local</span>
-      </div>
-    </div>
-
-    <!-- Fraudes CRM -->
-    <div
-      class="alert-kpi-card"
-      :class="[
-        kpiData.totalIrregularesCfm > 0 ? 'highlight-red highlight-fraude' : 'kpi-disabled',
-        activeKpiFilter === 'fraude_crm' ? 'kpi-active' : '',
-      ]"
-      @click="emit('kpi-click', 'fraude_crm')"
-    >
-      <div class="alert-kpi-header">
-        <span class="alert-kpi-label">FRAUDES CRM</span>
-        <i
-          class="pi pi-info-circle kpi-info-icon"
-          v-tooltip.top="crmKpiTooltips.fraudeCrm"
-          tabindex="0"
-          aria-label="Informações sobre fraudes CRM"
-        />
-      </div>
-      <div class="alert-kpi-body">
-        <div class="alert-kpi-val-row">
-          <span class="alert-kpi-val">{{ kpiData.totalIrregularesCfm }}</span>
-          <span class="alert-kpi-val-sub">{{ kpiData.qtdCrmInvalido }} Não localizados | {{ kpiData.qtdPrescrAntesRegistro }} Irregulares</span>
+  <div class="kpi-groups animate-fade-in">
+    <section v-for="grupo in grupos" :key="grupo.id" class="kpi-group" :aria-label="grupo.titulo">
+      <div class="alerts-kpi-grid">
+        <div
+          v-for="(card, idx) in grupo.cards"
+          :key="card.key"
+          class="alert-kpi-card"
+          :class="{ 'kpi-disabled': !card.enabled, 'kpi-active': activeKpiFilter === card.key }"
+          :role="card.enabled ? 'button' : undefined"
+          :tabindex="card.enabled ? 0 : undefined"
+          :aria-pressed="card.enabled ? activeKpiFilter === card.key : undefined"
+          @click="onCardClick(card)"
+          @keydown.enter.prevent="onCardClick(card)"
+          @keydown.space.prevent="onCardClick(card)"
+        >
+          <div class="alert-kpi-header">
+            <span v-if="card.tone" class="kpi-dot" :class="`tone-${card.tone}`" aria-hidden="true" />
+            <span class="alert-kpi-label">{{ card.label }}</span>
+            <i
+              class="pi pi-info-circle kpi-info-icon"
+              v-tooltip="{ ...card.tooltip, ...(idx === grupo.cards.length - 1 ? { position: 'left' } : { position: 'top' }) }"
+              tabindex="0"
+              :aria-label="`Informações sobre ${card.label}`"
+              @click.stop
+            />
+          </div>
+          <span class="alert-kpi-val">{{ card.value }}</span>
+          <span class="alert-kpi-hint">{{ card.hint }}</span>
         </div>
-        <span class="alert-kpi-hint">
-          <strong style="color: var(--risk-high)">
-            {{ formatCurrencyFull(kpiData.valorFraudeCrm) }} ({{ formatPct(kpiData.pctFraudeCrm) }})
-          </strong>
-          da produção
-        </span>
       </div>
-    </div>
-
-    <!-- Alerta >400km -->
-    <div
-      class="alert-kpi-card"
-      :class="[
-        kpiData.qtdAcima400km > 0 ? 'highlight-purple-geo' : 'kpi-disabled',
-        activeKpiFilter === 'distancia' ? 'kpi-active' : '',
-      ]"
-      @click="emit('kpi-click', 'distancia')"
-    >
-      <div class="alert-kpi-header">
-        <span class="alert-kpi-label">DISTÂNCIA (>400KM)</span>
-        <i
-          class="pi pi-info-circle kpi-info-icon"
-          v-tooltip.top="crmKpiTooltips.distancia"
-          tabindex="0"
-          aria-label="Informações sobre distância superior a 400 quilômetros"
-        />
-      </div>
-      <div class="alert-kpi-body">
-        <span class="alert-kpi-val">{{ kpiData.qtdAcima400km }}</span>
-        <span class="alert-kpi-hint">Prescrições em Locais Distantes</span>
-      </div>
-    </div>
-
-    <!-- Surtos de Lançamento (Geral CNPJ) -->
-    <div
-      class="alert-kpi-card"
-      :class="[
-        kpiData.totalSurtosCnpj > 0 ? 'highlight-amber' : 'kpi-disabled',
-        activeKpiFilter === 'surtos_cnpj' ? 'kpi-active' : '',
-      ]"
-      @click="emit('kpi-click', 'surtos_cnpj')"
-    >
-      <div class="alert-kpi-header">
-        <span class="alert-kpi-label">Autorizações em Sequência (Múltiplos CRMs)</span>
-        <i
-          class="pi pi-info-circle kpi-info-icon"
-          v-tooltip.left="crmKpiTooltips.surtosCnpj"
-          tabindex="0"
-          aria-label="Informações sobre autorizações em sequência por múltiplos CRMs"
-        />
-      </div>
-      <div class="alert-kpi-body">
-        <span class="alert-kpi-val">{{ kpiData.totalSurtosCnpj }}</span>
-        <span class="alert-kpi-hint">Registros em {{ kpiData.diasComSurtosCnpj }} dias distintos</span>
-      </div>
-    </div>
+    </section>
   </div>
 </template>
 
@@ -303,184 +229,101 @@ const crmKpiTooltips = Object.freeze({
   to { opacity: 1; transform: translateY(0); }
 }
 
+.kpi-groups { display: flex; flex-direction: column; gap: 0.75rem; }
+.kpi-group { display: flex; flex-direction: column; }
+
 .alerts-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-  margin-bottom: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
 }
 
 .alert-kpi-card {
-  padding: 0.9rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem 1rem;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-left: 4px solid var(--card-border);
-  border-radius: 12px;
-  transition: all 0.2s ease;
+  border-radius: 10px;
   cursor: pointer;
   user-select: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-
 .alert-kpi-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  border-color: color-mix(in srgb, var(--text-color-85) 30%, var(--card-border));
 }
-
-.alert-kpi-card.highlight-red:hover {
-  border-color: color-mix(in srgb, var(--risk-high) 45%, var(--card-border));
-  box-shadow: 0 8px 16px -8px color-mix(in srgb, var(--risk-high) 20%, transparent);
+.alert-kpi-card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text-color-85) 45%, transparent);
+  outline-offset: 2px;
 }
-.alert-kpi-card.highlight-orange:hover {
-  border-color: color-mix(in srgb, var(--risk-medium) 45%, var(--card-border));
-  box-shadow: 0 8px 16px -8px color-mix(in srgb, var(--risk-medium) 20%, transparent);
+.alert-kpi-card.kpi-active {
+  border-color: color-mix(in srgb, var(--text-color-85) 60%, transparent);
+  background: color-mix(in srgb, var(--text-color-85) 4%, var(--card-bg));
 }
-.alert-kpi-card.highlight-violet:hover {
-  border-color: color-mix(in srgb, #818cf8 45%, var(--card-border));
-  box-shadow: 0 8px 16px -8px color-mix(in srgb, #818cf8 20%, transparent);
-}
-.alert-kpi-card.highlight-purple:hover {
-  border-color: color-mix(in srgb, #3b82f6 45%, var(--card-border));
-  box-shadow: 0 8px 16px -8px color-mix(in srgb, #3b82f6 20%, transparent);
-}
-.alert-kpi-card.highlight-amber:hover {
-  border-color: color-mix(in srgb, #f59e0b 45%, var(--card-border));
-  box-shadow: 0 8px 16px -8px color-mix(in srgb, #f59e0b 20%, transparent);
-}
-.alert-kpi-card.highlight-purple-geo:hover {
-  border-color: color-mix(in srgb, #8b5cf6 45%, var(--card-border));
-  box-shadow: 0 8px 16px -8px color-mix(in srgb, #8b5cf6 20%, transparent);
-}
-
 .alert-kpi-card.kpi-disabled {
   cursor: default;
-  pointer-events: none;
   opacity: 0.45;
 }
-
-.alert-kpi-card.kpi-active {
-  transform: translateY(-3px) scale(1.01);
-  z-index: 2;
-  border-left-width: 6px !important;
-}
-
-.alert-kpi-card.highlight-red.kpi-active {
-  background: color-mix(in srgb, var(--risk-high) 10%, var(--card-bg));
-  border-color: var(--risk-high) !important;
-  box-shadow: 0 0 25px -5px color-mix(in srgb, var(--risk-high) 60%, transparent), 0 10px 30px rgba(0, 0, 0, 0.2);
-}
-.alert-kpi-card.highlight-orange.kpi-active {
-  background: color-mix(in srgb, var(--risk-medium) 10%, var(--card-bg));
-  border-color: var(--risk-medium) !important;
-  box-shadow: 0 0 25px -5px color-mix(in srgb, var(--risk-medium) 60%, transparent), 0 10px 30px rgba(0, 0, 0, 0.2);
-}
-.alert-kpi-card.highlight-violet.kpi-active {
-  background: color-mix(in srgb, #818cf8 10%, var(--card-bg));
-  border-color: #818cf8 !important;
-  box-shadow: 0 0 25px -5px color-mix(in srgb, #818cf8 60%, transparent), 0 10px 30px rgba(0, 0, 0, 0.2);
-}
-.alert-kpi-card.highlight-purple.kpi-active {
-  background: color-mix(in srgb, #3b82f6 10%, var(--card-bg));
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 25px -5px color-mix(in srgb, #3b82f6 60%, transparent), 0 10px 30px rgba(0, 0, 0, 0.2);
-}
-.alert-kpi-card.highlight-amber.kpi-active {
-  background: color-mix(in srgb, #f59e0b 10%, var(--card-bg));
-  border-color: #f59e0b !important;
-  box-shadow: 0 0 25px -5px color-mix(in srgb, #f59e0b 60%, transparent), 0 10px 30px rgba(0, 0, 0, 0.2);
-}
-.alert-kpi-card.highlight-purple-geo.kpi-active {
-  background: color-mix(in srgb, #8b5cf6 10%, var(--card-bg));
-  border-color: #8b5cf6 !important;
-  box-shadow: 0 0 25px -5px color-mix(in srgb, #8b5cf6 60%, transparent), 0 10px 30px rgba(0, 0, 0, 0.2);
-}
-
-.highlight-red {
-  background: linear-gradient(to top, color-mix(in srgb, var(--risk-high) 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, var(--risk-high) 15%, var(--card-border));
-  border-left: 4px solid var(--risk-high) !important;
-}
-.highlight-orange {
-  background: linear-gradient(to top, color-mix(in srgb, var(--risk-medium) 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, var(--risk-medium) 15%, var(--card-border));
-  border-left: 4px solid var(--risk-medium) !important;
-}
-.highlight-purple {
-  background: linear-gradient(to top, color-mix(in srgb, #3b82f6 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, #3b82f6 15%, var(--card-border));
-  border-left: 4px solid #3b82f6 !important;
-}
-.highlight-purple-geo {
-  background: linear-gradient(to top, color-mix(in srgb, #8b5cf6 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, #8b5cf6 15%, var(--card-border));
-  border-left: 4px solid #8b5cf6 !important;
-}
-.highlight-amber {
-  background: linear-gradient(to top, color-mix(in srgb, #f59e0b 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, #f59e0b 15%, var(--card-border));
-  border-left: 4px solid #f59e0b !important;
-}
-.highlight-violet {
-  background: linear-gradient(to top, color-mix(in srgb, #818cf8 15%, var(--card-bg)) 0%, var(--card-bg) 80%);
-  border: 1px solid color-mix(in srgb, #818cf8 15%, var(--card-border));
-  border-left: 4px solid #818cf8 !important;
-}
+.alert-kpi-card.kpi-disabled:hover { border-color: var(--card-border); }
 
 .alert-kpi-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0.45rem;
 }
+.kpi-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.kpi-dot.tone-critico { background: var(--risk-critical); }
+.kpi-dot.tone-medio { background: var(--risk-medium); }
+.kpi-dot.tone-unico { background: #f59e0b; }
+.kpi-dot.tone-multi { background: #8b5cf6; }
+.kpi-dot.tone-geo { background: #14b8a6; }
+.kpi-dot.tone-exclusivo { background: #3b82f6; }
+
 .alert-kpi-label {
   flex: 1;
   min-width: 0;
-  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  line-height: 1.2;
-  opacity: 0.85;
 }
 .kpi-info-icon {
-  font-size: 0.8rem;
+  flex-shrink: 0;
+  font-size: 0.78rem;
   color: var(--text-muted);
   cursor: help;
   outline: none;
   transition: color 0.15s;
 }
-.kpi-info-icon:hover { color: var(--primary-color); }
+.kpi-info-icon:hover { color: var(--text-color-85); }
 .kpi-info-icon:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--text-color-85) 45%, transparent);
   outline-offset: 2px;
   border-radius: 50%;
 }
 
-.alert-kpi-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-.alert-kpi-val-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-}
 .alert-kpi-val {
-  font-size: 1.15rem;
+  font-size: 1.35rem;
   font-weight: 600;
-  color: var(--text-color-85);
-  line-height: 1;
-}
-.alert-kpi-val-sub {
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--text-color-85);
-  opacity: 0.85;
+  line-height: 1.1;
+  color: var(--text-color);
 }
 .alert-kpi-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.72rem;
   color: var(--text-muted);
-  font-weight: 400;
 }
 
 :global(.p-tooltip.crm-profile-info-tooltip) {

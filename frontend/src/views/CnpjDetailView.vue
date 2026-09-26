@@ -11,6 +11,8 @@ import { useNotaTecnicaConfigStore } from "@/stores/notaTecnicaConfig";
 import { useFormatting } from "@/composables/useFormatting";
 import { useFilterParameters } from "@/composables/useFilterParameters";
 import CnpjHeader from "./components/cnpj/CnpjHeader.vue";
+import EvidenciasPanel from "./components/evidencias/EvidenciasPanel.vue";
+import { useEvidenciasStore } from "@/stores/evidencias";
 import FinancialMovementTab from "./components/cnpj/FinancialMovementTab.vue";
 import IndicatorsTab from "./components/cnpj/IndicatorsTab.vue";
 import RegionalTab from "./components/cnpj/RegionalTab.vue";
@@ -111,6 +113,7 @@ const { localidades } = storeToRefs(geoStore);
 
 const filterStore = useFilterStore();
 const cnpjNav = useCnpjNavStore();
+const evidenciasStore = useEvidenciasStore();
 const notaTecnicaConfig = useNotaTecnicaConfigStore();
 const visitedTabIndexes = ref(new Set([cnpjNav.activeTabIndex]));
 
@@ -559,6 +562,9 @@ watch(
       cnpjDetailStore.resetAll();
       cnpjNav.reset(getTabIndexFromRoute());
       resetVisitedTabs(cnpjNav.activeTabIndex);
+      evidenciasStore.painelAberto = false;
+      // Navegação vinda da cesta de evidências (Listas): aplicada depois do reset.
+      evidenciasStore.consumirNavegacaoPendente(newCnpj);
     }
     const requestId = ++cnpjValidationRequest;
     if (!newCnpj) {
@@ -753,6 +759,12 @@ watch(
       </button>
     </section>
 
+    <EvidenciasPanel
+      v-if="canRenderDetail"
+      :cnpj="cnpj"
+      :razao-social="cnpjData?.razao_social || ''"
+    />
+
     <!-- HEADER (COMPONENTE ISOLADO) -->
     <CnpjHeader
       v-if="canRenderDetail"
@@ -876,6 +888,7 @@ watch(
             ref="authTabRef"
             :cnpj="cnpj"
             :is-active="cnpjNav.activeTabIndex === TAB_INDEX.CRMS"
+            :razao-social="cnpjData?.razao_social || ''"
             :period-summary="periodSummary"
             :period-loading="isPeriodSummaryLoading"
             class="tab-content detail-tab-enter"

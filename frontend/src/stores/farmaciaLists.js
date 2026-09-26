@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import axios from 'axios';
 import { API_ENDPOINTS } from '@/config/api';
+import { useEvidenciasStore } from '@/stores/evidencias';
 
 const STORAGE_KEY = 'sentinela_farmacia_lists';
 
@@ -101,14 +102,51 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
     interesse.value.some((item) => item.cnpj === cnpj),
   );
 
+  async function adicionarInteresse(cnpj, razaoSocial) {
+    if (!canEdit.value) return false;
+    if (isInteresse.value(cnpj)) return true;
+    return saveList([...interesse.value, {
+      cnpj, razaoSocial, adicionadoEm: new Date().toISOString(), observacao: '',
+    }]);
+  }
+
+  /**
+   * Toda farmácia com evidência está na lista. Remover uma farmácia com
+   * evidências exige confirmação e apaga as evidências junto — primeiro as
+   * evidências, depois a farmácia: se a segunda etapa falhar, a farmácia fica
+   * na lista sem evidências, o que ainda respeita a regra.
+   * Retorna true (removida), false (falha, ver `error`) ou null (cancelado).
+   */
+  async function removerInteresse(cnpj, razaoSocial) {
+    if (!canEdit.value) return false;
+    error.value = '';
+    const evidencias = useEvidenciasStore();
+    await evidencias.garantirCarregado();
+    if (evidencias.loadState !== 'ready') {
+      error.value = 'Não foi possível verificar as evidências desta farmácia. Ela não foi removida.';
+      return false;
+    }
+    if (evidencias.contar(cnpj) > 0) {
+      const nome = razaoSocial
+        || interesse.value.find((item) => item.cnpj === cnpj)?.razaoSocial
+        || cnpj;
+      const confirmado = await evidencias.confirmarRemocaoFarmacia(cnpj, nome);
+      if (!confirmado) return null;
+      try {
+        await evidencias.removerDoCnpj(cnpj);
+      } catch (cause) {
+        error.value = `${cause.message} A farmácia não foi removida.`;
+        return false;
+      }
+    }
+    return saveList(interesse.value.filter((item) => item.cnpj !== cnpj));
+  }
+
   async function toggleInteresse(cnpj, razaoSocial) {
     if (!canEdit.value) return false;
-    const next = isInteresse.value(cnpj)
-      ? interesse.value.filter((item) => item.cnpj !== cnpj)
-      : [...interesse.value, {
-        cnpj, razaoSocial, adicionadoEm: new Date().toISOString(), observacao: '',
-      }];
-    return saveList(next);
+    return isInteresse.value(cnpj)
+      ? removerInteresse(cnpj, razaoSocial)
+      : adicionarInteresse(cnpj, razaoSocial);
   }
 
   async function setObservacao(cnpj, text) {
@@ -154,7 +192,7 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
   return {
     interesse, loadState, saving, error, canEdit, recoveryOptions,
     localRecoveryAvailable, localSnapshot, isInteresse, getObservacao,
-    loadFromBackend, loadRecoveryOptions, toggleInteresse, setObservacao,
+    loadFromBackend, loadRecoveryOptions, toggleInteresse, adicionarInteresse, removerInteresse, setObservacao,
     restoreFromFile, restoreFromLocal,
   };
 });

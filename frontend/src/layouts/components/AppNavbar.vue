@@ -120,11 +120,18 @@ function onNavSelect(event) {
             :to="`/estabelecimentos/${recentCnpj.cnpj}`"
             class="nav-tab nav-recent-cnpj"
             :class="{ active: route.path.startsWith('/estabelecimentos/') }"
-            v-tooltip.bottom="navbarTooltip('recentCnpj', recentCnpj.razaoSocial)"
+            :aria-label="`Abrir último estabelecimento: ${recentCnpj.razaoSocial || recentCnpj.cnpj}`"
           >
             <i class="pi pi-history" />
             {{ recentCnpj.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') }}
           </router-link>
+          <i
+            class="pi pi-info-circle nav-recent-info"
+            role="img"
+            tabindex="0"
+            aria-label="Informações sobre o último estabelecimento"
+            v-tooltip.bottom="navbarTooltip('recentCnpj', recentCnpj.razaoSocial)"
+          />
           <button class="nav-recent-clear" aria-label="Limpar atalho" @click.prevent="recentCnpjStore.clear()" v-tooltip.bottom="navbarTooltip('clearRecentCnpj')">
             <i class="pi pi-times" />
           </button>
@@ -502,7 +509,26 @@ function onNavSelect(event) {
 
 .nav-recent-cnpj {
   gap: 0.4rem;
-  padding-right: 1.4rem;
+  padding-right: 2.45rem;
+}
+
+.nav-recent-info {
+  position: absolute;
+  right: 1.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  opacity: 0.6;
+  cursor: help;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.nav-recent-info:hover,
+.nav-recent-info:focus-visible {
+  opacity: 1;
+  color: var(--primary-color);
+  outline: none;
 }
 
 .nav-recent-cnpj::before {

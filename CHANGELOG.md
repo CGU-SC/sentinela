@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.7.0] - 2026-09-26
+
+### Adicionado
+- **Cesta de evidências por estabelecimento.** O auditor pode marcar dias, horários e autorizações na cronologia de CRM, consultar os itens em um painel próprio, registrar notas, removê-los e exportar a cesta em Excel. As marcações são persistidas localmente com cópia de segurança e erros de leitura ou gravação são informados.
+- **Exportação do Raio-X de CRM.** As autorizações dos dias com alerta podem ser baixadas em CSV ou em planilha Excel com detalhamento e resumos por dia e por médico, respeitando o período selecionado.
+- **Visão de atuação dos prescritores.** A tabela de CRMs apresenta o período de atuação e a distribuição mensal das prescrições, com um diálogo para examinar cada médico.
+
+### Alterado
+- **Análise de CRM reorganizada.** Cards, tabela de prescritores e cronologia receberam ajustes de leitura, navegação e explicações; sinais de exclusividade e de autorizações em sequência ficaram mais claros.
+- **Nota Técnica de CRMs irregulares alinhada à matriz de risco.** O percentual e o valor financeiro da constatação passam a usar os campos do indicador consolidado, enquanto a tabela apresenta o detalhamento operacional dos médicos.
+- **Lista de estabelecimentos e detalhe do CNPJ integrados à cesta de evidências.** As telas exibem as marcações e oferecem acesso ao painel correspondente.
+
+### Corrigido
+- **Falhas em dados obrigatórios de CRM e evidências tratadas explicitamente.** A geração da Nota Técnica e a leitura da cesta deixam visíveis inconsistências de dados, sem substituir informações ausentes por resultados aparentes.
+
 ## [1.6.18] - 2026-09-24
 
 ### Adicionado

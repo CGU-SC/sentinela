@@ -14,6 +14,7 @@ from .crm import (
     get_crm_raio_x,
     get_crm_timeline_dataset,
 )
+from .crm_export import export_crm_raiox_csv, export_crm_raiox_xlsx
 from .crm_analysis import get_crm_prescricoes_analise
 from .dashboard import (
     get_dashboard_data,
@@ -102,6 +103,8 @@ class AnalyticsService:
     get_crm_timeline_dataset = staticmethod(get_crm_timeline_dataset)
     sync_crm_raiox_tx = staticmethod(sync_crm_raiox_tx)
     get_crm_raio_x = staticmethod(get_crm_raio_x)
+    export_crm_raiox_csv = staticmethod(export_crm_raiox_csv)
+    export_crm_raiox_xlsx = staticmethod(export_crm_raiox_xlsx)
     get_dados_farmacia = staticmethod(get_dados_farmacia)
     get_cnpj_access_status = staticmethod(get_cnpj_access_status)
     get_movimentacao_data = staticmethod(get_movimentacao_data)

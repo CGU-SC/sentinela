@@ -14,6 +14,7 @@ import UpdateBlocker from '@/views/components/UpdateBlocker.vue';
 import ExecutionBlocker from '@/views/components/ExecutionBlocker.vue';
 import UpdateDialog from '@/views/components/UpdateDialog.vue';
 import DocumentPreviewDialog from '@/views/components/DocumentPreviewDialog.vue';
+import EvidenciasRemocaoDialog from '@/views/components/evidencias/EvidenciasRemocaoDialog.vue';
 
 const analyticsStore = useAnalyticsStore();
 const geoStore = useGeoStore();
@@ -194,11 +195,12 @@ const openPreviewExternalFile = async () => {
 
 <template>
   <Toast />
+  <EvidenciasRemocaoDialog />
   <Toast group="download" position="bottom-right">
     <template #message="slotProps">
       <div class="download-toast">
         <div class="download-toast-icon">
-          <i class="pi pi-file-word" />
+          <i :class="['pi', slotProps.message.data?.icon || 'pi-file-word']" />
         </div>
         <div class="download-toast-body">
           <div class="download-toast-title">{{ slotProps.message.summary }}</div>

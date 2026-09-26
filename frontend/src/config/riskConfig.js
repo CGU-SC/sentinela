@@ -70,6 +70,22 @@ export const CRM_KPI_THRESHOLDS = {
 };
 
 /**
+ * Taxa de exclusividade do CRM (% das prescrições do médico no PFPB feitas
+ * neste estabelecimento) na tabela de CRMs de interesse.
+ * alto: etiqueta vermelha suave; atencao: valor em destaque neutro.
+ */
+/**
+ * Raio-X CRM: intervalo entre autorizações consecutivas (em segundos) abaixo do
+ * qual o intervalo é destacado como lançamento em rajada.
+ */
+export const CRM_RAIOX_INTERVALO_CURTO_SEGUNDOS = 60;
+
+export const CRM_EXCLUSIVIDADE_THRESHOLDS = {
+  atencao: 50,
+  alto: 80,
+};
+
+/**
  * Regras de semáforo para os cards de KPI da aba Falecidos.
  * Binários: verde quando 0, cor de alerta quando > 0.
  */

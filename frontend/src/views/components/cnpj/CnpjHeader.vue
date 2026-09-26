@@ -7,6 +7,8 @@ import { useFormatting } from "@/composables/useFormatting";
 import { useStatusClass } from "@/composables/useStatusClass";
 import { useCnpjNavStore } from "@/stores/cnpjNav";
 import { useFarmaciaListsStore } from "@/stores/farmaciaLists";
+import { useToggleInteresse } from "@/composables/useToggleInteresse";
+import { useEvidenciasStore } from "@/stores/evidencias";
 import { useFilterStore } from "@/stores/filters";
 import { useGeoStore } from "@/stores/geo";
 import { useRouter } from "vue-router";
@@ -25,6 +27,9 @@ import RedeEstabelecimentosDialog from "./RedeEstabelecimentosDialog.vue";
 
 const cnpjNav = useCnpjNavStore();
 const farmaciaLists = useFarmaciaListsStore();
+const toggleInteresse = useToggleInteresse();
+const evidenciasStore = useEvidenciasStore();
+const qtdEvidencias = computed(() => evidenciasStore.contar(String(props.cnpj).replace(/\D/g, "")));
 const geoStore = useGeoStore();
 
 const qtdMunicipiosRegiao = computed(() =>
@@ -374,6 +379,16 @@ const interesseHtmlTooltip = computed(() =>
     detail: farmaciaLists.isInteresse(props.cnpj)
       ? "Remover este estabelecimento da lista."
       : "Adicionar este estabelecimento à lista.",
+  }),
+);
+
+const evidenciasHtmlTooltip = computed(() =>
+  cnpjHeroTooltip("evidencias", {
+    detail: evidenciasStore.loadState === "error"
+      ? "Cesta de evidências indisponível."
+      : qtdEvidencias.value === 0
+        ? "Nenhuma evidência marcada."
+        : `${qtdEvidencias.value} ${qtdEvidencias.value === 1 ? "item marcado" : "itens marcados"}.`,
   }),
 );
 
@@ -744,11 +759,22 @@ const heroTooltips = Object.freeze({
           <button
             class="list-btn list-btn--icon-only"
             :class="farmaciaLists.isInteresse(cnpj) ? 'list-btn--interesse-active' : 'list-btn--interesse'"
-            @click="farmaciaLists.toggleInteresse(cnpj, cnpjData.razao_social)"
+            @click="toggleInteresse(cnpj, cnpjData.razao_social)"
             :disabled="!farmaciaLists.canEdit"
             v-tooltip.bottom="interesseHtmlTooltip"
           >
             <i :class="farmaciaLists.isInteresse(cnpj) ? 'pi pi-star-fill' : 'pi pi-star'" />
+          </button>
+          <button
+            class="list-btn list-btn--icon-only list-btn--evid"
+            :class="{ 'list-btn--evid-active': qtdEvidencias > 0 }"
+            type="button"
+            :aria-label="`Evidências (${qtdEvidencias})`"
+            @click="evidenciasStore.painelAberto = true"
+            v-tooltip.bottom="evidenciasHtmlTooltip"
+          >
+            <i :class="qtdEvidencias > 0 ? 'pi pi-flag-fill' : 'pi pi-flag'" />
+            <span v-if="qtdEvidencias > 0" class="list-btn-count">{{ qtdEvidencias }}</span>
           </button>
           <button
             v-if="farmaciaLists.isInteresse(cnpj)"
@@ -1052,6 +1078,33 @@ const heroTooltips = Object.freeze({
 .list-btn--interesse-active:hover {
   background: color-mix(in srgb, var(--primary-color) 85%, black);
   border-color: color-mix(in srgb, var(--primary-color) 85%, black);
+}
+
+.list-btn--evid {
+  color: var(--text-muted);
+  border-color: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  background: color-mix(in srgb, var(--text-muted) 8%, transparent);
+  opacity: 0.8;
+}
+.list-btn--evid:hover {
+  color: var(--evidence-color);
+  border-color: var(--evidence-color);
+  opacity: 1;
+}
+.list-btn--evid-active {
+  color: var(--evidence-color);
+  border-color: color-mix(in srgb, var(--evidence-color) 45%, transparent);
+  background: color-mix(in srgb, var(--evidence-color) 10%, transparent);
+  opacity: 1;
+}
+.list-btn-count {
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
 }
 
 .list-btn--obs {

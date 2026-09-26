@@ -81,6 +81,12 @@ const CNPJ_HERO_TOOLTIP_COPY = Object.freeze({
     icon: "pi-star",
     detailLabel: "Ação disponível",
   },
+  evidencias: {
+    title: "Evidências",
+    body: "Abre o painel com os dias, horas e autorizações marcados como evidência nesta farmácia.",
+    icon: "pi-flag",
+    detailLabel: "Marcadas",
+  },
   observacao: {
     title: "Observação",
     body: "Abre o campo para consultar ou editar a observação do estabelecimento.",

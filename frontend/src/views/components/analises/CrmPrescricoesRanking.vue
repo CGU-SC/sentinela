@@ -32,7 +32,7 @@ function crmLabel(row) {
 </script>
 
 <template>
-  <section class="crm-ranking-panel">
+  <section class="crm-ranking-panel enterprise-table">
     <header class="ranking-header">
       <div>
         <h2>Ranking de médicos por taxa diária</h2>
@@ -124,14 +124,14 @@ function crmLabel(row) {
 .ranking-state--error strong, .ranking-state--error span { display: block; }
 .ranking-state--error strong { color: var(--text-color-85); font-size: .82rem; font-weight: 600; }
 .ranking-state--error span { margin-top: .25rem; font-size: .72rem; }
-.ranking-table-wrap { position: relative; max-height: 520px; overflow: auto; }
+.ranking-table-wrap { position: relative; overflow: hidden; }
 .ranking-table-wrap--loading { cursor: progress; }
 .ranking-table-wrap--loading .ranking-table { opacity: .58; }
 .ranking-table-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: .5rem; background: color-mix(in srgb, var(--card-bg) 72%, transparent); color: var(--text-muted); font-size: .76rem; pointer-events: none; }
 .ranking-page-error { display: flex; align-items: center; gap: .45rem; padding: .55rem 1rem; border-top: 1px solid color-mix(in srgb, var(--risk-high) 25%, var(--tabs-border)); color: var(--risk-high); font-size: .7rem; }
 .ranking-page-error i { flex-shrink: 0; }
 .ranking-table { width: 100%; border-collapse: collapse; color: var(--text-color-85); font-size: .76rem; }
-.ranking-table th { position: sticky; top: 0; z-index: 1; padding: .65rem .8rem; background: var(--table-header-bg); color: var(--text-muted); font-size: .62rem; font-weight: 600; letter-spacing: .04em; text-align: left; white-space: nowrap; }
+.ranking-table th { position: static; padding: .65rem .8rem; background: var(--table-header-bg); color: var(--text-muted); font-size: .62rem; font-weight: 600; letter-spacing: .04em; text-align: left; white-space: nowrap; }
 .ranking-table td { padding: .62rem .8rem; border-top: 1px solid var(--tabs-border); vertical-align: middle; }
 .ranking-table tbody tr:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--card-bg)); }
 .ranking-table th:nth-child(n+3), .ranking-table td:nth-child(n+3) { text-align: right; }
@@ -139,6 +139,5 @@ function crmLabel(row) {
 .doctor-name, .doctor-crm { display: block; }
 .doctor-name { color: var(--text-color-85); font-weight: 600; }
 .doctor-crm { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
-.rate-cell { color: var(--primary-color); font-weight: 600; font-variant-numeric: tabular-nums; }
-:deep(.crm-ranking-paginator) { border: 0; border-top: 1px solid var(--tabs-border); border-radius: 0 0 12px 12px; background: var(--card-bg); color: var(--text-color-85); }
+.rate-cell { color: var(--primary-color); font-weight: 600; }
 </style>
