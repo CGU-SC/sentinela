@@ -86,6 +86,17 @@ function getRiskPiece(perc) {
     ?? activeScale.value[activeScale.value.length - 1];
 }
 
+// Legenda flutuante: faixas da escala da mais critica para a menor.
+function pieceLabel(piece) {
+  if (piece.min == null) return `< ${piece.max}%`;
+  if (piece.max == null) return `≥ ${piece.min}%`;
+  return `${piece.min}–${piece.max}%`;
+}
+const legendPieces = computed(() => [...activeScale.value].reverse().map((piece) => ({
+  ...piece,
+  label: pieceLabel(piece),
+})));
+
 const mapAreaColor = computed(() => themeStore.isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)');
 const mapBorderColor = computed(() => themeStore.isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)');
 const hoverBorder = computed(() => `${themeStore.tokens.primary}B3`);
@@ -514,6 +525,19 @@ function onMapClick(params) {
           <i class="pi pi-refresh" />
         </button>
       </div>
+
+      <!-- Legenda flutuante no canto inferior esquerdo: nao ocupa altura do card. -->
+      <div class="map-legend" aria-label="Escala do percentual de farmácias críticas">
+        <span class="legend-title">% farmácias críticas</span>
+        <span v-for="piece in legendPieces" :key="piece.label" class="legend-step">
+          <i class="legend-swatch" :style="{ backgroundColor: piece.color, borderColor: piece.borderColor }" aria-hidden="true" />
+          {{ piece.label }}
+        </span>
+        <span class="legend-step legend-step--extra">
+          <i class="legend-swatch" :style="{ backgroundColor: mapAreaColor, borderColor: mapBorderColor }" aria-hidden="true" />
+          Sem farmácias
+        </span>
+      </div>
     </div>
     <div v-show="isNational && !nationalMapReady" class="map-loading">
       <i class="pi pi-spin pi-spinner" />
@@ -690,6 +714,53 @@ function onMapClick(params) {
   justify-content: center;
   color: var(--text-muted);
   font-size: 1.4rem;
+}
+
+.map-legend {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-bg) 88%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: var(--text-color-70);
+  font-size: 0.6rem;
+  line-height: 1.25;
+  pointer-events: none;
+}
+
+.legend-title {
+  margin-bottom: 0.12rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.legend-step {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.legend-step--extra {
+  margin-top: 0.2rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--tabs-border);
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 0.68rem;
+  height: 0.68rem;
+  flex-shrink: 0;
+  border: 1px solid;
+  border-radius: 2px;
 }
 
 .map-controls {

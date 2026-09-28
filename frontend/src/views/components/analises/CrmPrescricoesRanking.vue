@@ -1,8 +1,11 @@
 <script setup>
+import { computed } from 'vue';
 import Paginator from 'primevue/paginator';
 import { useFormatting } from '@/composables/useFormatting';
+import { useFrozenData } from '@/composables/useFrozenData';
+import { analysisTooltip } from '@/config/analysisTooltipConfig';
 
-defineProps({
+const props = defineProps({
   rows: { type: Array, default: () => [] },
   isLoading: { type: Boolean, default: false },
   isPageLoading: { type: Boolean, default: false },
@@ -12,9 +15,25 @@ defineProps({
   totalRecords: { type: Number, default: 0 },
   first: { type: Number, default: 0 },
   pageSize: { type: Number, default: 25 },
+  // Qualquer busca em andamento (filtro ou pagina): a tabela mantem a versao
+  // anterior ate a resposta chegar, como em /estabelecimentos.
+  isRefreshing: { type: Boolean, default: false },
 });
 
+const refreshingRef = computed(() => props.isRefreshing);
+const snapshot = useFrozenData(
+  () => ({
+    rows: props.rows,
+    escopo: props.escopo,
+    totalRecords: props.totalRecords,
+    first: props.first,
+    pageSize: props.pageSize,
+  }),
+  refreshingRef,
+);
+
 const emit = defineEmits(['page']);
+const rankingInfoTooltip = analysisTooltip('crmRanking');
 const { formatNumberFull, formatTitleCase } = useFormatting();
 
 function onPage(event) {
@@ -35,8 +54,11 @@ function crmLabel(row) {
   <section class="crm-ranking-panel enterprise-table">
     <header class="ranking-header">
       <div>
-        <h2>Ranking de médicos por taxa diária</h2>
-        <span>Maiores taxas no escopo atual · {{ escopo }}</span>
+        <div class="ranking-title-row">
+          <h2>Ranking de médicos por taxa diária</h2>
+          <i class="pi pi-info-circle info-icon" v-tooltip.bottom="rankingInfoTooltip" aria-label="Como ler o ranking" />
+        </div>
+        <span>Maiores taxas · {{ snapshot.escopo }}</span>
       </div>
       <i class="pi pi-sort-amount-down" />
     </header>
@@ -52,7 +74,7 @@ function crmLabel(row) {
       <i class="pi pi-spin pi-spinner" />
       <span>Calculando ranking...</span>
     </div>
-    <div v-else-if="!rows.length" class="ranking-state">
+    <div v-else-if="!snapshot.rows.length" class="ranking-state">
       <i class="pi pi-info-circle" />
       <span>Nenhum médico encontrado para os filtros atuais.</span>
     </div>
@@ -69,13 +91,14 @@ function crmLabel(row) {
             <th>MÉDICO / REGISTRO</th>
             <th>TAXA / DIA</th>
             <th>PRESCRIÇÕES</th>
+            <th>DIAS C/ PRESCRIÇÃO</th>
             <th>MESES ATIVOS</th>
-            <th>MESES ANÔMALOS</th>
-            <th>% MESES ANÔMALOS</th>
+            <th>MESES ALTA INTENSIDADE</th>
+            <th>% MESES ALTA INTENSIDADE</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in rows" :key="row.id_medico">
+          <tr v-for="row in snapshot.rows" :key="row.id_medico">
             <td class="rank-cell">{{ row.rank }}</td>
             <td>
               <span class="doctor-name">{{ doctorLabel(row) }}</span>
@@ -83,9 +106,10 @@ function crmLabel(row) {
             </td>
             <td class="rate-cell">{{ Number(row.taxa_prescricoes_dia).toFixed(2).replace('.', ',') }}</td>
             <td>{{ formatNumberFull(row.nu_prescricoes) }}</td>
+            <td>{{ formatNumberFull(row.qtd_dias_com_prescricao) }}</td>
             <td>{{ formatNumberFull(row.qtd_meses_ativos) }}</td>
-            <td>{{ formatNumberFull(row.qtd_meses_anomalos) }}</td>
-            <td>{{ row.percentual_meses_anomalos == null ? '—' : `${Number(row.percentual_meses_anomalos).toFixed(1).replace('.', ',')}%` }}</td>
+            <td>{{ formatNumberFull(row.qtd_meses_alta_intensidade) }}</td>
+            <td>{{ `${Number(row.percentual_meses_alta_intensidade).toFixed(1).replace('.', ',')}%` }}</td>
           </tr>
         </tbody>
       </table>
@@ -95,16 +119,16 @@ function crmLabel(row) {
       </div>
     </div>
 
-    <div v-if="pageError && rows.length" class="ranking-page-error">
+    <div v-if="pageError && snapshot.rows.length" class="ranking-page-error">
       <i class="pi pi-exclamation-circle" />
       <span>{{ pageError }}</span>
     </div>
 
     <Paginator
-      v-if="rows.length && totalRecords > 0"
-      :first="first"
-      :rows="pageSize"
-      :total-records="totalRecords"
+      v-if="snapshot.rows.length && snapshot.totalRecords > 0"
+      :first="snapshot.first"
+      :rows="snapshot.pageSize"
+      :total-records="snapshot.totalRecords"
       :rows-per-page-options="[25, 50, 100]"
       class="crm-ranking-paginator"
       @page="onPage"
@@ -137,6 +161,9 @@ function crmLabel(row) {
 .ranking-table th:nth-child(n+3), .ranking-table td:nth-child(n+3) { text-align: right; }
 .rank-cell { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .doctor-name, .doctor-crm { display: block; }
+.ranking-title-row { display: flex; align-items: center; gap: .4rem; }
+.info-icon { display: flex; align-items: center; color: var(--text-muted); font-size: .8rem; line-height: 1; opacity: .6; cursor: default; }
+.info-icon:hover { opacity: 1; }
 .doctor-name { color: var(--text-color-85); font-weight: 600; }
 .doctor-crm { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
 .rate-cell { color: var(--primary-color); font-weight: 600; }

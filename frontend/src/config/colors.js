@@ -99,25 +99,30 @@ export const MAP_VISUAL_SCALE = {
   ],
 };
 
-// Participacao de medicos anomalos entre os ativos no mapa nacional de CRMs.
-// Faixas fixas preservam o significado das cores ao trocar o periodo.
-export const CRM_ANOMALY_MAP_SCALE = {
-  light: [
-    { gte: 0, lt: 0.05, label: '0–<0,05%', color: '#ffedd5', borderColor: '#fb923c' },
-    { gte: 0.05, lt: 0.1, label: '0,05–<0,10%', color: '#fed7aa', borderColor: '#f97316' },
-    { gte: 0.1, lt: 0.2, label: '0,10–<0,20%', color: '#fdba74', borderColor: '#ea580c' },
-    { gte: 0.2, lt: 0.4, label: '0,20–<0,40%', color: '#fb923c', borderColor: '#c2410c' },
-    { gte: 0.4, lt: 0.8, label: '0,40–<0,80%', color: '#f87171', borderColor: '#b91c1c' },
-    { gte: 0.8, label: '≥0,80%', color: '#dc2626', borderColor: '#991b1b' },
-  ],
-  dark: [
-    { gte: 0, lt: 0.05, label: '0–<0,05%', color: '#fed7aa', borderColor: '#ea580c' },
-    { gte: 0.05, lt: 0.1, label: '0,05–<0,10%', color: '#fdba74', borderColor: '#c2410c' },
-    { gte: 0.1, lt: 0.2, label: '0,10–<0,20%', color: '#fb923c', borderColor: '#9a3412' },
-    { gte: 0.2, lt: 0.4, label: '0,20–<0,40%', color: '#f97316', borderColor: '#7c2d12' },
-    { gte: 0.4, lt: 0.8, label: '0,40–<0,80%', color: '#ef4444', borderColor: '#991b1b' },
-    { gte: 0.8, label: '≥0,80%', color: '#b91c1c', borderColor: '#f97316' },
-  ],
+// Mapa de CRMs: concentracao de medicos de alta intensidade (acima do P95
+// nacional do mes) em relacao a media do territorio de referencia (Brasil, UF
+// ou regiao de saude). Mesmas tonalidades do mapa de risco (MAP_VISUAL_SCALE):
+// laranja claro abaixo da media ate vermelho escuro muito acima.
+function crmIndicePieces(scale, tons) {
+  const faixas = [
+    { lt: 0.5, label: '< 0,5×' },
+    { gte: 0.5, lt: 0.8, label: '0,5–0,8×' },
+    { gte: 0.8, lt: 1.25, label: '≈ média (0,8–1,25×)' },
+    { gte: 1.25, lt: 1.5, label: '1,25–1,5×' },
+    { gte: 1.5, lt: 2, label: '1,5–2×' },
+    { gte: 2, lt: 3, label: '2–3×' },
+    { gte: 3, label: '≥ 3×' },
+  ];
+  return faixas.map((faixa, index) => ({
+    ...faixa,
+    color: scale[tons[index]].color,
+    borderColor: scale[tons[index]].borderColor,
+  }));
+}
+
+export const CRM_INTENSIDADE_INDICE_SCALE = {
+  light: crmIndicePieces(MAP_VISUAL_SCALE.light, [0, 1, 2, 3, 5, 7, 10]),
+  dark: crmIndicePieces(MAP_VISUAL_SCALE.dark, [0, 1, 2, 3, 5, 7, 10]),
 };
 
 export const GEOGRAPHIC_DISTRIBUTION_SCALE = [

@@ -43,7 +43,7 @@ const tabs = [
   { label: 'Home', path: '/' },
   { label: 'Municípios', path: '/municipios' },
   { label: 'Estabelecimentos', path: '/estabelecimentos' },
-  { label: 'Análises', path: '/analises', disabled: true },
+  { label: 'Análises', path: '/analises' },
   // { label: 'Alvos', path: '/alvos' },
 ];
 

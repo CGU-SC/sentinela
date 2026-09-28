@@ -1,7 +1,7 @@
 from typing import Any, List, Literal, Optional, TypeVar
 from datetime import date
 import calendar
-import time
+from collections import OrderedDict
 from threading import RLock
 import polars as pl
 from sqlalchemy.orm import Session
@@ -93,7 +93,10 @@ def _apply_estabelecimento_search(df: pl.DataFrame, estabelecimento: str | None)
     return apply_token_search(df, estabelecimento, ("cnpj", "razao_social", "nome_fantasia"))
 
 
-_INDICADOR_CACHE_TTL_SECONDS = 300
+# Caches em memoria da analise de indicadores. Os modulos so mudam na
+# sincronizacao, e a chave inclui get_cache_generation() e o limite de volume
+# atipico das configuracoes: nao ha prazo de validade. O limite de itens controla
+# a memoria e descarta o item usado ha mais tempo (LRU).
 _INDICADOR_CACHE_MAX_ENTRIES = 64
 _INDICADOR_CACHE_LOCK = RLock()
 
@@ -158,20 +161,9 @@ _INDICADOR_BENCHMARK_FORMATOS = {
     "crms_irregulares": "pct",
 }
 
-_INDICADOR_SCOPE_BASE_CACHE: dict[
-    tuple[object, ...],
-    tuple[float, tuple[pl.DataFrame, pl.DataFrame]],
-] = {}
+_INDICADOR_SCOPE_BASE_CACHE: "OrderedDict[tuple[object, ...], tuple[pl.DataFrame, pl.DataFrame]]" = OrderedDict()
 
-_INDICADOR_DATASET_CACHE: dict[tuple[object, ...], tuple[float, tuple[
-    pl.DataFrame,
-    pl.DataFrame,
-    pl.DataFrame,
-    str,
-    str,
-    str | None,
-    str,
-]]] = {}
+_INDICADOR_DATASET_CACHE: "OrderedDict[tuple[object, ...], tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, str, str, str | None, str]]" = OrderedDict()
 
 _IndicadorCachePayload = TypeVar("_IndicadorCachePayload")
 
@@ -290,28 +282,37 @@ def _make_indicador_dataset_cache_key(
 
 
 def _prune_indicador_cache(
-    cache: dict[tuple[object, ...], tuple[float, _IndicadorCachePayload]],
-    now: float,
+    cache: "OrderedDict[tuple[object, ...], _IndicadorCachePayload]",
     generation: int,
 ) -> None:
-    expired_keys = [
-        key
-        for key, (created_at, _result) in cache.items()
-        if key[0] != generation or now - created_at > _INDICADOR_CACHE_TTL_SECONDS
-    ]
-    for key in expired_keys:
+    """Remove itens de geracoes anteriores e os usados ha mais tempo (chamar com o lock)."""
+    for key in [key for key in cache if key[0] != generation]:
         del cache[key]
+    while len(cache) > _INDICADOR_CACHE_MAX_ENTRIES:
+        cache.popitem(last=False)
 
-    if len(cache) <= _INDICADOR_CACHE_MAX_ENTRIES:
-        return
 
-    keys_by_age = sorted(
-        cache,
-        key=lambda key: cache[key][0],
-    )
-    overflow = len(cache) - _INDICADOR_CACHE_MAX_ENTRIES
-    for key in keys_by_age[:overflow]:
-        del cache[key]
+def _get_indicador_cache(
+    cache: "OrderedDict[tuple[object, ...], _IndicadorCachePayload]",
+    key: tuple[object, ...],
+) -> _IndicadorCachePayload | None:
+    """Le um item e renova a posicao dele (chamar com o lock)."""
+    value = cache.get(key)
+    if value is not None:
+        cache.move_to_end(key)
+    return value
+
+
+def _put_indicador_cache(
+    cache: "OrderedDict[tuple[object, ...], _IndicadorCachePayload]",
+    key: tuple[object, ...],
+    value: _IndicadorCachePayload,
+    generation: int,
+) -> None:
+    """Grava um item como o mais recente e aplica o limite (chamar com o lock)."""
+    cache[key] = value
+    cache.move_to_end(key)
+    _prune_indicador_cache(cache, generation)
 
 
 def _cache_generation_from_key(cache_key: tuple[object, ...]) -> int:
@@ -825,26 +826,28 @@ def _build_indicador_dataset_cached(
         filters=filters,
     )
     generation = _cache_generation_from_key(dataset_cache_key)
-    now = time.monotonic()
 
     with _INDICADOR_CACHE_LOCK:
-        _prune_indicador_cache(_INDICADOR_SCOPE_BASE_CACHE, now, generation)
-        _prune_indicador_cache(_INDICADOR_DATASET_CACHE, now, generation)
+        _prune_indicador_cache(_INDICADOR_SCOPE_BASE_CACHE, generation)
+        _prune_indicador_cache(_INDICADOR_DATASET_CACHE, generation)
 
-        cached_dataset = _INDICADOR_DATASET_CACHE.get(dataset_cache_key)
+        cached_dataset = _get_indicador_cache(_INDICADOR_DATASET_CACHE, dataset_cache_key)
         if cached_dataset is not None:
-            return cached_dataset[1]
+            return cached_dataset
 
-        cached_scope = _INDICADOR_SCOPE_BASE_CACHE.get(scope_cache_key)
+        cached_scope = _get_indicador_cache(_INDICADOR_SCOPE_BASE_CACHE, scope_cache_key)
 
     if cached_scope is not None:
-        scope_base, perfil_df = cached_scope[1]
+        scope_base, perfil_df = cached_scope
     else:
         scope_base, perfil_df = _build_indicador_scope_base(**filters)
         with _INDICADOR_CACHE_LOCK:
-            now = time.monotonic()
-            _prune_indicador_cache(_INDICADOR_SCOPE_BASE_CACHE, now, generation)
-            _INDICADOR_SCOPE_BASE_CACHE[scope_cache_key] = (now, (scope_base, perfil_df))
+            _put_indicador_cache(
+                _INDICADOR_SCOPE_BASE_CACHE,
+                scope_cache_key,
+                (scope_base, perfil_df),
+                generation,
+            )
 
     result = _build_indicador_dataset(
         indicador,
@@ -855,9 +858,7 @@ def _build_indicador_dataset_cached(
     )
 
     with _INDICADOR_CACHE_LOCK:
-        now = time.monotonic()
-        _prune_indicador_cache(_INDICADOR_DATASET_CACHE, now, generation)
-        _INDICADOR_DATASET_CACHE[dataset_cache_key] = (now, result)
+        _put_indicador_cache(_INDICADOR_DATASET_CACHE, dataset_cache_key, result, generation)
 
     return result
 

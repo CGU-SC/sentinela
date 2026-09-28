@@ -696,3 +696,71 @@
   font-size: 0.7rem;
   font-weight: 600;
 }
+
+/* Tooltips HTML informativos da página de Análises (mapa e ranking de CRMs). */
+.p-tooltip.sentinela-tooltip.analysis-info-tooltip {
+  max-width: min(400px, calc(100vw - 2rem));
+  width: auto;
+}
+
+.p-tooltip.sentinela-tooltip.analysis-info-tooltip .p-tooltip-text {
+  width: 100%;
+  padding: 0;
+  white-space: normal;
+}
+
+.analysis-tooltip-content {
+  display: flex;
+  width: min(370px, calc(100vw - 2rem));
+  flex-direction: column;
+  gap: 0.58rem;
+  padding: 0.72rem 0.82rem;
+  color: var(--text-color-85);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.analysis-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: var(--text-color-85);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.018em;
+}
+
+.analysis-tooltip-heading i {
+  flex-shrink: 0;
+  color: var(--primary-color);
+  font-size: 0.78rem;
+}
+
+.analysis-tooltip-body,
+.analysis-tooltip-section p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.71rem;
+}
+
+.analysis-tooltip-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.58rem;
+}
+
+.analysis-tooltip-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--tabs-border);
+}
+
+.analysis-tooltip-section-label {
+  color: var(--primary-color);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}

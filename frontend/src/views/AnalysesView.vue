@@ -29,6 +29,7 @@ const {
   hasIgnoredFilters,
   isMapLoading,
   isRankingLoading,
+  isRankingPageLoading,
   mapError,
   rankingError,
   rankingPageError,
@@ -48,7 +49,7 @@ const ranking = computed(() => rankingResponse.value?.ranking ?? []);
 const rankingTotal = computed(() => rankingResponse.value?.qtd_medicos ?? 0);
 const rankingFirst = computed(() => (rankingPage.value - 1) * rankingPageSize.value);
 const rankingInitialLoading = computed(() => isRankingLoading.value && ranking.value.length === 0);
-const rankingPageLoading = computed(() => isRankingLoading.value && ranking.value.length > 0);
+const rankingPageLoading = computed(() => isRankingPageLoading.value && ranking.value.length > 0);
 
 watch(
   [() => filterStore.selectedUF, () => filterStore.selectedRegiaoSaude, () => filterStore.selectedMunicipio],
@@ -129,6 +130,7 @@ function onRankingPage(event) {
             :selected-ibge7="selectedMunicipioIbge7"
             :escopo="mapResponse?.escopo ?? 'Brasil'"
             :qtd-medicos="mapResponse?.qtd_medicos ?? 0"
+            :map-meta="mapResponse"
             :is-loading="isMapLoading"
             :error="mapError"
             @select-uf="onSelectUf"
@@ -143,6 +145,7 @@ function onRankingPage(event) {
             :error="rankingError"
             :page-error="rankingPageError"
             :is-page-loading="rankingPageLoading"
+            :is-refreshing="isRankingLoading"
             :total-records="rankingTotal"
             :first="rankingFirst"
             :page-size="rankingPageSize"

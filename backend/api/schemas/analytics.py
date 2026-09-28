@@ -524,11 +524,20 @@ class CrmPrescricoesMapaItemSchema(BaseModel):
     uf: str
     id_ibge7: Optional[int] = None
     id_regiao_saude: Optional[str] = None
-    nu_prescricoes_total: Optional[int] = None
+    no_regiao_saude: Optional[str] = None
     qtd_medicos_ativos: int
-    qtd_medicos_anomalos: int
-    percentual_medicos_anomalos: Optional[float] = None
-    media_prescricoes_dia: Optional[float] = None
+    # Medicos com pelo menos um mes acima do P95 nacional do mes
+    qtd_medicos_alta_intensidade: int
+    percentual_alta_intensidade: Optional[float] = None
+    # Multiplo da referencia (1,0 = igual a media). A referencia soma os
+    # territorios do mesmo nivel: UFs do Brasil no mapa nacional; municipios do
+    # Brasil, da UF e da regiao de saude no mapa municipal.
+    indice_brasil: Optional[float] = None
+    indice_uf: Optional[float] = None
+    indice_regiao: Optional[float] = None
+    percentual_referencia_regiao: Optional[float] = None
+    # Municipio com poucos medicos ativos: sem cor de risco no mapa
+    amostra_pequena: bool = False
 
 
 class CrmPrescricoesRankingItemSchema(BaseModel):
@@ -537,12 +546,13 @@ class CrmPrescricoesRankingItemSchema(BaseModel):
     nu_crm: Optional[int] = None
     sg_uf: Optional[str] = None
     no_medico: Optional[str] = None
+    # prescricoes / dias com prescricao no periodo e no escopo consultado
     taxa_prescricoes_dia: float
     nu_prescricoes: int
-    dias_calendario: int
+    qtd_dias_com_prescricao: int
     qtd_meses_ativos: int
-    qtd_meses_anomalos: int
-    percentual_meses_anomalos: Optional[float] = None
+    qtd_meses_alta_intensidade: int
+    percentual_meses_alta_intensidade: float
 
 
 class CrmPrescricoesAnaliseResponse(BaseModel):
@@ -555,6 +565,13 @@ class CrmPrescricoesAnaliseResponse(BaseModel):
     ranking_page_size: int
     mapa: List[CrmPrescricoesMapaItemSchema]
     ranking: List[CrmPrescricoesRankingItemSchema]
+    # Somente nas respostas do mapa (map_only)
+    percentual_referencia_brasil: Optional[float] = None
+    percentual_referencia_uf: Optional[float] = None
+    percentual_referencia_regiao: Optional[float] = None
+    limiar_p95_min: Optional[float] = None
+    limiar_p95_max: Optional[float] = None
+    min_medicos_amostra_municipio: Optional[int] = None
 
 
 class PrescritoresResponse(BaseModel):

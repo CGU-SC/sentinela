@@ -55,6 +55,9 @@ export function useCrmPrescricoesAnalysis(mapLevel) {
   const rankingResponse = ref(null);
   const isMapLoading = ref(false);
   const isRankingLoading = ref(false);
+  // Troca de pagina do ranking (mostra o aviso "Carregando pagina..."); a troca de
+  // filtros usa so isRankingLoading e mantem a tabela anterior ate a nova resposta.
+  const isRankingPageLoading = ref(false);
   const mapError = ref(null);
   const rankingError = ref(null);
   const rankingPageError = ref(null);
@@ -132,11 +135,12 @@ export function useCrmPrescricoesAnalysis(mapLevel) {
     const currentRankingId = ++rankingRequestId;
     const requestParams = { ...params.value };
 
-    mapResponse.value = null;
-    rankingResponse.value = null;
+    // Mapa e ranking mantem os dados anteriores ate a nova resposta chegar, como em
+    // /estabelecimentos: a troca fica suave em vez de esvaziar e piscar.
     activeRankingParams = requestParams;
     isMapLoading.value = true;
     isRankingLoading.value = true;
+    isRankingPageLoading.value = false;
     mapError.value = null;
     rankingError.value = null;
     rankingPageError.value = null;
@@ -166,6 +170,7 @@ export function useCrmPrescricoesAnalysis(mapLevel) {
     const currentAnalysisId = analysisRequestId;
     const currentRankingId = ++rankingRequestId;
     isRankingLoading.value = true;
+    isRankingPageLoading.value = true;
     rankingPageError.value = null;
     try {
       const response = await axios.get(API_ENDPOINTS.analyticsCrmPrescricoesAnalise, {
@@ -191,6 +196,7 @@ export function useCrmPrescricoesAnalysis(mapLevel) {
     } finally {
       if (currentAnalysisId === analysisRequestId && currentRankingId === rankingRequestId) {
         isRankingLoading.value = false;
+        isRankingPageLoading.value = false;
       }
     }
   }
@@ -212,6 +218,7 @@ export function useCrmPrescricoesAnalysis(mapLevel) {
     hasIgnoredFilters,
     isMapLoading,
     isRankingLoading,
+    isRankingPageLoading,
     mapError,
     rankingError,
     rankingPageError,
