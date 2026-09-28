@@ -1326,7 +1326,7 @@ def generate_nota_tecnica(
     multiplicador_brasil_unidade = _vez_ou_vezes(float(regional_comp["multiplicador_brasil"] or 0.0))
     qtd_farmacias = regional_comp["qtd_farmacias"]
     farmacia_txt = "farmácia" if qtd_farmacias == 1 else "farmácias"
-    que_opera_txt = "que opera" if qtd_farmacias == 1 else "que operam"
+    que_registra_txt = "que registrou" if qtd_farmacias == 1 else "que registraram"
     localizada_txt = "localizada" if qtd_farmacias == 1 else "localizadas"
     qtd_municipios = len(regional_comp["municipios"])
     municipio_txt = "município" if qtd_municipios == 1 else "municípios"
@@ -1344,7 +1344,7 @@ def generate_nota_tecnica(
     )
     _run(p_regional_53, ' que contempla ', color='0F172A', size=12)
     _run(p_regional_53, f'{qtd_farmacias} {farmacia_txt}', color='334155', size=12, underline=True)
-    _run(p_regional_53, f' {que_opera_txt} no PFPB, {localizada_txt} em {qtd_municipios} {municipio_txt} do Estado ({regional_comp["uf"]}): {municipios_txt}.', color='0F172A', size=12)
+    _run(p_regional_53, f' {que_registra_txt} dispensações no PFPB no período analisado, {localizada_txt} em {qtd_municipios} {municipio_txt} do Estado ({regional_comp["uf"]}): {municipios_txt}.', color='0F172A', size=12)
 
     p_geo_ampliado = doc.add_paragraph()
     _run(p_geo_ampliado, 'Ampliando-se o comparativo geográfico, o percentual equivale a ', color='0F172A', size=12)

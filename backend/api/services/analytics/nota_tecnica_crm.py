@@ -2086,7 +2086,7 @@ def _add_crms_irregulares_text(
     _format_crm_table_title(title)
     _run(
         title,
-        f"Tabela {tabela_num} - Principais médicos com CRM irregular ou inválido no detalhamento operacional das vendas lançadas pela Farmácia {razao_social} (CNPJ {cnpj_fmt}) no Sistema Autorizador de Vendas, no período {periodo_intervalo}.",
+        f"Tabela {tabela_num} - TOP {len(irregulares_comp['top_irregulares'])} Médicos com CRM irregular ou inválido vinculados a vendas lançadas pela Farmácia {razao_social} (CNPJ {cnpj_fmt}) no Sistema Autorizador de Vendas, no período {periodo_intervalo}.",
         color="334155",
         size=8,
         bold=True,
