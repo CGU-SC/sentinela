@@ -24,6 +24,7 @@ sqlalchemy                    # Gerenciamento profissional de banco de dados
 pydantic                      # Validação de dados (usado pelo FastAPI)
 httpx                         # Cliente HTTP para testes de integração
 polars                        # Engine columnar in-memory para queries analíticas (Modo 3)
+pyroaring                     # Bitmaps Roaring do indice CRM (filtros de farmacia em /analises)
 python-docx                   # Geração de documentos Word (.docx)业务
 docx2pdf                      # Conversao DOCX -> PDF usando Microsoft Word no Windows
 pywin32                       # Automacao COM do Microsoft Word para conversao DOCX/PDF

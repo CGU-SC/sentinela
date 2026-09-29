@@ -1,5 +1,6 @@
 import sys
 import os
+import threading
 import json
 import time
 import pandas as pd
@@ -4358,6 +4359,13 @@ def _sync_crm_medico_territorio_mes(engine, progress_callback=None):
         progress_callback(100)
 
 
+# Blocos de 50 mil linhas nas tabelas anuais (medico x ano e farmacia x medico x
+# ano). Cada ano vem ordenado por territorio (ou por medico, na farmacia), entao
+# blocos menores deixam a leitura pular quase tudo: o ranking de uma UF le 0,01 a
+# 0,04 s em vez de 0,13 a 0,19 s (medido na territorio_ano), com arquivo ~3% maior.
+_CRM_MEDICO_ANO_ROW_GROUP = 50_000
+
+
 def _sync_crm_medico_ano(
     engine,
     *,
@@ -4453,7 +4461,7 @@ def _sync_crm_medico_ano(
                 raise RuntimeError(f"Fonte {source_table} sem registros para o ano {ano}.")
             df_part = pl.concat(chunks).select(list(schema.keys()))
             tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
-            df_part.write_parquet(tmp_path, compression="zstd", row_group_size=250_000)
+            df_part.write_parquet(tmp_path, compression="zstd", row_group_size=_CRM_MEDICO_ANO_ROW_GROUP)
             os.replace(tmp_path, output_path)
             parts[key] = {"status": "done", "rows": df_part.height, "file": output_path.name}
             write_manifest(manifest)
@@ -4468,7 +4476,7 @@ def _sync_crm_medico_ano(
     print(f"   -> Consolidando {cache_key}...")
     tmp_final = final_path + ".tmp"
     pl.scan_parquet([str(path) for path in part_paths]).select(list(schema.keys())).sink_parquet(
-        tmp_final, compression="zstd", row_group_size=250_000,
+        tmp_final, compression="zstd", row_group_size=_CRM_MEDICO_ANO_ROW_GROUP,
     )
     os.replace(tmp_final, final_path)
 
@@ -5544,6 +5552,30 @@ def scan_crm_mapa_uf_periodo() -> pl.LazyFrame:
 
 def scan_dados_medico() -> pl.LazyFrame:
     return _scan_on_demand_global_parquet("dados_medico", _DADOS_MEDICO_PARQUET_PATH)
+
+
+# Cadastro de medicos em memoria (~50 MB), carregado no primeiro uso e nao no
+# arranque. Buscar nome/CRM de poucos medicos passa de ~0,1 s (abrir o .smod a
+# cada consulta) para ~0,004 s. Recarrega sozinho se o arquivo for sincronizado
+# de novo (assinatura = data e tamanho do arquivo).
+_DADOS_MEDICO_MEMORIA: tuple[tuple, pl.DataFrame] | None = None
+_DADOS_MEDICO_MEMORIA_LOCK = threading.Lock()
+
+
+def get_dados_medico_df() -> pl.DataFrame:
+    """Cadastro de medicos (mesmo conteudo de scan_dados_medico), em memoria."""
+    global _DADOS_MEDICO_MEMORIA
+    assinatura = get_global_cache_signature("dados_medico")
+    atual = _DADOS_MEDICO_MEMORIA
+    if atual is not None and atual[0] == assinatura:
+        return atual[1]
+    with _DADOS_MEDICO_MEMORIA_LOCK:
+        atual = _DADOS_MEDICO_MEMORIA
+        if atual is not None and atual[0] == assinatura:
+            return atual[1]
+        df = scan_dados_medico().collect()
+        _DADOS_MEDICO_MEMORIA = (assinatura, df)
+        return df
 
 
 def get_medicamentos_df() -> pl.DataFrame:
