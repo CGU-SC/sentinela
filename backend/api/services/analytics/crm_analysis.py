@@ -31,6 +31,17 @@ MAX_DATA = date(2024, 12, 31)
 # "amostra pequena" no mapa (sem cor de risco): o percentual oscila demais.
 CRM_MAPA_MIN_MEDICOS_ATIVOS_MUNICIPIO = 20
 MapLevel = Literal["uf", "municipio", "regiao"]
+RANKING_SORT_FIELDS = frozenset({
+    "no_medico", "taxa_prescricoes_dia", "nu_prescricoes",
+    "qtd_dias_com_prescricao", "qtd_meses_ativos",
+    "qtd_meses_alta_intensidade", "percentual_meses_alta_intensidade",
+    "nu_prescricoes_farmacias_filtradas",
+    "percentual_prescricoes_farmacias_filtradas",
+})
+RANKING_FILTERED_SORT_FIELDS = frozenset({
+    "nu_prescricoes_farmacias_filtradas",
+    "percentual_prescricoes_farmacias_filtradas",
+})
 CRM_ANALYSIS_REQUIRED_LIMIAR_COLUMNS = {
     "competencia",
     "qtd_medicos_ativos",
@@ -754,8 +765,11 @@ def _montar_resposta_ranking(
     fim: date,
     page: int,
     page_size: int,
+    sort_field: str,
+    sort_order: str,
     manager_map: Optional[list[CrmPrescricoesMapaItemSchema]],
     prescricoes_filtradas: Optional[Callable[[list[str]], pl.DataFrame]] = None,
+    prescricoes_filtradas_completas: Optional[Callable[[], pl.DataFrame]] = None,
 ) -> CrmPrescricoesAnaliseResponse:
     """Pagina o ranking agregado (1 linha por medico) e completa nome/CRM da pagina.
 
@@ -779,18 +793,46 @@ def _montar_resposta_ranking(
             filtro_farmacias_ativo=farmacias_filtradas,
         )
 
+    if sort_field in RANKING_FILTERED_SORT_FIELDS:
+        if prescricoes_filtradas_completas is None:
+            raise HTTPException(status_code=422, detail="Ordenacao por farmacias filtradas exige filtro de farmacia ativo.")
+        filtradas = prescricoes_filtradas_completas()
+        ranking_aggregated = ranking_aggregated.join(filtradas, on="id_medico", how="left")
+        if ranking_aggregated.get_column("nu_prescricoes_farmacias_filtradas").null_count():
+            raise HTTPException(status_code=503, detail="Ranking com medico sem prescricoes nas farmacias filtradas.")
+        ranking_aggregated = ranking_aggregated.with_columns(
+            (pl.col("nu_prescricoes_farmacias_filtradas") / pl.col("nu_prescricoes") * 100)
+            .alias("percentual_prescricoes_farmacias_filtradas")
+        )
+    elif sort_field == "no_medico":
+        try:
+            medico_df = get_dados_medico_df()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Cache de dados dos medicos indisponivel: {exc}") from exc
+        _require_columns(medico_df, CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos medicos")
+        ranking_aggregated = ranking_aggregated.join(
+            medico_df.select(["id_medico", "no_medico"]).unique(subset=["id_medico"], keep="first"),
+            on="id_medico", how="left",
+        )
+
     ranking_offset = (page - 1) * page_size
     ranking_limit = min(ranking_offset + page_size, ranking_total)
+    sort_columns = [sort_field, "id_medico"]
+    sort_descending = [sort_order == "desc", False]
+    if sort_field == "taxa_prescricoes_dia":
+        sort_columns = ["taxa_prescricoes_dia", "nu_prescricoes", "id_medico"]
+        sort_descending = [sort_order == "desc", True, False]
     ranking_scope = (
         ranking_aggregated
         .top_k(
             ranking_limit,
-            by=["taxa_prescricoes_dia", "nu_prescricoes", "id_medico"],
-            reverse=[False, False, True],
+            by=sort_columns,
+            reverse=[not descending for descending in sort_descending],
         )
         .sort(
-            ["taxa_prescricoes_dia", "nu_prescricoes", "id_medico"],
-            descending=[True, True, False],
+            sort_columns,
+            descending=sort_descending,
+            nulls_last=True,
         )
         .slice(ranking_offset, page_size)
         .with_row_index("rank")
@@ -819,8 +861,10 @@ def _montar_resposta_ranking(
         raise HTTPException(status_code=503, detail=f"Cache de dados dos medicos indisponivel: {exc}") from exc
     _require_columns(medico_df, CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos medicos")
     medico_df = medico_df.unique(subset=["id_medico"], keep="first")
+    if sort_field == "no_medico":
+        ranking_scope = ranking_scope.drop("no_medico")
     ranking_scope = ranking_scope.join(medico_df, on="id_medico", how="left")
-    if prescricoes_filtradas is not None:
+    if prescricoes_filtradas is not None and sort_field not in RANKING_FILTERED_SORT_FIELDS:
         filtradas = prescricoes_filtradas(ranking_scope.get_column("id_medico").to_list())
         ranking_scope = ranking_scope.join(filtradas, on="id_medico", how="left")
         if ranking_scope.get_column("nu_prescricoes_farmacias_filtradas").null_count():
@@ -966,6 +1010,8 @@ def get_crm_prescricoes_analise(
     map_level: str = "uf",
     page: int = 1,
     page_size: int = 25,
+    sort_field: str = "taxa_prescricoes_dia",
+    sort_order: str = "desc",
     include_map: bool = True,
     map_only: bool = False,
     data_inicio: Optional[date] = None,
@@ -999,6 +1045,10 @@ def get_crm_prescricoes_analise(
         raise HTTPException(status_code=422, detail="page deve ser maior ou igual a 1.")
     if page_size < 1 or page_size > 100:
         raise HTTPException(status_code=422, detail="page_size deve estar entre 1 e 100.")
+    if sort_field not in RANKING_SORT_FIELDS:
+        raise HTTPException(status_code=422, detail="Coluna de ordenacao invalida para o ranking de medicos.")
+    if sort_order not in {"asc", "desc"}:
+        raise HTTPException(status_code=422, detail="sort_order deve ser asc ou desc.")
 
     if map_level not in {"uf", "municipio", "regiao"}:
         raise HTTPException(status_code=422, detail="map_level deve ser uf, municipio ou regiao.")
@@ -1127,7 +1177,7 @@ def get_crm_prescricoes_analise(
         if page < 1 or page_size < 1 or page_size > 100:
             raise HTTPException(status_code=422, detail="Pagina ou tamanho de pagina invalido.")
         try:
-            ranking_aggregated, prescricoes_filtradas = ranking_filtrado(
+            ranking_aggregated, prescricoes_filtradas, prescricoes_filtradas_completas = ranking_filtrado(
                 filtros=filtros_farmacia,
                 inicio=inicio,
                 fim=fim,
@@ -1150,8 +1200,11 @@ def get_crm_prescricoes_analise(
             fim=fim,
             page=page,
             page_size=page_size,
+            sort_field=sort_field,
+            sort_order=sort_order,
             manager_map=manager_map,
             prescricoes_filtradas=prescricoes_filtradas,
+            prescricoes_filtradas_completas=prescricoes_filtradas_completas,
         )
 
     try:
@@ -1173,5 +1226,7 @@ def get_crm_prescricoes_analise(
         fim=fim,
         page=page,
         page_size=page_size,
+        sort_field=sort_field,
+        sort_order=sort_order,
         manager_map=manager_map,
     )

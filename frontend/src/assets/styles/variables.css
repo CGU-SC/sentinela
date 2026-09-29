@@ -19,6 +19,9 @@
   --sidebar-text: #A1A1AA;
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-input-bg: rgba(255, 255, 255, 0.06);
+  --sidebar-heading-tint: rgba(57, 140, 186, 0.14);
+  --sidebar-heading-hover: rgba(57, 140, 186, 0.21);
+  --sidebar-heading-icon: #66b0d8;
   --navbar-bg: #f8fafc;
   --navbar-border: #e2e8f0;
 
@@ -82,6 +85,9 @@
   --sidebar-text: #e6edf3;
   --sidebar-border: #30363d;
   --sidebar-input-bg: #161b22;
+  --sidebar-heading-tint: rgba(57, 140, 186, 0.14);
+  --sidebar-heading-hover: rgba(57, 140, 186, 0.21);
+  --sidebar-heading-icon: #66b0d8;
   --navbar-bg: #0d1117;
   --navbar-border: #30363d;
 

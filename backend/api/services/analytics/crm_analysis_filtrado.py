@@ -289,7 +289,7 @@ def _prescricoes_nas_farmacias(
     inicio: date,
     fim: date,
 ) -> pl.DataFrame:
-    """Soma das prescricoes dos medicos (so os da pagina) nas farmacias do escopo."""
+    """Soma das prescricoes dos medicos solicitados nas farmacias do escopo."""
     anos, meses = base._dividir_periodo_ranking(inicio, fim)
     dim = (
         scan_crm_medico_dim()
@@ -341,11 +341,11 @@ def ranking_filtrado(
     uf: Optional[str],
     regiao_id: Optional[int],
     id_ibge7: Optional[int],
-) -> tuple[pl.DataFrame, Callable[[list[str]], pl.DataFrame]]:
+) -> tuple[pl.DataFrame, Callable[[list[str]], pl.DataFrame], Callable[[], pl.DataFrame]]:
     """Ranking do escopo restrito aos medicos das farmacias filtradas.
 
-    Devolve o agregado (mesmas colunas do ranking sem filtro) e a funcao que
-    soma, para os medicos da pagina, as prescricoes nas farmacias filtradas.
+    Devolve o agregado, a soma dos medicos da pagina e a soma completa sob
+    demanda para ordenar pelas colunas das farmacias filtradas.
     """
     if id_ibge7 is not None:
         nivel, territorio = "municipio", str(id_ibge7)
@@ -375,4 +375,15 @@ def ranking_filtrado(
 
     agregado = _em_cache(("ranking", nivel, territorio, _chave_filtros(filtros), inicio, fim), calcular)
     cnpjs = _cnpjs(_farmacias(filtros, inicio, fim), nivel, territorio)
-    return agregado, lambda id_medicos: _prescricoes_nas_farmacias(id_medicos, cnpjs, inicio, fim)
+    def prescricoes_pagina(id_medicos: list[str]) -> pl.DataFrame:
+        return _prescricoes_nas_farmacias(id_medicos, cnpjs, inicio, fim)
+
+    def prescricoes_completas() -> pl.DataFrame:
+        return _em_cache(
+            ("ranking_prescricoes_completas", nivel, territorio, _chave_filtros(filtros), inicio, fim),
+            lambda: _prescricoes_nas_farmacias(
+                agregado.get_column("id_medico").to_list(), cnpjs, inicio, fim,
+            ),
+        )
+
+    return agregado, prescricoes_pagina, prescricoes_completas

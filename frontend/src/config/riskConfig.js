@@ -20,6 +20,9 @@ export const AUDIT_THRESHOLDS = {
   HIGH_VALUE: 150000, // Valores acima de 150K recebem destaque especial
 };
 
+/** Destaque visual da taxa diária no ranking de médicos em Análises. */
+export const CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD = 20;
+
 /** Paleta de cores hex associada a cada nível (para uso em ECharts e CSS via v-bind). */
 export { RISK_COLORS } from './colors.js';
 

@@ -2169,7 +2169,7 @@ const clearSearch = () => {
   min-height: 2rem;
   width: 100%;
   padding: 0.35rem 0.45rem 0.2rem 0.45rem;
-  background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+  background: var(--sidebar-heading-tint);
   border: 0;
   color: var(--sidebar-text);
   font-size: 0.64rem;
@@ -2183,7 +2183,7 @@ const clearSearch = () => {
 }
 
 .sidebar-section-heading:hover {
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  background: var(--sidebar-heading-hover);
   color: var(--sidebar-text);
 }
 
@@ -2203,8 +2203,8 @@ const clearSearch = () => {
   min-width: 0;
 }
 
-.sidebar-section-heading > i {
-  color: var(--primary-color);
+.sidebar-section-heading span > i {
+  color: var(--sidebar-heading-icon);
   font-size: 0.72rem;
   opacity: 0.85;
 }
@@ -2221,8 +2221,8 @@ const clearSearch = () => {
   height: 1.15rem;
   padding: 0 0.32rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--primary-color) 16%, var(--sidebar-bg));
-  color: var(--primary-color);
+  background: color-mix(in srgb, var(--sidebar-heading-icon) 18%, var(--sidebar-bg));
+  color: var(--sidebar-heading-icon);
   font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0;
@@ -2233,7 +2233,7 @@ const clearSearch = () => {
 }
 
 .sidebar-section-heading.searching small {
-  background: color-mix(in srgb, var(--primary-color) 26%, var(--sidebar-bg));
+  background: color-mix(in srgb, var(--sidebar-heading-icon) 28%, var(--sidebar-bg));
 }
 
 .sidebar-section-chevron {
@@ -2362,7 +2362,6 @@ const clearSearch = () => {
 
 .filter-section:has(.filter-active),
 .filter-section:has(.filter-active-box) {
-  border-left-color: var(--primary-color);
   background: color-mix(in srgb, var(--primary-color) 8%, transparent);
 }
 
@@ -2495,10 +2494,11 @@ const clearSearch = () => {
 :global(.admin-sidebar .p-inputtext:not(.p-dropdown-label):focus),
 :global(.admin-sidebar .filter-active.p-dropdown),
 :global(.admin-sidebar .filter-active.p-inputtext:not(.p-dropdown-label)) {
-  border: 2px solid color-mix(in srgb, var(--primary-color) 50%, transparent) !important;
+  border: 1px solid
+    color-mix(in srgb, var(--primary-color) 30%, transparent) !important;
   background: rgba(255, 255, 255, 0.03) !important;
-  box-shadow: 0 0 0 2px
-    color-mix(in srgb, var(--primary-color) 15%, transparent) !important;
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--primary-color) 8%, transparent) !important;
   outline: none !important;
 }
 

@@ -42,6 +42,8 @@ router = APIRouter()
 def get_crm_prescricoes_analise(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
+    sort_field: str = Query("taxa_prescricoes_dia"),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
     include_map: bool = Query(True),
     map_only: bool = Query(False),
     map_level: str = Query("uf", description="Nível do mapa: uf, municipio ou regiao."),
@@ -76,6 +78,8 @@ def get_crm_prescricoes_analise(
     return AnalyticsService.get_crm_prescricoes_analise(
         page=page,
         page_size=page_size,
+        sort_field=sort_field,
+        sort_order=sort_order,
         include_map=include_map,
         map_only=map_only,
         map_level=map_level,

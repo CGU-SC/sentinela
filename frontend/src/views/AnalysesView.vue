@@ -33,6 +33,8 @@ const {
   rankingPageError,
   rankingPage,
   rankingPageSize,
+  rankingSortField,
+  rankingSortOrder,
   fetchRankingPage,
 } = useCrmPrescricoesAnalysis(mapLevel);
 
@@ -114,7 +116,12 @@ function onRankingPage(event) {
   const rows = event.rows ?? rankingPageSize.value;
   const first = event.first ?? 0;
   const page = Math.floor(first / rows) + 1;
-  fetchRankingPage(page, rows);
+  fetchRankingPage(page, rows, rankingSortField.value, rankingSortOrder.value);
+}
+
+function onRankingSort(event) {
+  if (!event.sortField || ![1, -1].includes(event.sortOrder)) return;
+  fetchRankingPage(1, rankingPageSize.value, event.sortField, event.sortOrder === 1 ? 'asc' : 'desc');
 }
 </script>
 
@@ -160,7 +167,10 @@ function onRankingPage(event) {
             :total-records="rankingTotal"
             :first="rankingFirst"
             :page-size="rankingPageSize"
+            :sort-field="rankingSortField"
+            :sort-order="rankingSortOrder"
             @page="onRankingPage"
+            @sort="onRankingSort"
             @select-medico="abrirHistorico"
           />
         </main>

@@ -3,6 +3,14 @@ import axios from 'axios';
 import { API_ENDPOINTS } from '@/config/api';
 
 const DEFAULT_RANKING_PAGE_SIZE = 25;
+const DEFAULT_RANKING_SORT_FIELD = 'taxa_prescricoes_dia';
+const DEFAULT_RANKING_SORT_ORDER = 'desc';
+const RANKING_SORT_FIELDS = new Set([
+  'no_medico', 'taxa_prescricoes_dia', 'nu_prescricoes',
+  'qtd_dias_com_prescricao', 'qtd_meses_ativos',
+  'qtd_meses_alta_intensidade', 'percentual_meses_alta_intensidade',
+  'nu_prescricoes_farmacias_filtradas', 'percentual_prescricoes_farmacias_filtradas',
+]);
 const MAX_CACHED_FILTERS = 8;
 const MAX_CACHED_PAGES_PER_FILTER = 6;
 const pendingMaps = new Map();
@@ -41,8 +49,8 @@ function mapRequestParams(params) {
   return Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'id_ibge7'));
 }
 
-function pageKey(page, pageSize) {
-  return `${page}:${pageSize}`;
+function pageKey(page, pageSize, sortField, sortOrder) {
+  return `${page}:${pageSize}:${sortField}:${sortOrder}`;
 }
 
 function newEntry() {
@@ -52,6 +60,8 @@ function newEntry() {
     pageOrder: [],
     lastPage: 1,
     lastPageSize: DEFAULT_RANKING_PAGE_SIZE,
+    lastSortField: DEFAULT_RANKING_SORT_FIELD,
+    lastSortOrder: DEFAULT_RANKING_SORT_ORDER,
   };
 }
 
@@ -84,6 +94,8 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
     rankingPageError: null,
     rankingPage: 1,
     rankingPageSize: DEFAULT_RANKING_PAGE_SIZE,
+    rankingSortField: DEFAULT_RANKING_SORT_FIELD,
+    rankingSortOrder: DEFAULT_RANKING_SORT_ORDER,
   }),
   actions: {
     touchEntry(key) {
@@ -105,6 +117,8 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       this.rankingResponseKey = null;
       this.rankingPage = 1;
       this.rankingPageSize = DEFAULT_RANKING_PAGE_SIZE;
+      this.rankingSortField = DEFAULT_RANKING_SORT_FIELD;
+      this.rankingSortOrder = DEFAULT_RANKING_SORT_ORDER;
     },
 
     async requestMap(key, params, version) {
@@ -129,8 +143,8 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       return pending;
     },
 
-    async requestRanking(key, params, version, page, pageSize) {
-      const requestKey = JSON.stringify([version, key, page, pageSize]);
+    async requestRanking(key, params, version, page, pageSize, sortField, sortOrder) {
+      const requestKey = JSON.stringify([version, key, page, pageSize, sortField, sortOrder]);
       let pending = pendingRankings.get(requestKey);
       if (!pending) {
         pending = axios.get(API_ENDPOINTS.analyticsCrmPrescricoesAnalise, {
@@ -138,6 +152,8 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
             ...params,
             page,
             page_size: pageSize,
+            sort_field: sortField,
+            sort_order: sortOrder,
             include_map: false,
             map_only: false,
           },
@@ -147,7 +163,7 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
             throw new ContractError('Resposta do ranking de CRMs com paginação divergente da solicitação.');
           }
           if (version === this.cacheVersion) {
-            rememberPage(this.touchEntry(key), pageKey(page, pageSize), data);
+            rememberPage(this.touchEntry(key), pageKey(page, pageSize, sortField, sortOrder), data);
           }
           return data;
         }).finally(() => pendingRankings.delete(requestKey));
@@ -171,18 +187,22 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       }
     },
 
-    async loadRanking(key, params, version, activationId, rankingRequestId, page, pageSize, isPageChange) {
+    async loadRanking(key, params, version, activationId, rankingRequestId, page, pageSize, sortField, sortOrder, isPageChange) {
       try {
-        const data = await this.requestRanking(key, params, version, page, pageSize);
+        const data = await this.requestRanking(key, params, version, page, pageSize, sortField, sortOrder);
         if (activationId === this.activationId && rankingRequestId === this.rankingRequestId
           && key === this.activeKey && version === this.cacheVersion) {
           this.rankingResponse = data;
           this.rankingResponseKey = key;
           this.rankingPage = data.ranking_page;
           this.rankingPageSize = data.ranking_page_size;
+          this.rankingSortField = sortField;
+          this.rankingSortOrder = sortOrder;
           const entry = this.touchEntry(key);
           entry.lastPage = data.ranking_page;
           entry.lastPageSize = data.ranking_page_size;
+          entry.lastSortField = sortField;
+          entry.lastSortOrder = sortOrder;
         }
       } catch (err) {
         if (activationId === this.activationId && rankingRequestId === this.rankingRequestId
@@ -211,17 +231,29 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       const previousRankingKey = this.rankingResponseKey;
       const previousPage = this.rankingPage;
       const previousPageSize = this.rankingPageSize;
+      const previousSortField = this.rankingSortField;
+      const previousSortOrder = this.rankingSortOrder;
       this.activeKey = key;
       this.activeParams = { ...params };
       const cached = this.cacheEntries[key];
       let page = cached?.lastPage ?? 1;
       let pageSize = cached?.lastPageSize ?? DEFAULT_RANKING_PAGE_SIZE;
-      const cachedRanking = cached?.pages[pageKey(page, pageSize)] ?? null;
+      let sortField = cached?.lastSortField ?? previousSortField;
+      let sortOrder = cached?.lastSortOrder ?? previousSortOrder;
+      if (!cached && key !== previousRankingKey
+        && (sortField === 'nu_prescricoes_farmacias_filtradas'
+          || sortField === 'percentual_prescricoes_farmacias_filtradas')) {
+        sortField = DEFAULT_RANKING_SORT_FIELD;
+        sortOrder = DEFAULT_RANKING_SORT_ORDER;
+      }
+      const cachedRanking = cached?.pages[pageKey(page, pageSize, sortField, sortOrder)] ?? null;
       this.mapResponse = cached?.map ?? previousMap;
       this.rankingResponse = cachedRanking ?? previousRanking;
       this.rankingResponseKey = cachedRanking ? key : previousRankingKey;
       this.rankingPage = cachedRanking ? page : previousPage;
       this.rankingPageSize = cachedRanking ? pageSize : previousPageSize;
+      this.rankingSortField = cachedRanking ? sortField : previousSortField;
+      this.rankingSortOrder = cachedRanking ? sortOrder : previousSortOrder;
       this.isMapLoading = !cached?.map;
       this.isRankingLoading = !cachedRanking;
       this.isRankingPageLoading = false;
@@ -242,18 +274,22 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
           this.resetCachedResponses();
           page = 1;
           pageSize = DEFAULT_RANKING_PAGE_SIZE;
+          sortField = DEFAULT_RANKING_SORT_FIELD;
+          sortOrder = DEFAULT_RANKING_SORT_ORDER;
           this.isMapLoading = true;
           this.isRankingLoading = true;
         }
         this.cacheVersion = status.cache_version;
         const entry = this.touchEntry(key);
-        const ranking = entry.pages[pageKey(page, pageSize)];
+        const ranking = entry.pages[pageKey(page, pageSize, sortField, sortOrder)];
         if (entry.map) this.mapResponse = entry.map;
         if (ranking) {
           this.rankingResponse = ranking;
           this.rankingResponseKey = key;
           this.rankingPage = ranking.ranking_page;
           this.rankingPageSize = ranking.ranking_page_size;
+          this.rankingSortField = sortField;
+          this.rankingSortOrder = sortOrder;
         }
         this.isMapLoading = !entry.map;
         this.isRankingLoading = !ranking;
@@ -261,7 +297,7 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
           entry.map ? Promise.resolve() : this.loadMap(key, params, status.cache_version, activationId),
           ranking ? Promise.resolve() : this.loadRanking(
             key, params, status.cache_version, activationId, rankingRequestId,
-            page, pageSize, false,
+            page, pageSize, sortField, sortOrder, false,
           ),
         ]);
       } catch (err) {
@@ -276,7 +312,10 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       }
     },
 
-    async fetchRankingPage(page, pageSize = this.rankingPageSize) {
+    async fetchRankingPage(
+      page, pageSize = this.rankingPageSize,
+      sortField = this.rankingSortField, sortOrder = this.rankingSortOrder,
+    ) {
       if (!this.rankingResponse || this.rankingResponseKey !== this.activeKey
         || this.isRankingLoading || !this.activeParams || this.cacheVersion === null) {
         this.rankingPageError = 'O ranking ainda não foi carregado para receber uma nova página.';
@@ -290,10 +329,20 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
         this.rankingPageError = 'O tamanho solicitado para a página do ranking é inválido.';
         return;
       }
+      if (!RANKING_SORT_FIELDS.has(sortField) || !['asc', 'desc'].includes(sortOrder)) {
+        this.rankingPageError = 'A ordenação solicitada para o ranking é inválida.';
+        return;
+      }
+      if ((sortField === 'nu_prescricoes_farmacias_filtradas'
+        || sortField === 'percentual_prescricoes_farmacias_filtradas')
+        && !this.rankingResponse.filtro_farmacias_ativo) {
+        this.rankingPageError = 'A ordenação por farmácias filtradas exige um filtro de farmácia ativo.';
+        return;
+      }
 
       const key = this.activeKey;
       const rankingRequestId = ++this.rankingRequestId;
-      const cached = this.cacheEntries[key]?.pages[pageKey(page, pageSize)];
+      const cached = this.cacheEntries[key]?.pages[pageKey(page, pageSize, sortField, sortOrder)];
       this.rankingPageError = null;
       if (cached) {
         this.isRankingLoading = false;
@@ -302,17 +351,21 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
         this.rankingResponseKey = key;
         this.rankingPage = cached.ranking_page;
         this.rankingPageSize = cached.ranking_page_size;
+        this.rankingSortField = sortField;
+        this.rankingSortOrder = sortOrder;
         const entry = this.touchEntry(key);
-        rememberPage(entry, pageKey(page, pageSize), cached);
+        rememberPage(entry, pageKey(page, pageSize, sortField, sortOrder), cached);
         entry.lastPage = this.rankingPage;
         entry.lastPageSize = this.rankingPageSize;
+        entry.lastSortField = sortField;
+        entry.lastSortOrder = sortOrder;
         return;
       }
 
       this.isRankingLoading = true;
       this.isRankingPageLoading = true;
       await this.loadRanking(key, { ...this.activeParams }, this.cacheVersion,
-        this.activationId, rankingRequestId, page, pageSize, true);
+        this.activationId, rankingRequestId, page, pageSize, sortField, sortOrder, true);
     },
   },
 });

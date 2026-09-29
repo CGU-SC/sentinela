@@ -368,10 +368,6 @@ function normalizeToOption(options, raw) {
 }
 
 function applyFilter(field, value) {
-  if (field === 'grandeRede') {
-    const valStr = typeof value === 'boolean' ? (value ? 'Sim' : 'Não') : value;
-    filterStore.selectedGrandeRede = normalizeToOption(FILTER_OPTIONS.grandeRede, valStr);
-  }
   if (field === 'conexaoMS') {
     const valStr = typeof value === 'boolean' ? (value ? 'Ativa' : 'Inativa') : value;
     filterStore.selectedMS = normalizeToOption(FILTER_OPTIONS.ms, valStr);
@@ -406,16 +402,11 @@ const indicatorColumnHeader = computed(() => {
 <template>
   <div class="ind-table-card">
     <div class="section-header">
-      <div class="header-icon-box">
-        <i class="pi pi-list" />
-      </div>
+      <i class="pi pi-list" aria-hidden="true" />
       <div class="header-text-box">
         <h3>Farmácias por Indicador</h3>
         <span v-if="error && tableSnapshot.cnpjs.length" class="subtitle subtitle--error" role="alert" v-tooltip.bottom="error">
           Falha ao atualizar · resultado anterior de {{ tableSnapshot.indicadorLabel }} exibido
-        </span>
-        <span v-else-if="isLoading && tableSnapshot.cnpjs.length" class="subtitle" role="status">
-          Atualizando resultados · resultado anterior de {{ tableSnapshot.indicadorLabel }} exibido
         </span>
         <span v-else class="subtitle">
           {{ tableSnapshot.indicadorLabel }} — {{ tableSnapshot.totalRecords }} estabelecimentos
@@ -696,23 +687,6 @@ const indicatorColumnHeader = computed(() => {
         </template>
       </Column>
 
-      <!-- Grande Rede -->
-      <Column
-        field="is_grande_rede"
-        header="Grande Rede"
-        headerClass="col-network-flag"
-        bodyClass="col-network-flag"
-      >
-        <template #body="{ data }">
-          <Tag
-            :value="data.is_grande_rede ? 'Sim' : 'Não'"
-            :class="[data.is_grande_rede ? 'status-info' : 'status-secondary', 'clickable-badge']"
-            v-tooltip.top="establishmentTableTooltip('largeNetworkFilter', data.is_grande_rede ? 'Sim' : 'Não')"
-            @click.stop="applyFilter('grandeRede', data.is_grande_rede)"
-          />
-        </template>
-      </Column>
-
       <!-- Estabelecimentos da Rede -->
       <Column
         field="qtd_estabelecimentos_rede"
@@ -975,9 +949,15 @@ const indicatorColumnHeader = computed(() => {
 .section-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1.25rem 1.5rem;
+  gap: 0.75rem;
+  padding: 0.85rem 1.15rem;
   border-bottom: 1px solid var(--tabs-border);
+}
+
+.section-header > .pi-list {
+  color: var(--primary-color);
+  font-size: 1rem;
+  flex-shrink: 0;
 }
 
 .header-text-box {
@@ -1044,29 +1024,19 @@ const indicatorColumnHeader = computed(() => {
   color: var(--risk-indicator-critical, #ef4444);
 }
 
-.header-icon-box {
-  width: 42px;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-  color: var(--primary-color);
-  border-radius: 10px;
-  font-size: 1.1rem;
-  flex-shrink: 0;
-}
-
 .header-text-box h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--text-color-85);
 }
 
 .subtitle {
-  font-size: 0.82rem;
+  margin-top: 0.16rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
   display: block;
   overflow: hidden;
@@ -1422,6 +1392,11 @@ const indicatorColumnHeader = computed(() => {
   padding-left: 1.25rem;
 }
 
+:deep(.ind-cnpj-table .p-datatable-thead > tr > th:last-child),
+:deep(.ind-cnpj-table .p-datatable-tbody > tr > td:last-child) {
+  padding-right: 1.25rem;
+}
+
 :deep(.ind-cnpj-table .p-datatable-tbody > tr > td) {
   color: var(--text-color-85) !important;
 }
@@ -1455,22 +1430,15 @@ const indicatorColumnHeader = computed(() => {
   text-align: right;
 }
 
-:deep(.ind-cnpj-table .col-network-flag) {
-  width: 7%;
-  text-align: center;
-  padding-left: 0.25rem;
-  padding-right: 0.25rem;
-}
-
 :deep(.ind-cnpj-table .col-network-count) {
-  width: 7%;
+  width: 8%;
   text-align: center;
   padding-left: 0.25rem;
   padding-right: 0.25rem;
 }
 
 :deep(.ind-cnpj-table .col-badge-filter) {
-  width: 7%;
+  width: 9%;
   text-align: center;
   padding-left: 0.25rem;
   padding-right: 0.25rem;
@@ -1500,7 +1468,6 @@ const indicatorColumnHeader = computed(() => {
 
 :deep(.ind-cnpj-table .col-risk .p-column-header-content),
 :deep(.ind-cnpj-table .col-extra .p-column-header-content),
-:deep(.ind-cnpj-table .col-network-flag .p-column-header-content),
 :deep(.ind-cnpj-table .col-network-count .p-column-header-content),
 :deep(.ind-cnpj-table .col-badge-filter .p-column-header-content) {
   justify-content: center;
@@ -1517,18 +1484,6 @@ const indicatorColumnHeader = computed(() => {
 }
 
 :deep(.ind-cnpj-table .col-badge-filter .p-tag-value) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:deep(.ind-cnpj-table .col-network-flag .p-tag) {
-  max-width: 100%;
-  padding-left: 0.38rem;
-  padding-right: 0.38rem;
-}
-
-:deep(.ind-cnpj-table .col-network-flag .p-tag-value) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

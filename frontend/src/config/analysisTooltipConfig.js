@@ -27,7 +27,7 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
   },
   crmRanking: {
     title: 'Ranking de médicos por taxa diária',
-    body: 'Médicos com prescrição no escopo e no período selecionados, ordenados pela maior taxa diária.',
+    body: 'Médicos com prescrição no escopo e no período selecionados. A posição segue a coluna e a direção de ordenação escolhidas; inicialmente, a tabela mostra as maiores taxas diárias.',
     icon: 'pi-sort-amount-down',
     sections: [
       {
@@ -42,6 +42,10 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
         label: '% meses com taxa elevada',
         text: 'Meses com taxa elevada ÷ meses com prescrição no período.',
       },
+        {
+          label: 'Colunas agrupadas',
+          text: 'Produção ordena pelo número de prescrições; Meses com taxa elevada ordena pelo percentual; Farmácias filtradas, quando presente, ordena pelas prescrições nessas farmácias. Os valores complementares aparecem abaixo em cada célula.',
+        },
     ],
   },
   crmHistorico: {
