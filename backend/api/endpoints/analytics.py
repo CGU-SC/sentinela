@@ -11,7 +11,7 @@ from ..schemas.analytics import (
     PrescritoresResponse, DadosFarmaciaSchema, CnpjAccessStatusSchema, MovimentacaoResponse, IndicadorAnaliseResponse,
     IndicadorCnpjPageResponse,
     PercentilesAnimationResponse, CrmTimelineDatasetResponse,
-    CrmMedicoAlertasResponse, CrmRaioXResponse,
+    CrmMedicoAlertasResponse, CrmMedicoAtuacaoResponse, CrmRaioXResponse,
     EvolucaoMensalGtinResponse, GtinDetalhamentoMensalResponse, RepassesResponse,
     SociosResponse, IntegrityAlertsResponse, NetworkResponse,
     CnpjBootstrapResponse,
@@ -645,6 +645,16 @@ def get_crm_medico_alertas(
 ):
     """Retorna alertas detalhados de um CRM especifico sob demanda."""
     return AnalyticsService.get_crm_medico_alertas(cnpj, id_medico, data_inicio=data_inicio, data_fim=data_fim)
+
+@router.get("/cnpj/{cnpj}/crm/medico-atuacao/{id_medico:path}", response_model=CrmMedicoAtuacaoResponse)
+def get_crm_medico_atuacao(
+    cnpj: str,
+    id_medico: str,
+    data_inicio: Optional[str] = Query(None, description="Início do período (YYYY-MM-DD ou YYYY-MM)"),
+    data_fim:    Optional[str] = Query(None, description="Fim do período (YYYY-MM-DD ou YYYY-MM)"),
+):
+    """Atuação mensal de um CRM na farmácia (modal aberto a partir do histórico do CRM)."""
+    return AnalyticsService.get_crm_medico_atuacao(cnpj, id_medico, data_inicio=data_inicio, data_fim=data_fim)
 
 @router.get("/cnpj/{cnpj}/crm/timeline-dataset", response_model=CrmTimelineDatasetResponse)
 def get_crm_timeline_dataset(

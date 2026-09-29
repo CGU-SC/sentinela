@@ -40,6 +40,7 @@ export const API_ENDPOINTS = {
   analyticsCrmPrescricoesAnalise: `${BASE_URL}/api/v1/analytics/crm-prescricoes-analise`,
   analyticsCrmMedicoHistorico: `${BASE_URL}/api/v1/analytics/crm-medico-historico`,
   analyticsCrmMedicoAlertas: (cnpj, idMedico) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/medico-alertas/${encodeURIComponent(idMedico)}`,
+  analyticsCrmMedicoAtuacao: (cnpj, idMedico) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/medico-atuacao/${encodeURIComponent(idMedico)}`,
   analyticsCrmTimelineDataset: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/timeline-dataset`,
   analyticsCrmRaioXExport: (cnpj, inicio, fim, formato) => {
     const params = new URLSearchParams({ formato });

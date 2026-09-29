@@ -11,6 +11,7 @@ from cache_producers.network import (
 from .crm import (
     get_crm_data,
     get_crm_medico_alertas,
+    get_crm_medico_atuacao,
     get_crm_raio_x,
     get_crm_timeline_dataset,
 )
@@ -102,6 +103,7 @@ class AnalyticsService:
     get_crm_prescricoes_analise = staticmethod(get_crm_prescricoes_analise)
     get_crm_medico_historico = staticmethod(get_crm_medico_historico)
     get_crm_medico_alertas = staticmethod(get_crm_medico_alertas)
+    get_crm_medico_atuacao = staticmethod(get_crm_medico_atuacao)
     get_crm_timeline_dataset = staticmethod(get_crm_timeline_dataset)
     sync_crm_raiox_tx = staticmethod(sync_crm_raiox_tx)
     get_crm_raio_x = staticmethod(get_crm_raio_x)

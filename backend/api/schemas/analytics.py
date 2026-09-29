@@ -676,6 +676,16 @@ class PrescritoresResponse(BaseModel):
     query_time_ms: Optional[float] = None
     save_time_ms: Optional[float] = None
 
+class CrmMedicoAtuacaoResponse(BaseModel):
+    """Atuação de um CRM numa farmácia (mesmo contrato da tabela de CRMs do CNPJ)."""
+    cnpj: str
+    # Item do médico em crms_interesse de /cnpj/{cnpj}/crm-data.
+    medico: dict
+    # Eixo comum da farmácia no período (competências YYYYMM).
+    competencia_inicio_periodo: int
+    competencia_fim_periodo: int
+    serie_mensal_farmacia: list
+
 class CrmMedicoAlertasResponse(BaseModel):
     cnpj: str
     id_medico: str

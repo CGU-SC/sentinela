@@ -3,8 +3,8 @@
  * Histórico completo de um CRM (clique numa linha do ranking de /analises).
  *
  * Indicadores, pontos de atenção, tabela de farmácias e mapa de calor usam o
- * período filtrado; a linha do tempo mostra todo o histórico, com o período
- * sombreado. Dados: GET /analytics/crm-medico-historico.
+ * período filtrado; a linha do tempo mostra todo o histórico.
+ * Dados: GET /analytics/crm-medico-historico.
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -17,7 +17,6 @@ import { BarChart, HeatmapChart, LineChart, ScatterChart } from 'echarts/charts'
 import {
   DataZoomComponent,
   GridComponent,
-  MarkAreaComponent,
   MarkLineComponent,
   TooltipComponent,
   VisualMapComponent,
@@ -29,10 +28,11 @@ import { CRM_FARMACIA_SERIES, CRM_HEATMAP_TAXA_RAMP, DATA_NEUTRAL } from '@/conf
 import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
 import { useFormatting } from '@/composables/useFormatting';
+import CrmAtuacaoDialog from '@/views/components/cnpj/CrmAtuacaoDialog.vue';
 
 use([
   CanvasRenderer, BarChart, LineChart, ScatterChart, HeatmapChart,
-  GridComponent, TooltipComponent, DataZoomComponent, MarkAreaComponent,
+  GridComponent, TooltipComponent, DataZoomComponent,
   MarkLineComponent, VisualMapComponent,
 ]);
 
@@ -65,11 +65,13 @@ const corTaxa = computed(() => DATA_NEUTRAL[tema.value].line);
 
 const infoTooltip = analysisTooltip('crmHistorico');
 const atencaoTooltip = analysisTooltip('crmHistoricoAtencao');
+const atuacaoTooltip = analysisTooltip('crmHistoricoAtuacao');
 
 async function carregar() {
   if (!props.medico?.id_medico) return;
   controller?.abort();
-  controller = new AbortController();
+  const requestController = new AbortController();
+  controller = requestController;
   carregando.value = true;
   erro.value = null;
   dados.value = null;
@@ -79,11 +81,12 @@ async function carregar() {
     if (props.dataFim) params.data_fim = props.dataFim;
     const { data } = await axios.get(API_ENDPOINTS.analyticsCrmMedicoHistorico, {
       params,
-      signal: controller.signal,
+      signal: requestController.signal,
     });
+    if (controller !== requestController) return;
     dados.value = data;
   } catch (err) {
-    if (axios.isCancel(err)) return;
+    if (axios.isCancel(err) || controller !== requestController) return;
     const status = err?.response?.status;
     erro.value = status === 404
       ? 'Este CRM não tem prescrições registradas.'
@@ -91,18 +94,32 @@ async function carregar() {
         ? (err?.response?.data?.detail || 'Os dados de prescrições por médico não estão disponíveis. Sincronize os módulos CRM.')
         : 'Não foi possível carregar o histórico deste CRM.';
   } finally {
-    carregando.value = false;
+    if (controller === requestController) {
+      controller = null;
+      carregando.value = false;
+    }
   }
 }
 
 watch(
   () => [props.modelValue, props.medico?.id_medico, props.dataInicio, props.dataFim],
-  ([aberto]) => { if (aberto) carregar(); },
+  ([aberto]) => {
+    if (aberto) {
+      carregar();
+    } else {
+      controller?.abort();
+      controller = null;
+      carregando.value = false;
+    }
+  },
   { immediate: true },
 );
 onBeforeUnmount(() => controller?.abort());
 
 function fechar() {
+  atuacaoController?.abort();
+  atuacao.value = null;
+  atuacaoCarregando.value = null;
   emit('update:modelValue', false);
 }
 
@@ -154,17 +171,17 @@ const kpis = computed(() => {
   const k = dados.value?.kpis;
   if (!k) return [];
   return [
-    { label: 'Prescrições', value: formatNumberFull(k.nu_prescricoes) },
-    { label: 'Dias com prescrição', value: formatNumberFull(k.qtd_dias_com_prescricao) },
-    { label: 'Taxa diária', value: formatDecimal(k.taxa_prescricoes_dia) },
-    { label: 'Meses ativos', value: formatNumberFull(k.qtd_meses_ativos) },
     {
-      label: 'Meses com taxa elevada',
-      value: `${formatNumberFull(k.qtd_meses_alta_intensidade)} (${formatPct(k.percentual_meses_alta_intensidade)})`,
+      label: 'Prescrições',
+      value: formatNumberFull(k.nu_prescricoes),
+      detail: `${formatNumberFull(k.qtd_dias_com_prescricao)} dias com prescrição`,
     },
-    { label: 'Farmácias', value: formatNumberFull(k.qtd_farmacias) },
-    { label: 'Municípios / UFs', value: `${formatNumberFull(k.qtd_municipios)} / ${formatNumberFull(k.qtd_ufs)}` },
-    { label: 'Farmácia principal', value: formatPct(k.percentual_farmacia_principal) },
+    { label: 'Taxa diária', value: formatDecimal(k.taxa_prescricoes_dia) },
+    {
+      label: 'Meses ativos',
+      value: formatNumberFull(k.qtd_meses_ativos),
+      detail: `${formatNumberFull(k.qtd_meses_alta_intensidade)} meses com taxa elevada · ${formatPct(k.percentual_meses_alta_intensidade)}`,
+    },
     { label: '3 principais farmácias', value: formatPct(k.percentual_top3_farmacias) },
     {
       // Pior mes = maior taxa diaria do periodo (P95 do mes como referencia).
@@ -211,6 +228,113 @@ const farmaciasPagina = computed(() => (
 ));
 watch(dados, () => { farmaciasInicio.value = 0; });
 
+// ── Coluna "Atuação na farmácia" (mesma da tabela de CRMs do CNPJ) ────────────
+// Eixo comum a todas as farmácias: do primeiro ao último mês com prescrição do
+// CRM no período filtrado, para os mini gráficos ficarem alinhados no tempo.
+const dataColorVars = computed(() => ({
+  '--data-color': DATA_NEUTRAL[tema.value].strong,
+  '--data-color-soft': DATA_NEUTRAL[tema.value].soft,
+}));
+const eixoAtuacao = computed(() => {
+  const lista = farmacias.value;
+  if (!lista.length) return null;
+  const inicio = Math.min(...lista.map((f) => indiceMes(f.primeira_competencia)));
+  const fim = Math.max(...lista.map((f) => indiceMes(f.ultima_competencia)));
+  return { inicio, total: fim - inicio + 1 };
+});
+const atuacaoPorFarmacia = computed(() => {
+  const mapa = new Map();
+  const eixo = eixoAtuacao.value;
+  const d = dados.value;
+  if (!eixo || !d) return mapa;
+  const compInicio = compDaData(d.periodo_inicio);
+  const compFim = compDaData(d.periodo_fim);
+  const seriePorFarmacia = new Map();
+  for (const r of d.farmacia_mes) {
+    if (r.competencia < compInicio || r.competencia > compFim) continue;
+    if (!seriePorFarmacia.has(r.id_cnpj)) seriePorFarmacia.set(r.id_cnpj, []);
+    seriePorFarmacia.get(r.id_cnpj).push(r);
+  }
+  for (const f of farmacias.value) {
+    const serie = seriePorFarmacia.get(f.id_cnpj);
+    if (!serie?.length) {
+      throw new Error(`Contrato inválido em crm-medico-historico: farmácia ${f.id_cnpj} sem meses em farmacia_mes no período.`);
+    }
+    const maximo = Math.max(1, ...serie.map((p) => Number(p.nu_prescricoes)));
+    const barras = serie.map((p) => ({
+      x: indiceMes(p.competencia) - eixo.inicio,
+      h: Math.max(1.5, (Number(p.nu_prescricoes) / maximo) * 16),
+    }));
+    const inicio = f.primeira_competencia;
+    const fim = f.ultima_competencia;
+    const meses = Number(f.qtd_meses);
+    mapa.set(f.id_cnpj, {
+      periodo: inicio === fim ? formatComp(inicio) : `${formatComp(inicio)} – ${formatComp(fim)}`,
+      meses: `${meses} ${meses === 1 ? 'mês' : 'meses'}`,
+      total: eixo.total,
+      barras,
+    });
+  }
+  return mapa;
+});
+
+// Clique na célula: abre o detalhe mensal da atuação (o mesmo modal da aba
+// Autorizações do estabelecimento), com os dados de /crm/medico-atuacao.
+const atuacao = ref(null);
+const atuacaoCarregando = ref(null);
+const atuacaoErro = ref(null);
+let atuacaoController = null;
+const atuacaoVisivel = computed({
+  get: () => atuacao.value !== null,
+  set: (visivel) => { if (!visivel) atuacao.value = null; },
+});
+
+async function abrirAtuacao(f) {
+  if (!f?.cnpj || !props.medico?.id_medico) return;
+  atuacaoController?.abort();
+  const requestController = new AbortController();
+  atuacaoController = requestController;
+  atuacaoCarregando.value = f.id_cnpj;
+  atuacaoErro.value = null;
+  try {
+    const params = {};
+    if (props.dataInicio) params.data_inicio = props.dataInicio;
+    if (props.dataFim) params.data_fim = props.dataFim;
+    const { data } = await axios.get(
+      API_ENDPOINTS.analyticsCrmMedicoAtuacao(f.cnpj, props.medico.id_medico),
+      { params, signal: requestController.signal },
+    );
+    if (requestController !== atuacaoController || !props.modelValue) return;
+    atuacao.value = {
+      medico: data.medico,
+      cnpj: data.cnpj,
+      periodo: { inicio: data.competencia_inicio_periodo, fim: data.competencia_fim_periodo },
+      serieFarmacia: data.serie_mensal_farmacia,
+    };
+  } catch (err) {
+    if (axios.isCancel(err) || requestController !== atuacaoController || !props.modelValue) return;
+    const detalhe = err?.response?.data?.detail;
+    atuacaoErro.value = `Não foi possível abrir a atuação em ${nomeFarmacia(f)}${detalhe ? `: ${detalhe}` : '.'}`;
+  } finally {
+    if (requestController === atuacaoController) atuacaoCarregando.value = null;
+  }
+}
+watch(dados, () => {
+  atuacaoController?.abort();
+  atuacao.value = null;
+  atuacaoCarregando.value = null;
+  atuacaoErro.value = null;
+});
+watch(() => props.modelValue, (aberto) => {
+  if (!aberto) {
+    atuacaoController?.abort();
+    atuacao.value = null;
+    atuacaoCarregando.value = null;
+    atuacaoErro.value = null;
+  }
+});
+onBeforeUnmount(() => atuacaoController?.abort());
+
 function abrirFarmacia(f) {
   if (!f?.cnpj) return;
   fechar();
@@ -240,14 +364,6 @@ const chartOption = computed(() => {
   const d = dados.value;
   const rotulos = lt.meses.map(formatComp);
   const superficie = themeStore.isDark ? '#1e1e1e' : '#ffffff';
-  // Faixa do período, limitada ao trecho do eixo (meses com dados do médico).
-  const primeiro = lt.meses[0];
-  const ultimo = lt.meses[lt.meses.length - 1];
-  const pIni = Math.max(compDaData(d.periodo_inicio), primeiro);
-  const pFim = Math.min(compDaData(d.periodo_fim), ultimo);
-  const periodoVisivel = pIni <= pFim;
-  const periodoIni = formatComp(pIni);
-  const periodoFim = formatComp(pFim);
   const compInscricao = compDaData(d.dt_primeira_inscricao);
   const inscricaoNoEixo = compInscricao && lt.meses.includes(compInscricao) ? formatComp(compInscricao) : null;
 
@@ -269,12 +385,7 @@ const chartOption = computed(() => {
     return barra(nomeFarmacia(f), corPorFarmacia.value.get(id), lt.series.get(id));
   });
   barras.push(barra('Outras farmácias', corOutras.value, lt.outras));
-  // Período filtrado sombreado e 1ª inscrição no CFM (na primeira série).
-  barras[0].markArea = {
-    silent: true,
-    itemStyle: { color: themeStore.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.045)' },
-    data: periodoVisivel ? [[{ xAxis: periodoIni }, { xAxis: periodoFim }]] : [],
-  };
+  // Marca a 1ª inscrição no CFM na primeira série.
   if (inscricaoNoEixo) {
     barras[0].markLine = {
       silent: true,
@@ -361,8 +472,8 @@ const chartOption = computed(() => {
       },
     ],
     dataZoom: [
-      // Roda do mouse rola o modal (nao da zoom); zoom so pela barra de baixo.
-      { type: 'inside', xAxisIndex: [0, 1], zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false },
+      // Sem dataZoom 'inside': mesmo desligado para a roda, ele captura o
+      // evento e impede a rolagem do modal. Zoom so pela barra de baixo.
       {
         type: 'slider', xAxisIndex: [0, 1], bottom: 4, height: 16,
         borderColor: c.border, textStyle: { color: c.muted, fontSize: 10 },
@@ -430,12 +541,25 @@ const calor = computed(() => {
   return { meses, linhas, pontos, minimo, maximo, omitidas: farmacias.value.length - linhas.length };
 });
 
-const calorAltura = computed(() => `${Math.max(160, (calor.value?.linhas.length ?? 0) * 24 + 70)}px`);
+const taxaSelecionada = ref(null);
+watch(calor, () => { taxaSelecionada.value = null; });
+const calorEscala = computed(() => {
+  const h = calor.value;
+  if (!h) return null;
+  const minimo = Math.floor(h.minimo * 10) / 10;
+  const maximo = Math.max(Math.ceil(h.maximo * 10) / 10, minimo + 0.1);
+  return { minimo, maximo, meiaFaixa: (maximo - minimo) * 0.015 };
+});
+const calorAltura = computed(() => `${Math.max(160, (calor.value?.linhas.length ?? 0) * 24 + 54)}px`);
 
 const calorOption = computed(() => {
   const h = calor.value;
   if (!h) return {};
   const c = chartTheme.value;
+  const rampa = CRM_HEATMAP_TAXA_RAMP[tema.value];
+  const pontosDestacados = taxaSelecionada.value == null
+    ? []
+    : h.pontos.filter((p) => Math.abs(p[2] - taxaSelecionada.value) <= calorEscala.value.meiaFaixa);
   const nomes = h.linhas.map((f) => {
     const nome = nomeFarmacia(f);
     return nome.length > 34 ? `${nome.slice(0, 33)}…` : nome;
@@ -456,7 +580,7 @@ const calorOption = computed(() => {
           ${p.value[4] === 1 ? 'dia' : 'dias'} = <strong>${formatDecimal(p.value[2], 1)}/dia</strong>`;
       },
     },
-    grid: { left: 230, right: 18, top: 8, bottom: 44 },
+    grid: { left: 230, right: 18, top: 8, bottom: 28 },
     xAxis: {
       type: 'category',
       data: h.meses.map(formatComp),
@@ -473,26 +597,43 @@ const calorOption = computed(() => {
       axisLine: { show: false },
       axisTick: { show: false },
     },
-    visualMap: {
-      min: Math.floor(h.minimo * 10) / 10,
-      max: Math.max(Math.ceil(h.maximo * 10) / 10, Math.floor(h.minimo * 10) / 10 + 0.1),
-      dimension: 2,
-      calculable: false,
-      orient: 'horizontal',
-      left: 230,
-      bottom: 4,
-      itemHeight: 140,
-      itemWidth: 10,
-      text: [`${formatDecimal(h.maximo, 1)}/dia`, `${formatDecimal(h.minimo, 1)}/dia`],
-      textStyle: { color: c.muted, fontSize: 10 },
-      inRange: { color: CRM_HEATMAP_TAXA_RAMP[tema.value] },
-    },
-    series: [{
-      type: 'heatmap',
-      data: h.pontos,
-      itemStyle: { borderColor: themeStore.isDark ? '#1e1e1e' : '#ffffff', borderWidth: 2, borderRadius: 2 },
-      emphasis: { itemStyle: { borderColor: c.text, borderWidth: 1 } },
-    }],
+    visualMap: [
+      {
+        seriesIndex: 0,
+        min: calorEscala.value.minimo,
+        max: calorEscala.value.maximo,
+        dimension: 2,
+        show: false,
+        inRange: { color: rampa },
+      },
+      {
+        seriesIndex: 1,
+        min: calorEscala.value.minimo,
+        max: calorEscala.value.maximo,
+        dimension: 2,
+        show: false,
+        inRange: { color: [tema.value === 'dark' ? rampa.at(-1) : rampa[0]] },
+      },
+    ],
+    series: [
+      {
+        type: 'heatmap',
+        data: h.pontos,
+        itemStyle: { borderColor: c.tooltipSolid, borderWidth: 2, borderRadius: 2 },
+        emphasis: { itemStyle: { borderColor: c.text, borderWidth: 1 } },
+      },
+      {
+        type: 'heatmap',
+        silent: true,
+        data: pontosDestacados,
+        itemStyle: {
+          opacity: 0.28,
+          borderColor: c.tooltipSolid,
+          borderWidth: 2,
+          borderRadius: 2,
+        },
+      },
+    ],
   };
 });
 
@@ -507,13 +648,13 @@ const ICONE_ATENCAO = {
 
 <template>
   <Dialog
-    :visible="modelValue"
+    :visible="modelValue && !carregando && !!(dados || erro)"
     modal
     maximizable
     dismissableMask
     class="crm-historico-dialog"
     :style="{ width: '94vw', maxWidth: '1500px' }"
-    @update:visible="emit('update:modelValue', $event)"
+    @update:visible="$event ? emit('update:modelValue', true) : fechar()"
   >
     <template #header>
       <div class="hist-header">
@@ -533,10 +674,7 @@ const ICONE_ATENCAO = {
       </div>
     </template>
 
-    <div v-if="carregando" class="hist-estado">
-      <i class="pi pi-spin pi-spinner" /> Carregando o histórico…
-    </div>
-    <div v-else-if="erro" class="hist-estado hist-estado--erro">
+    <div v-if="erro" class="hist-estado hist-estado--erro">
       <i class="pi pi-exclamation-circle" /> {{ erro }}
     </div>
 
@@ -572,7 +710,7 @@ const ICONE_ATENCAO = {
       <section class="hist-panel">
         <header class="hist-panel-header">
           <h3>Linha do tempo mensal</h3>
-          <span class="hist-panel-sub">histórico completo · faixa sombreada = período filtrado</span>
+          <span class="hist-panel-sub">histórico completo</span>
         </header>
         <div class="hist-legenda">
           <span v-for="item in legenda" :key="item.nome" class="hist-legenda-item">
@@ -597,16 +735,28 @@ const ICONE_ATENCAO = {
           <h3>Farmácias onde atuou</h3>
           <span class="hist-panel-sub">período filtrado · clique para abrir o estabelecimento</span>
         </header>
+        <p v-if="atuacaoErro" class="hist-atuacao-erro" role="alert">
+          <i class="pi pi-exclamation-triangle" aria-hidden="true" />{{ atuacaoErro }}
+        </p>
         <div class="hist-tabela-wrap">
           <table class="hist-tabela">
             <colgroup>
               <col class="c-nome"><col class="c-local"><col class="c-sit"><col class="c-ms">
-              <col class="c-num"><col class="c-num"><col class="c-meses"><col class="c-comp"><col class="c-comp">
+              <col class="c-num"><col class="c-num"><col class="c-atuacao">
             </colgroup>
             <thead>
               <tr>
                 <th>FARMÁCIA</th><th>MUNICÍPIO / UF</th><th>SITUAÇÃO RF</th><th>CONEXÃO MS</th>
-                <th>PRESCRIÇÕES</th><th>% DO TOTAL</th><th>MESES</th><th>PRIMEIRO MÊS</th><th>ÚLTIMO MÊS</th>
+                <th>PRESCRIÇÕES</th><th>% DO TOTAL</th>
+                <th class="th-atuacao">
+                  ATUAÇÃO NA FARMÁCIA
+                  <i
+                    class="pi pi-info-circle hist-info"
+                    v-tooltip.top="atuacaoTooltip"
+                    tabindex="0"
+                    aria-label="Informações sobre a atuação na farmácia"
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -624,9 +774,10 @@ const ICONE_ATENCAO = {
                       :style="{ backgroundColor: corPorFarmacia.get(f.id_cnpj) ?? corOutras }"
                       aria-hidden="true"
                     />
-                    <span>
+                    <span class="hist-farm-identidade">
                       <span class="hist-farm-nome">{{ nomeFarmacia(f) }}</span>
                       <span class="hist-farm-cnpj">{{ formatCnpj(f.cnpj ?? '') }}</span>
+                      <i class="pi pi-arrow-up-right hist-farm-abrir" aria-hidden="true" />
                     </span>
                   </span>
                 </td>
@@ -636,24 +787,74 @@ const ICONE_ATENCAO = {
                 </td>
                 <td>{{ f.situacao_rf ?? '—' }}</td>
                 <td>{{ f.conexao_ativa == null ? '—' : f.conexao_ativa ? 'Ativa' : 'Inativa' }}</td>
-                <td class="num">{{ formatNumberFull(f.nu_prescricoes) }}</td>
-                <td class="num">{{ formatPct(f.percentual_prescricoes) }}</td>
-                <td class="num">{{ formatNumberFull(f.qtd_meses) }}</td>
-                <td class="num">{{ formatComp(f.primeira_competencia) }}</td>
-                <td class="num">{{ formatComp(f.ultima_competencia) }}</td>
+                <td class="num hist-numero">{{ formatNumberFull(f.nu_prescricoes) }}</td>
+                <td class="num hist-participacao">
+                  <span class="hist-numero">{{ formatPct(f.percentual_prescricoes) }}</span>
+                  <span class="hist-participacao-trilha" aria-hidden="true">
+                    <span
+                      class="hist-participacao-barra"
+                      :style="{
+                        width: `${f.percentual_prescricoes}%`,
+                        backgroundColor: corPorFarmacia.get(f.id_cnpj) ?? corOutras,
+                      }"
+                    />
+                  </span>
+                </td>
+                <td class="atuacao-cell" :style="dataColorVars">
+                  <button
+                    v-if="atuacaoPorFarmacia.get(f.id_cnpj)"
+                    type="button"
+                    class="atuacao-btn"
+                    :class="{ 'is-loading': atuacaoCarregando === f.id_cnpj }"
+                    :disabled="!f.cnpj"
+                    :aria-label="`Abrir detalhe mensal da atuação em ${nomeFarmacia(f)}`"
+                    @click.stop="abrirAtuacao(f)"
+                    @keydown.enter.stop
+                  >
+                    <i
+                      class="pi atuacao-expand-icon"
+                      :class="atuacaoCarregando === f.id_cnpj ? 'pi-spin pi-spinner' : 'pi-window-maximize'"
+                      aria-hidden="true"
+                    />
+                    <span class="atuacao-texto">
+                      <span class="atuacao-periodo">{{ atuacaoPorFarmacia.get(f.id_cnpj).periodo }}</span>
+                      <span class="atuacao-meses">{{ atuacaoPorFarmacia.get(f.id_cnpj).meses }}</span>
+                    </span>
+                    <svg
+                      class="atuacao-spark"
+                      :viewBox="`0 0 ${atuacaoPorFarmacia.get(f.id_cnpj).total} 16`"
+                      preserveAspectRatio="none"
+                      role="img"
+                      :aria-label="`Prescrições mensais em ${nomeFarmacia(f)}: ${atuacaoPorFarmacia.get(f.id_cnpj).periodo}, ${atuacaoPorFarmacia.get(f.id_cnpj).meses}`"
+                    >
+                      <line class="atuacao-base" x1="0" y1="15.75" :x2="atuacaoPorFarmacia.get(f.id_cnpj).total" y2="15.75" />
+                      <rect
+                        v-for="barra in atuacaoPorFarmacia.get(f.id_cnpj).barras"
+                        :key="barra.x"
+                        class="atuacao-bar"
+                        :x="barra.x + 0.1"
+                        :y="16 - barra.h"
+                        width="0.8"
+                        :height="barra.h"
+                      />
+                    </svg>
+                  </button>
+                </td>
               </tr>
-              <tr v-if="!farmacias.length"><td colspan="9" class="hist-vazio">Sem prescrições no período filtrado.</td></tr>
+              <tr v-if="!farmacias.length"><td colspan="7" class="hist-vazio">Sem prescrições no período filtrado.</td></tr>
             </tbody>
           </table>
         </div>
-        <Paginator
-          v-if="farmacias.length > FARMACIAS_POR_PAGINA"
-          :first="farmaciasInicio"
-          :rows="FARMACIAS_POR_PAGINA"
-          :total-records="farmacias.length"
-          class="hist-paginator"
-          @page="farmaciasInicio = $event.first"
-        />
+        <!-- enterprise-table: mesmo estilo de paginador da tabela de /estabelecimentos (claro e escuro). -->
+        <div v-if="farmacias.length > FARMACIAS_POR_PAGINA" class="enterprise-table">
+          <Paginator
+            :first="farmaciasInicio"
+            :rows="FARMACIAS_POR_PAGINA"
+            :total-records="farmacias.length"
+            class="hist-paginator"
+            @page="farmaciasInicio = $event.first"
+          />
+        </div>
       </section>
 
       <!-- Mapa de calor -->
@@ -667,16 +868,88 @@ const ICONE_ATENCAO = {
           </span>
         </header>
         <VChart class="hist-calor" :style="{ height: calorAltura }" :option="calorOption" autoresize />
+        <div class="hist-calor-controle">
+          <div class="hist-calor-controle-cabecalho">
+            <span>Escala da taxa diária</span>
+            <span v-if="taxaSelecionada != null" class="hist-calor-controle-valor">
+              {{ formatDecimal(taxaSelecionada, 1) }} presc./dia
+              <button type="button" class="hist-calor-limpar" @click="taxaSelecionada = null">Limpar seleção</button>
+            </span>
+            <span v-else class="hist-calor-controle-instrucao">Arraste o marcador para destacar uma faixa</span>
+          </div>
+          <input
+            type="range"
+            class="hist-calor-slider"
+            :min="calorEscala.minimo"
+            :max="calorEscala.maximo"
+            step="0.1"
+            :value="taxaSelecionada ?? calorEscala.minimo"
+            :style="{ '--heatmap-gradient': `linear-gradient(90deg, ${CRM_HEATMAP_TAXA_RAMP[tema].join(', ')})` }"
+            aria-label="Destacar faixa da taxa diária no heatmap"
+            @input="taxaSelecionada = Number($event.target.value)"
+          />
+          <div class="hist-calor-controle-limites">
+            <span>{{ formatDecimal(calor.minimo, 1) }} presc./dia</span>
+            <span>{{ formatDecimal(calor.maximo, 1) }} presc./dia</span>
+          </div>
+        </div>
       </section>
     </div>
+
+    <!-- Detalhe mensal da atuação (o Dialog do PrimeVue é teleportado para o body). -->
+    <CrmAtuacaoDialog
+      v-if="atuacao"
+      v-model="atuacaoVisivel"
+      :medico="atuacao.medico"
+      :cnpj="atuacao.cnpj"
+      :periodo="atuacao.periodo"
+      :periodo-consulta="{ inicio: dataInicio, fim: dataFim }"
+      :serie-farmacia="atuacao.serieFarmacia"
+    />
 
     <template #footer>
       <button type="button" class="hist-fechar" @click="fechar">Fechar</button>
     </template>
   </Dialog>
+
+  <Transition name="detail-overlay-fade">
+    <div v-if="modelValue && carregando" class="detail-loading-overlay" aria-live="polite" aria-busy="true">
+      <div class="detail-loading-overlay__box">
+        <i class="pi pi-spin pi-spinner" aria-hidden="true" />
+        <span>Carregando detalhamento...</span>
+      </div>
+    </div>
+  </Transition>
 </template>
 
 <style scoped>
+.detail-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-color) 72%, transparent);
+  backdrop-filter: blur(2px);
+}
+.detail-loading-overlay__box {
+  display: inline-flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .9rem 1.1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text-color-85);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--text-color-85) 12%, transparent);
+  font-size: .86rem;
+  font-weight: 600;
+}
+.detail-loading-overlay__box i { color: var(--primary-color); font-size: 1rem; }
+.detail-overlay-fade-enter-active, .detail-overlay-fade-leave-active { transition: opacity .18s ease; }
+.detail-overlay-fade-enter-from, .detail-overlay-fade-leave-to { opacity: 0; }
+
 .hist-header { display: flex; flex-direction: column; gap: .2rem; }
 .hist-eyebrow { display: inline-flex; align-items: center; gap: .4rem; font-size: .66rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .hist-title { font-size: 1.05rem; font-weight: 600; color: var(--text-color); }
@@ -716,28 +989,101 @@ const ICONE_ATENCAO = {
 .hist-swatch--ponto { width: 8px; height: 8px; border-radius: 50%; background: var(--risk-critical); }
 .hist-chart { width: 100%; height: 540px; }
 .hist-calor { width: 100%; }
+.hist-calor-controle { display: grid; gap: .4rem; align-self: center; width: min(32rem, 100%); padding-top: .55rem; }
+.hist-calor-controle-cabecalho { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; color: var(--text-secondary); font-size: .7rem; font-weight: 600; }
+.hist-calor-controle-valor { display: inline-flex; align-items: baseline; gap: .65rem; font-variant-numeric: tabular-nums; }
+.hist-calor-controle-instrucao { color: var(--text-muted); font-weight: 400; }
+.hist-calor-limpar { padding: 0; border: 0; background: transparent; color: var(--primary-color); font: inherit; font-weight: 500; cursor: pointer; }
+.hist-calor-limpar:hover { text-decoration: underline; text-underline-offset: 2px; }
+.hist-calor-limpar:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 3px; border-radius: 2px; }
+.hist-calor-slider { display: block; width: 100%; height: 24px; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; cursor: ew-resize; }
+.hist-calor-slider::-webkit-slider-runnable-track { height: 14px; border-radius: 5px; background: var(--heatmap-gradient); }
+.hist-calor-slider::-webkit-slider-thumb { width: 18px; height: 24px; margin-top: -5px; appearance: none; -webkit-appearance: none; border: 2px solid var(--card-bg); border-radius: 6px; background: var(--text-color); box-shadow: 0 1px 4px color-mix(in srgb, var(--text-color) 35%, transparent); }
+.hist-calor-slider::-moz-range-track { height: 14px; border-radius: 5px; background: var(--heatmap-gradient); }
+.hist-calor-slider::-moz-range-thumb { width: 16px; height: 20px; border: 2px solid var(--card-bg); border-radius: 6px; background: var(--text-color); box-shadow: 0 1px 4px color-mix(in srgb, var(--text-color) 35%, transparent); }
+.hist-calor-slider:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 3px; border-radius: 5px; }
+.hist-calor-controle-limites { display: flex; justify-content: space-between; gap: 1rem; color: var(--text-muted); font-size: .7rem; font-variant-numeric: tabular-nums; }
 
 .hist-tabela-wrap { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--tabs-border); border-radius: 8px; }
-.hist-paginator { padding: 0; background: transparent; font-size: .74rem; }
-.hist-tabela { width: 100%; min-width: 60rem; table-layout: fixed; border-collapse: collapse; font-size: .74rem; color: var(--text-color-85); }
-.hist-tabela .c-nome { width: auto; }
-.hist-tabela .c-local { width: 12rem; }
+.hist-paginator { font-size: .74rem; }
+.hist-tabela { width: 100%; min-width: 75.5rem; table-layout: fixed; border-collapse: collapse; font-size: .74rem; color: var(--text-color-85); }
+.hist-tabela .c-nome { width: 20rem; }
+.hist-tabela .c-local { width: 10rem; }
 .hist-tabela .c-sit { width: 6.5rem; }
 .hist-tabela .c-ms { width: 6rem; }
 .hist-tabela .c-num { width: 6.5rem; }
-.hist-tabela .c-meses { width: 4.5rem; }
-.hist-tabela .c-comp { width: 6rem; }
-.hist-tabela th { padding: .55rem .7rem; background: var(--table-header-bg); color: var(--text-muted); font-size: .6rem; font-weight: 600; letter-spacing: .04em; text-align: left; white-space: normal; vertical-align: bottom; }
-.hist-tabela th:nth-child(n+5) { text-align: right; }
-.hist-tabela td { padding: .5rem .7rem; border-top: 1px solid var(--tabs-border); vertical-align: middle; overflow-wrap: anywhere; }
+.hist-tabela .c-atuacao { width: auto; }
+.hist-tabela th { padding: .65rem .7rem; border-bottom: 1px solid color-mix(in srgb, var(--tabs-border) 65%, transparent); background: color-mix(in srgb, var(--text-color) 2%, var(--card-bg)); color: var(--text-muted); font-size: .6rem; font-weight: 600; letter-spacing: .04em; text-align: left; white-space: normal; vertical-align: bottom; }
+.hist-tabela th:nth-child(5), .hist-tabela th:nth-child(6) { text-align: right; }
+.hist-tabela th .hist-info { margin-left: .2rem; font-size: .66rem; vertical-align: middle; }
+.hist-atuacao-erro { display: flex; align-items: center; gap: .4rem; margin: 0; font-size: .74rem; color: var(--risk-critical); }
+.hist-tabela td { padding: .7rem .7rem; border-top: 1px solid color-mix(in srgb, var(--tabs-border) 65%, transparent); vertical-align: middle; overflow-wrap: anywhere; }
 .hist-tabela td.num { text-align: right; }
-.hist-tabela tbody tr { cursor: pointer; }
-.hist-tabela tbody tr:hover, .hist-tabela tbody tr:focus-visible { background: color-mix(in srgb, var(--primary-color) 6%, var(--card-bg)); outline: none; }
+.hist-tabela tbody tr { cursor: pointer; transition: background-color .15s ease; }
+.hist-tabela tbody tr:hover, .hist-tabela tbody tr:focus-visible { background: color-mix(in srgb, var(--primary-color) 5%, var(--card-bg)); outline: none; }
 .hist-farm { display: flex; align-items: flex-start; gap: .5rem; }
-.hist-farm .hist-swatch { margin-top: .25rem; }
+.hist-farm .hist-swatch { margin-top: .24rem; }
+.hist-farm-identidade { display: block; position: relative; min-width: 0; padding-right: .9rem; }
 .hist-farm-nome, .hist-farm-cnpj { display: block; }
-.hist-farm-nome { color: var(--text-color-85); font-weight: 600; }
-.hist-farm-cnpj { margin-top: .12rem; color: var(--text-muted); font-size: .66rem; }
+.hist-farm-nome { color: var(--text-color); font-size: .78rem; font-weight: 600; line-height: 1.35; }
+.hist-farm-cnpj { margin-top: .14rem; color: var(--text-muted); font-size: .63rem; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.hist-farm-abrir { position: absolute; top: .2rem; right: 0; color: var(--primary-color); font-size: .58rem; opacity: 0; transform: translate(-2px, 2px); transition: opacity .15s ease, transform .15s ease; }
+.hist-tabela tbody tr:hover .hist-farm-abrir, .hist-tabela tbody tr:focus-visible .hist-farm-abrir { opacity: 1; transform: none; }
+.hist-numero { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hist-participacao-trilha { display: block; width: 100%; height: 3px; margin-top: .32rem; border-radius: 2px; background: color-mix(in srgb, var(--text-color) 9%, transparent); overflow: hidden; }
+.hist-participacao-barra { display: block; height: 100%; border-radius: inherit; }
+
+/* Coluna "Atuação na farmácia": copiada de CRMPrescritoresTable.vue. */
+.atuacao-cell { vertical-align: middle; }
+.atuacao-btn {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  margin: -0.35rem -0.5rem;
+  box-sizing: content-box;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.atuacao-btn:disabled { cursor: default; }
+.atuacao-btn:not(:disabled):hover,
+.atuacao-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+  outline: none;
+}
+.atuacao-expand-icon {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.atuacao-btn:not(:disabled):hover .atuacao-expand-icon,
+.atuacao-btn:focus-visible .atuacao-expand-icon,
+.atuacao-btn.is-loading .atuacao-expand-icon { opacity: 1; }
+.atuacao-btn .atuacao-texto { padding-right: 1rem; }
+.atuacao-texto {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+  white-space: nowrap;
+}
+.atuacao-periodo { font-size: 0.76rem; font-weight: 500; color: var(--text-color-85); }
+.atuacao-meses { font-size: 0.7rem; color: var(--text-muted); }
+.atuacao-spark { display: block; width: 100%; height: 35px; overflow: visible; }
+.atuacao-base { stroke: var(--card-border); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+.atuacao-bar { fill: var(--data-color); }
 
 .hist-fechar { min-height: 34px; padding: 0 1.1rem; border: 1px solid var(--card-border); border-radius: 8px; background: transparent; color: var(--text-color); font: inherit; font-size: .8rem; font-weight: 500; cursor: pointer; }
 .hist-fechar:hover { border-color: var(--primary-color); color: var(--primary-color); }

@@ -59,6 +59,21 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
       },
     ],
   },
+  crmHistoricoAtuacao: {
+    title: 'Atuação na farmácia',
+    body: 'Primeiro e último mês em que o CRM teve prescrições nesta farmácia, dentro do período filtrado, e a quantidade de meses com movimento.',
+    icon: 'pi-calendar',
+    sections: [
+      {
+        label: 'Mini gráfico',
+        text: 'Prescrições mês a mês, uma barra por mês, na mesma linha do tempo para todas as farmácias: do primeiro ao último mês com prescrição do CRM no período. Barras alinhadas indicam atuação simultânea; a altura é relativa ao maior mês do CRM naquela farmácia.',
+      },
+      {
+        label: 'Detalhe',
+        text: 'Clique na célula para abrir o detalhe mensal da atuação do CRM na farmácia.',
+      },
+    ],
+  },
   crmHistoricoAtencao: {
     title: 'Pontos de atenção',
     body: 'Fatos calculados sobre o período filtrado, sem juízo de valor. Servem para orientar a análise do auditor.',

@@ -30,6 +30,7 @@ const props = defineProps({
   medico: { type: Object, default: null },
   cnpj: { type: String, required: true },
   periodo: { type: Object, default: null },
+  periodoConsulta: { type: Object, default: null },
   serieFarmacia: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['update:modelValue']);
@@ -77,7 +78,7 @@ watch(
     alertas.value = null;
     alertasErro.value = null;
     if (!visible || !props.medico || !temAlertasDetalhados(props.medico)) return;
-    const { inicio, fim } = getApiParams();
+    const { inicio, fim } = props.periodoConsulta ?? getApiParams();
     alertasLoading.value = true;
     try {
       alertas.value = await cnpjDetailStore.fetchCrmMedicoAlertas(props.cnpj, props.medico.id_medico, inicio, fim);

@@ -45,6 +45,7 @@ from ...schemas.analytics import (
     RegionalAnimationQuarterSchema,
     RegionalAnimationResponse,
     CrmMedicoAlertasResponse,
+    CrmMedicoAtuacaoResponse,
     PrescritoresResponse,
     DadosFarmaciaSchema,
     MovimentacaoRowSchema,
@@ -855,6 +856,43 @@ def get_crm_data(
     timing.mark("montagem response")
     timing.write()
     return response
+
+
+def get_crm_medico_atuacao(
+    cnpj: str,
+    id_medico: str,
+    data_inicio: str | None = None,
+    data_fim: str | None = None,
+) -> CrmMedicoAtuacaoResponse:
+    """Atuação de um CRM numa farmácia, para o modal de atuação aberto fora da aba do CNPJ.
+
+    Reaproveita get_crm_data: mesmos números da coluna "Atuação na farmácia".
+    """
+    if not id_medico:
+        raise HTTPException(status_code=400, detail="id_medico obrigatorio para consulta de atuacao CRM.")
+    dados = get_crm_data(cnpj, data_inicio=data_inicio, data_fim=data_fim)
+    medico = next((m for m in dados.crms_interesse if str(m.get("id_medico")) == id_medico), None)
+    if medico is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"CRM {id_medico} sem prescricoes na farmacia {cnpj} no periodo.",
+        )
+    summary = dados.summary
+    inicio = summary.get("competencia_inicio_periodo")
+    fim = summary.get("competencia_fim_periodo")
+    serie = summary.get("serie_mensal_farmacia")
+    if inicio is None or fim is None or not isinstance(serie, list):
+        raise HTTPException(
+            status_code=500,
+            detail="Contrato invalido em crm-data: summary sem periodo ou serie mensal da farmacia.",
+        )
+    return CrmMedicoAtuacaoResponse(
+        cnpj=cnpj,
+        medico=medico,
+        competencia_inicio_periodo=int(inicio),
+        competencia_fim_periodo=int(fim),
+        serie_mensal_farmacia=serie,
+    )
 
 
 def get_crm_medico_alertas(
