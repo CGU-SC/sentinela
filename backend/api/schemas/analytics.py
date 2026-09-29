@@ -553,6 +553,10 @@ class CrmPrescricoesRankingItemSchema(BaseModel):
     qtd_meses_ativos: int
     qtd_meses_alta_intensidade: int
     percentual_meses_alta_intensidade: float
+    # Somente com filtro de farmacia: prescricoes do medico nas farmacias
+    # filtradas (mesmos meses e escopo) e a fatia do total dele.
+    nu_prescricoes_farmacias_filtradas: Optional[int] = None
+    percentual_prescricoes_farmacias_filtradas: Optional[float] = None
 
 
 class CrmPrescricoesAnaliseResponse(BaseModel):
@@ -572,6 +576,8 @@ class CrmPrescricoesAnaliseResponse(BaseModel):
     limiar_p95_min: Optional[float] = None
     limiar_p95_max: Optional[float] = None
     min_medicos_amostra_municipio: Optional[int] = None
+    # True quando algum filtro de farmacia (alem de periodo e localizacao) esta ativo.
+    filtro_farmacias_ativo: bool = False
 
 
 class PrescritoresResponse(BaseModel):

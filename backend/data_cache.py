@@ -4029,6 +4029,56 @@ def _sync_crm_medico_brasil_mes(engine, progress_callback=None):
         progress_callback(100)
 
 
+# Ordem do arquivo final: ano -> medico -> mes -> farmacia, em blocos de 50 mil
+# linhas. Buscar um medico (historico, coluna das farmacias filtradas) le poucos
+# blocos por ano em vez do arquivo inteiro: em 2019, 0,22 s -> 0,003 s por
+# medico, e o arquivo fica ~45% menor. Ler um mes inteiro (so na montagem do
+# indice de bitmaps) passa de ~0,04 s para ~0,14 s por mes.
+_CRM_ESTABELECIMENTO_MES_ROW_GROUP = 50_000
+
+
+def _consolidar_estabelecimento_mes_por_medico(
+    partes_por_competencia: dict[int, Path],
+    parts_dir: Path,
+    final_path: str,
+    colunas: list[str],
+) -> None:
+    """Junta as partes mensais em partes anuais ordenadas por medico e grava o final."""
+    anos = sorted({competencia // 100 for competencia in partes_por_competencia})
+    partes_ano: list[str] = []
+    for ano in anos:
+        meses = [str(caminho) for competencia, caminho in sorted(partes_por_competencia.items())
+                 if competencia // 100 == ano]
+        df_ano = (
+            pl.scan_parquet(meses)
+            .select(colunas)
+            .collect()
+            .sort(["id_medico", "competencia", "id_cnpj"])
+        )
+        caminho_ano = parts_dir / f"ano_{ano}.por_medico.part"
+        tmp_ano = caminho_ano.with_suffix(caminho_ano.suffix + ".tmp")
+        df_ano.write_parquet(tmp_ano, compression="zstd", row_group_size=_CRM_ESTABELECIMENTO_MES_ROW_GROUP)
+        os.replace(tmp_ano, caminho_ano)
+        print(f"      ano {ano}: {df_ano.height:,} linhas ordenadas por medico")
+        del df_ano
+        partes_ano.append(str(caminho_ano))
+
+    tmp_final = final_path + ".tmp"
+    pl.scan_parquet(partes_ano).select(colunas).sink_parquet(
+        tmp_final, compression="zstd", row_group_size=_CRM_ESTABELECIMENTO_MES_ROW_GROUP,
+    )
+    linhas_partes = pl.scan_parquet([str(c) for c in partes_por_competencia.values()]).select(pl.len()).collect().item()
+    linhas_final = pl.scan_parquet(tmp_final).select(pl.len()).collect().item()
+    if linhas_final != linhas_partes:
+        raise RuntimeError(
+            f"Consolidacao de crm_medico_estabelecimento_mes com {linhas_final} linhas; "
+            f"as partes mensais somam {linhas_partes}."
+        )
+    os.replace(tmp_final, final_path)
+    for caminho in partes_ano:
+        os.remove(caminho)
+
+
 def _sync_crm_medico_estabelecimento_mes(engine, progress_callback=None):
     """Sincroniza a relacao mensal completa entre estabelecimento e medico."""
     print("Sincronizando prescricoes por estabelecimento/medico/mes...")
@@ -4182,11 +4232,13 @@ def _sync_crm_medico_estabelecimento_mes(engine, progress_callback=None):
             + ", ".join(missing_parts)
         )
 
-    print("   -> Consolidando prescricoes por estabelecimento...")
-    final_scan = pl.scan_parquet([str(path) for path in part_paths]).select(list(schema.keys()))
-    tmp_final = final_path + ".tmp"
-    final_scan.sink_parquet(tmp_final, compression="zstd")
-    os.replace(tmp_final, final_path)
+    print("   -> Consolidando prescricoes por estabelecimento (ordenado por medico)...")
+    _consolidar_estabelecimento_mes_por_medico(
+        {competencia: part_path(competencia_key(competencia)) for competencia in competencias},
+        parts_dir,
+        final_path,
+        list(schema.keys()),
+    )
 
     manifest["status"] = "done"
     manifest["source_rows"] = total_rows
