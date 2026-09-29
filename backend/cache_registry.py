@@ -94,6 +94,56 @@ def _crm_medico_brasil_mes_schema() -> dict:
     }
 
 
+def _crm_medico_brasil_ano_schema() -> dict:
+    return {
+        "id_medico": pl.Utf8,
+        "ano": pl.Int16,
+        "nu_prescricoes": pl.Int32,
+        "qtd_dias_com_prescricao": pl.Int16,
+        "qtd_meses_ativos": pl.UInt8,
+        "qtd_meses_alta_intensidade": pl.UInt8,
+    }
+
+
+def _crm_medico_territorio_ano_schema() -> dict:
+    return {
+        "nivel": pl.Utf8,
+        "id_geografico": pl.Utf8,
+        "id_medico": pl.Utf8,
+        "ano": pl.Int16,
+        "nu_prescricoes": pl.Int32,
+        "qtd_dias_com_prescricao": pl.Int16,
+        "qtd_meses_ativos": pl.UInt8,
+        "qtd_meses_alta_intensidade": pl.UInt8,
+    }
+
+
+def _crm_medico_dim_schema() -> dict:
+    return {
+        "id_medico_num": pl.Int32,
+        "id_medico": pl.Utf8,
+    }
+
+
+def _crm_farmacia_medico_ano_schema() -> dict:
+    return {
+        "ano": pl.Int16,
+        "id_medico_num": pl.Int32,
+        "id_cnpj": pl.Int32,
+        "nu_prescricoes": pl.Int32,
+    }
+
+
+def _crm_indice_bitmaps_schema() -> dict:
+    return {
+        "tipo": pl.Utf8,
+        "granularidade": pl.Utf8,
+        "periodo": pl.Int32,
+        "chave": pl.Utf8,
+        "bitmap": pl.Binary,
+    }
+
+
 def _crm_mapa_municipio_regiao_periodo_schema() -> dict:
     return {
         "nivel": pl.Utf8,
@@ -446,6 +496,11 @@ GLOBAL_CACHE_DEFINITIONS = (
     CacheDefinition("crm_medico_estabelecimento_mes", cache_files.CRM_MEDICO_ESTABELECIMENTO_MES_PARQUET, "global", _crm_medico_estabelecimento_mes_schema()),
     CacheDefinition("crm_medico_territorio_mes", cache_files.CRM_MEDICO_TERRITORIO_MES_PARQUET, "global", _crm_medico_territorio_mes_schema()),
     CacheDefinition("crm_medico_brasil_mes", cache_files.CRM_MEDICO_BRASIL_MES_PARQUET, "global", _crm_medico_brasil_mes_schema()),
+    CacheDefinition("crm_medico_brasil_ano", cache_files.CRM_MEDICO_BRASIL_ANO_PARQUET, "global", _crm_medico_brasil_ano_schema()),
+    CacheDefinition("crm_medico_territorio_ano", cache_files.CRM_MEDICO_TERRITORIO_ANO_PARQUET, "global", _crm_medico_territorio_ano_schema()),
+    CacheDefinition("crm_medico_dim", cache_files.CRM_MEDICO_DIM_PARQUET, "global", _crm_medico_dim_schema()),
+    CacheDefinition("crm_farmacia_medico_ano", cache_files.CRM_FARMACIA_MEDICO_ANO_PARQUET, "global", _crm_farmacia_medico_ano_schema()),
+    CacheDefinition("crm_indice_bitmaps", cache_files.CRM_INDICE_BITMAPS_PARQUET, "global", _crm_indice_bitmaps_schema()),
     CacheDefinition("crm_mapa_municipio_regiao_periodo", cache_files.CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_PARQUET, "global", _crm_mapa_municipio_regiao_periodo_schema()),
     CacheDefinition("crm_mapa_uf_periodo", cache_files.CRM_MAPA_UF_PERIODO_PARQUET, "global", _crm_mapa_uf_periodo_schema()),
     CacheDefinition("crm_limiar_p95_mes", cache_files.CRM_LIMIAR_P95_MES_PARQUET, "global", _crm_limiar_p95_mes_schema()),
