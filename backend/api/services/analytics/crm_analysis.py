@@ -3,7 +3,7 @@
 import threading
 from collections import OrderedDict
 from datetime import date, timedelta
-from typing import Optional
+from typing import Callable, Literal, Optional, cast
 
 import polars as pl
 from fastapi import HTTPException
@@ -14,9 +14,11 @@ from data_cache import (
     scan_crm_mapa_uf_periodo,
     scan_crm_mapa_municipio_regiao_periodo,
     scan_crm_limiar_p95_mes,
+    scan_crm_medico_brasil_ano,
     scan_crm_medico_brasil_mes,
+    scan_crm_medico_territorio_ano,
     scan_crm_medico_territorio_mes,
-    scan_dados_medico,
+    get_dados_medico_df,
 )
 from ...schemas.analytics import (
     CrmPrescricoesAnaliseResponse,
@@ -28,6 +30,7 @@ MAX_DATA = date(2024, 12, 31)
 # Abaixo deste numero de medicos ativos no periodo, o municipio aparece como
 # "amostra pequena" no mapa (sem cor de risco): o percentual oscila demais.
 CRM_MAPA_MIN_MEDICOS_ATIVOS_MUNICIPIO = 20
+MapLevel = Literal["uf", "municipio", "regiao"]
 CRM_ANALYSIS_REQUIRED_LIMIAR_COLUMNS = {
     "competencia",
     "qtd_medicos_ativos",
@@ -69,6 +72,14 @@ CRM_ANALYSIS_REQUIRED_MEDICO_MES_COLUMNS = {
     "competencia",
     "nu_prescricoes_mes",
     "qtd_dias_com_prescricao_mes",
+}
+CRM_ANALYSIS_REQUIRED_MEDICO_ANO_COLUMNS = {
+    "id_medico",
+    "ano",
+    "nu_prescricoes",
+    "qtd_dias_com_prescricao",
+    "qtd_meses_ativos",
+    "qtd_meses_alta_intensidade",
 }
 CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS = {
     "id_medico",
@@ -569,7 +580,7 @@ def _scope_label(
         _require_columns(localidades, CRM_ANALYSIS_REQUIRED_LOCALIDADES_COLUMNS, "Localidades")
         municipio = (
             localidades
-            .filter(pl.col("id_ibge7").cast(pl.Int64) == int(id_ibge7))
+            .filter(pl.col("id_ibge7").cast(pl.Int64) == id_ibge7)
             .select(pl.col("no_municipio").cast(pl.Utf8))
             .unique()
         )
@@ -595,9 +606,9 @@ def _limiares_do_periodo(inicio: date, fim: date) -> pl.DataFrame:
     except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"Cache de limiares de alta intensidade indisponivel: {exc}",
+            detail=f"Cache de limiares do P95 indisponivel: {exc}",
         ) from exc
-    _require_columns(limiar, CRM_ANALYSIS_REQUIRED_LIMIAR_COLUMNS, "Limiares de alta intensidade")
+    _require_columns(limiar, CRM_ANALYSIS_REQUIRED_LIMIAR_COLUMNS, "Limiares do P95")
     competencia_inicio, competencia_fim = _competencia(inicio), _competencia(fim)
     periodo = limiar.filter(
         pl.col("competencia").is_between(competencia_inicio, competencia_fim)
@@ -618,49 +629,108 @@ def _limiares_do_periodo(inicio: date, fim: date) -> pl.DataFrame:
         raise HTTPException(
             status_code=503,
             detail=(
-                "Cache de limiares de alta intensidade incompleto para "
+                "Cache de limiares do P95 incompleto para "
                 f"{competencia_inicio}-{competencia_fim}."
             ),
         )
     return periodo
 
 
-def _agregar_ranking(doctor_month: pl.LazyFrame, inicio: date, fim: date) -> pl.DataFrame:
-    """Agrega medico x mes no ranking, com a mesma regra do mapa:
+def _dividir_periodo_ranking(inicio: date, fim: date) -> tuple[list[int], list[int]]:
+    """Anos inteiros (lidos da tabela anual) e meses soltos (da mensal).
+
+    Um ano e inteiro quando todos os meses dele que existem nos dados (os meses
+    com P95 em crm_limiar_p95_mes) estao dentro do periodo; ex.: 2015 comeca em
+    julho, entao 07/2015 a 12/2015 ja e o ano inteiro.
+    """
+    competencia_inicio, competencia_fim = _competencia(inicio), _competencia(fim)
+    meses_dados = sorted(
+        scan_crm_limiar_p95_mes()
+        .select(pl.col("competencia").cast(pl.Int32))
+        .collect()
+        .get_column("competencia")
+        .to_list()
+    )
+    no_periodo = [m for m in meses_dados if competencia_inicio <= m <= competencia_fim]
+    anos = [
+        ano
+        for ano in sorted({m // 100 for m in no_periodo})
+        if all(competencia_inicio <= m <= competencia_fim for m in meses_dados if m // 100 == ano)
+    ]
+    soltos = [m for m in no_periodo if m // 100 not in anos]
+    return anos, soltos
+
+
+def _agregar_ranking(
+    doctor_month: pl.LazyFrame,
+    inicio: date,
+    fim: date,
+    doctor_year: pl.LazyFrame,
+) -> pl.DataFrame:
+    """Agrega o ranking com a mesma regra do mapa:
 
     * taxa = prescricoes / dias com prescricao no periodo (e no escopo);
     * mes de alta intensidade = taxa do mes acima do P95 nacional do mes, com
       qualquer quantidade de dias (taxa arredondada a 6 casas, como o
       DECIMAL(19,6) do SQL);
     * entram no ranking todos os medicos com prescricao no periodo.
+
+    Anos inteiros do periodo vem da tabela anual (somas ja prontas, inclusive
+    os meses de alta intensidade); meses soltos vem da mensal. Todas as colunas
+    sao somas, entao o resultado e identico a somar so a mensal.
     """
     limiares = _limiares_do_periodo(inicio, fim)
+    anos, meses_soltos = _dividir_periodo_ranking(inicio, fim)
+    colunas = [
+        pl.col("id_medico").cast(pl.Utf8),
+        pl.col("nu_prescricoes").cast(pl.Int64),
+        pl.col("qtd_dias_com_prescricao").cast(pl.Int64),
+        pl.col("qtd_meses_ativos").cast(pl.Int64),
+        pl.col("qtd_meses_alta_intensidade").cast(pl.Int64),
+    ]
+    partes = []
+    if anos:
+        partes.append(
+            doctor_year
+            .filter(pl.col("ano").cast(pl.Int32).is_in(anos))
+            .select(colunas)
+        )
+    if meses_soltos:
+        partes.append(
+            doctor_month
+            .select([
+                pl.col("id_medico").cast(pl.Utf8),
+                pl.col("competencia").cast(pl.Int32),
+                pl.col("nu_prescricoes_mes").cast(pl.Int64),
+                pl.col("qtd_dias_com_prescricao_mes").cast(pl.Int64),
+            ])
+            .filter(
+                pl.col("competencia").is_in(meses_soltos)
+                & (pl.col("nu_prescricoes_mes") > 0)
+                & (pl.col("qtd_dias_com_prescricao_mes") > 0)
+            )
+            .join(limiares.lazy(), on="competencia", how="inner")
+            .select([
+                pl.col("id_medico"),
+                pl.col("nu_prescricoes_mes").alias("nu_prescricoes"),
+                pl.col("qtd_dias_com_prescricao_mes").alias("qtd_dias_com_prescricao"),
+                pl.lit(1, dtype=pl.Int64).alias("qtd_meses_ativos"),
+                (
+                    (pl.col("nu_prescricoes_mes") / pl.col("qtd_dias_com_prescricao_mes")).round(6)
+                    > pl.col("p95_taxa_dia")
+                ).cast(pl.Int64).alias("qtd_meses_alta_intensidade"),
+            ])
+        )
+    if not partes:
+        raise HTTPException(status_code=422, detail="Periodo sem meses com dados para o ranking.")
     return (
-        doctor_month
-        .select([
-            pl.col("id_medico").cast(pl.Utf8),
-            pl.col("competencia").cast(pl.Int32),
-            pl.col("nu_prescricoes_mes").cast(pl.Int64),
-            pl.col("qtd_dias_com_prescricao_mes").cast(pl.Int64),
-        ])
-        .filter(
-            pl.col("competencia").is_between(_competencia(inicio), _competencia(fim))
-            & (pl.col("nu_prescricoes_mes") > 0)
-            & (pl.col("qtd_dias_com_prescricao_mes") > 0)
-        )
-        .join(limiares.lazy(), on="competencia", how="inner")
-        .with_columns(
-            (
-                (pl.col("nu_prescricoes_mes") / pl.col("qtd_dias_com_prescricao_mes")).round(6)
-                > pl.col("p95_taxa_dia")
-            ).alias("is_mes_alta_intensidade")
-        )
+        pl.concat(partes)
         .group_by("id_medico")
         .agg([
-            pl.sum("nu_prescricoes_mes").cast(pl.Int64).alias("nu_prescricoes"),
-            pl.sum("qtd_dias_com_prescricao_mes").cast(pl.Int64).alias("qtd_dias_com_prescricao"),
-            pl.len().cast(pl.Int64).alias("qtd_meses_ativos"),
-            pl.col("is_mes_alta_intensidade").sum().cast(pl.Int64).alias("qtd_meses_alta_intensidade"),
+            pl.col("nu_prescricoes").sum().cast(pl.Int64),
+            pl.col("qtd_dias_com_prescricao").sum().cast(pl.Int64),
+            pl.col("qtd_meses_ativos").sum().cast(pl.Int64),
+            pl.col("qtd_meses_alta_intensidade").sum().cast(pl.Int64),
         ])
         .with_columns([
             (
@@ -675,39 +745,25 @@ def _agregar_ranking(doctor_month: pl.LazyFrame, inicio: date, fim: date) -> pl.
     )
 
 
-def _build_national_response(
+def _montar_resposta_ranking(
+    ranking_aggregated: pl.DataFrame,
     *,
-    map_level: str,
+    map_level: MapLevel,
     escopo: str,
     inicio: date,
     fim: date,
-    monthly: pl.DataFrame | pl.LazyFrame,
     page: int,
     page_size: int,
     manager_map: Optional[list[CrmPrescricoesMapaItemSchema]],
+    prescricoes_filtradas: Optional[Callable[[list[str]], pl.DataFrame]] = None,
 ) -> CrmPrescricoesAnaliseResponse:
-    """Monta o ranking nacional sem repetir a agregacao por medico/mes.
+    """Pagina o ranking agregado (1 linha por medico) e completa nome/CRM da pagina.
 
-    O modulo nacional ja possui uma linha unica por id_medico e competencia.
-    Portanto, agrupar novamente por essas duas colunas apenas repete trabalho.
+    Com filtro de farmacia, `prescricoes_filtradas` recebe os id_medico da
+    pagina e devolve (id_medico, nu_prescricoes_farmacias_filtradas): so os 25
+    medicos exibidos precisam dessa soma.
     """
-    monthly_lf = monthly if isinstance(monthly, pl.LazyFrame) else monthly.lazy()
-    _require_columns(
-        monthly_lf.limit(0).collect(),
-        CRM_ANALYSIS_REQUIRED_MEDICO_MES_COLUMNS,
-        "Prescricoes nacionais por medico/mes",
-    )
-
-    ranking_cache_key = _ranking_cache_key(
-        geographic=False,
-        inicio=inicio,
-        fim=fim,
-    )
-    ranking_aggregated = _get_cached_ranking(ranking_cache_key)
-    if ranking_aggregated is None:
-        ranking_aggregated = _agregar_ranking(monthly_lf, inicio, fim)
-        _cache_ranking(ranking_cache_key, ranking_aggregated)
-
+    farmacias_filtradas = prescricoes_filtradas is not None
     ranking_total = ranking_aggregated.height
     if ranking_total == 0:
         return CrmPrescricoesAnaliseResponse(
@@ -720,6 +776,7 @@ def _build_national_response(
             ranking_page_size=page_size,
             mapa=manager_map or [],
             ranking=[],
+            filtro_farmacias_ativo=farmacias_filtradas,
         )
 
     ranking_offset = (page - 1) * page_size
@@ -750,11 +807,12 @@ def _build_national_response(
             ranking_page_size=page_size,
             mapa=manager_map or [],
             ranking=[],
+            filtro_farmacias_ativo=farmacias_filtradas,
         )
 
     medico_ids = ranking_scope.select("id_medico")
     try:
-        medico_df = scan_dados_medico().filter(
+        medico_df = get_dados_medico_df().lazy().filter(
             pl.col("id_medico").is_in(medico_ids.get_column("id_medico"))
         ).collect()
     except Exception as exc:
@@ -762,6 +820,18 @@ def _build_national_response(
     _require_columns(medico_df, CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos medicos")
     medico_df = medico_df.unique(subset=["id_medico"], keep="first")
     ranking_scope = ranking_scope.join(medico_df, on="id_medico", how="left")
+    if prescricoes_filtradas is not None:
+        filtradas = prescricoes_filtradas(ranking_scope.get_column("id_medico").to_list())
+        ranking_scope = ranking_scope.join(filtradas, on="id_medico", how="left")
+        if ranking_scope.get_column("nu_prescricoes_farmacias_filtradas").null_count():
+            raise HTTPException(
+                status_code=503,
+                detail="Medico do ranking sem prescricoes nas farmacias filtradas (indice CRM inconsistente).",
+            )
+        ranking_scope = ranking_scope.with_columns(
+            (pl.col("nu_prescricoes_farmacias_filtradas") / pl.col("nu_prescricoes") * 100)
+            .alias("percentual_prescricoes_farmacias_filtradas")
+        )
     ranking = [
         CrmPrescricoesRankingItemSchema(
             rank=int(row["rank"]),
@@ -775,6 +845,14 @@ def _build_national_response(
             qtd_meses_ativos=int(row["qtd_meses_ativos"]),
             qtd_meses_alta_intensidade=int(row["qtd_meses_alta_intensidade"]),
             percentual_meses_alta_intensidade=float(row["percentual_meses_alta_intensidade"]),
+            nu_prescricoes_farmacias_filtradas=(
+                int(row["nu_prescricoes_farmacias_filtradas"])
+                if farmacias_filtradas else None
+            ),
+            percentual_prescricoes_farmacias_filtradas=(
+                float(row["percentual_prescricoes_farmacias_filtradas"])
+                if farmacias_filtradas else None
+            ),
         )
         for row in ranking_scope.iter_rows(named=True)
     ]
@@ -788,169 +866,99 @@ def _build_national_response(
         ranking_page_size=page_size,
         mapa=manager_map or [],
         ranking=ranking,
+        filtro_farmacias_ativo=farmacias_filtradas,
     )
 
 
-def _build_response(
+
+def ranking_agregado_escopo(
     *,
-    map_level: str,
-    escopo: str,
     inicio: date,
     fim: date,
-    monthly: pl.DataFrame | pl.LazyFrame,
-    page: int = 1,
-    page_size: int = 25,
-    uf: Optional[str] = None,
-    regiao_id: Optional[int] = None,
-    id_ibge7: Optional[int] = None,
-    manager_map: Optional[list[CrmPrescricoesMapaItemSchema]] = None,
-    use_geography: bool = True,
-) -> CrmPrescricoesAnaliseResponse:
-    if page < 1:
-        raise HTTPException(status_code=422, detail="page deve ser maior ou igual a 1.")
-    if page_size < 1 or page_size > 100:
-        raise HTTPException(status_code=422, detail="page_size deve estar entre 1 e 100.")
+    uf: Optional[str],
+    regiao_id: Optional[int],
+    id_ibge7: Optional[int],
+) -> pl.DataFrame:
+    """Ranking agregado (1 linha por medico) do escopo mais especifico, com cache.
 
-    if not use_geography:
-        return _build_national_response(
-            map_level=map_level,
-            escopo=escopo,
-            inicio=inicio,
-            fim=fim,
-            monthly=monthly,
-            page=page,
-            page_size=page_size,
-            manager_map=manager_map,
-        )
-
-    monthly_lf = monthly if isinstance(monthly, pl.LazyFrame) else monthly.lazy()
-    _require_columns(
-        monthly_lf.limit(0).collect(),
-        CRM_ANALYSIS_REQUIRED_MEDICO_TERRITORIO_COLUMNS,
-        "Prescricoes por medico/territorio/mes",
-    )
-
-    # O modulo ja traz cada nivel (municipio, regiao de saude, UF) agregado:
-    # filtra-se diretamente o territorio mais especifico do escopo.
+    Sem UF/regiao/municipio: modulos nacionais (medico x mes/ano). Com escopo:
+    modulos por territorio, filtrados no nivel e id do escopo (o modulo ja traz
+    cada nivel agregado).
+    """
     if id_ibge7 is not None:
-        scope_level, scope_identifier = "municipio", str(int(id_ibge7))
+        scope_level, scope_identifier = "municipio", str(id_ibge7)
     elif regiao_id is not None:
         scope_level, scope_identifier = "regiao_saude", str(regiao_id)
     elif uf and uf != "Todos":
         scope_level, scope_identifier = "uf", uf
     else:
-        raise HTTPException(
-            status_code=422,
-            detail="O ranking geografico exige UF, regiao de saude ou municipio.",
-        )
+        scope_level, scope_identifier = "brasil", None
+    nacional = scope_level == "brasil"
 
-    scoped_monthly = (
-        monthly_lf
-        .filter(
-            (pl.col("nivel") == scope_level)
-            & (pl.col("id_geografico") == scope_identifier)
-            & pl.col("competencia").is_between(_competencia(inicio), _competencia(fim))
-        )
-        .select([
-            "id_medico",
-            "competencia",
-            "nu_prescricoes_mes",
-            "qtd_dias_com_prescricao_mes",
-        ])
-    )
     ranking_cache_key = _ranking_cache_key(
-        geographic=True,
+        geographic=not nacional,
         inicio=inicio,
         fim=fim,
-        uf=uf,
+        uf=None if nacional else uf,
         regiao_id=regiao_id,
         id_ibge7=id_ibge7,
     )
     ranking_aggregated = _get_cached_ranking(ranking_cache_key)
-    if ranking_aggregated is None:
-        ranking_aggregated = _agregar_ranking(scoped_monthly, inicio, fim)
-        _cache_ranking(ranking_cache_key, ranking_aggregated)
-    ranking_total = ranking_aggregated.height
-    if ranking_total == 0:
-        return CrmPrescricoesAnaliseResponse(
-            map_level=map_level,
-            escopo=escopo,
-            periodo_inicio=inicio,
-            periodo_fim=fim,
-            qtd_medicos=0,
-            ranking_page=page,
-            ranking_page_size=page_size,
-            mapa=manager_map or [],
-            ranking=[],
-        )
-    ranking_offset = (page - 1) * page_size
-    ranking_limit = min(ranking_offset + page_size, ranking_total)
-    ranking_scope = (
-        ranking_aggregated
-        .top_k(
-            ranking_limit,
-            by=["taxa_prescricoes_dia", "nu_prescricoes", "id_medico"],
-            reverse=[False, False, True],
-        )
-        .sort(
-            ["taxa_prescricoes_dia", "nu_prescricoes", "id_medico"],
-            descending=[True, True, False],
-        )
-        .slice(ranking_offset, page_size)
-        .with_row_index("rank")
-        .with_columns((pl.col("rank") + ranking_offset + 1).cast(pl.Int64))
-    )
-    if ranking_scope.is_empty():
-        return CrmPrescricoesAnaliseResponse(
-            map_level=map_level,
-            escopo=escopo,
-            periodo_inicio=inicio,
-            periodo_fim=fim,
-            qtd_medicos=ranking_total,
-            ranking_page=page,
-            ranking_page_size=page_size,
-            mapa=manager_map or [],
-            ranking=[],
-        )
-    mapa = manager_map or []
+    if ranking_aggregated is not None:
+        return ranking_aggregated
 
-    medico_ids = ranking_scope.select("id_medico")
     try:
-        medico_df = scan_dados_medico().filter(
-            pl.col("id_medico").is_in(medico_ids.get_column("id_medico"))
-        ).collect()
+        monthly_full = scan_crm_medico_brasil_mes() if nacional else scan_crm_medico_territorio_mes()
+        yearly = scan_crm_medico_brasil_ano() if nacional else scan_crm_medico_territorio_ano()
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Cache de dados dos médicos indisponível: {exc}") from exc
-    _require_columns(medico_df, CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos médicos")
-    medico_df = medico_df.unique(subset=["id_medico"], keep="first")
-    ranking_scope = ranking_scope.join(medico_df, on="id_medico", how="left")
-    ranking = [
-        CrmPrescricoesRankingItemSchema(
-            rank=int(row["rank"]),
-            id_medico=str(row["id_medico"]),
-            nu_crm=int(row["nu_crm"]) if row["nu_crm"] is not None else None,
-            sg_uf=str(row["sg_uf"]) if row["sg_uf"] is not None else None,
-            no_medico=str(row["no_medico"]) if row["no_medico"] is not None else None,
-            taxa_prescricoes_dia=float(row["taxa_prescricoes_dia"]),
-            nu_prescricoes=int(row["nu_prescricoes"]),
-            qtd_dias_com_prescricao=int(row["qtd_dias_com_prescricao"]),
-            qtd_meses_ativos=int(row["qtd_meses_ativos"]),
-            qtd_meses_alta_intensidade=int(row["qtd_meses_alta_intensidade"]),
-            percentual_meses_alta_intensidade=float(row["percentual_meses_alta_intensidade"]),
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                (
+                    "Cache de prescricoes nacionais por medico (mes/ano) indisponivel: "
+                    if nacional
+                    else "Cache de prescricoes por medico/territorio (mes/ano) indisponivel: "
+                )
+                + f"{exc}"
+            ),
+        ) from exc
+
+    periodo = pl.col("competencia").is_between(_competencia(inicio), _competencia(fim))
+    if nacional:
+        _require_columns(
+            monthly_full.limit(0).collect(),
+            CRM_ANALYSIS_REQUIRED_MEDICO_MES_COLUMNS,
+            "Prescricoes nacionais por medico/mes",
         )
-        for row in ranking_scope.iter_rows(named=True)
-    ]
-    return CrmPrescricoesAnaliseResponse(
-        map_level=map_level,
-        escopo=escopo,
-        periodo_inicio=inicio,
-        periodo_fim=fim,
-        qtd_medicos=ranking_total,
-        ranking_page=page,
-        ranking_page_size=page_size,
-        mapa=mapa,
-        ranking=ranking,
-    )
+        _require_columns(
+            yearly.limit(0).collect(),
+            CRM_ANALYSIS_REQUIRED_MEDICO_ANO_COLUMNS,
+            "Prescricoes nacionais por medico/ano",
+        )
+        # O modulo nacional ja tem uma linha por id_medico e competencia.
+        ranking_aggregated = _agregar_ranking(monthly_full.filter(periodo), inicio, fim, yearly)
+    else:
+        _require_columns(
+            monthly_full.limit(0).collect(),
+            CRM_ANALYSIS_REQUIRED_MEDICO_TERRITORIO_COLUMNS,
+            "Prescricoes por medico/territorio/mes",
+        )
+        _require_columns(
+            yearly.limit(0).collect(),
+            {"nivel", "id_geografico", *CRM_ANALYSIS_REQUIRED_MEDICO_ANO_COLUMNS},
+            "Prescricoes por medico/territorio/ano",
+        )
+        escopo_territorio = (pl.col("nivel") == scope_level) & (pl.col("id_geografico") == scope_identifier)
+        scoped_monthly = (
+            monthly_full
+            .filter(escopo_territorio & periodo)
+            .select(["id_medico", "competencia", "nu_prescricoes_mes", "qtd_dias_com_prescricao_mes"])
+        )
+        ranking_aggregated = _agregar_ranking(scoped_monthly, inicio, fim, yearly.filter(escopo_territorio))
+    _cache_ranking(ranking_cache_key, ranking_aggregated)
+    return ranking_aggregated
 
 
 def get_crm_prescricoes_analise(
@@ -994,6 +1002,7 @@ def get_crm_prescricoes_analise(
 
     if map_level not in {"uf", "municipio", "regiao"}:
         raise HTTPException(status_code=422, detail="map_level deve ser uf, municipio ou regiao.")
+    nivel_mapa = cast(MapLevel, map_level)  # validado acima
     if map_level == "municipio" and (not uf or uf == "Todos"):
         raise HTTPException(status_code=422, detail="O mapa municipal exige uma UF selecionada.")
     if map_level == "regiao" and regiao_id is None:
@@ -1021,19 +1030,54 @@ def get_crm_prescricoes_analise(
         volume_atipico=volume_atipico,
         dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
     ):
+        filtro_farmacias_ativo = True
+    else:
+        filtro_farmacias_ativo = False
+    if _filtro_ativo(razao_social):
         raise HTTPException(
             status_code=422,
-            detail=(
-                "A analise gerencial de medicos aceita apenas periodo e filtros geograficos "
-                "nesta etapa. Filtros de estabelecimento e indicadores serao disponibilizados "
-                "no detalhamento do CRM."
-            ),
+            detail="Filtro razao_social nao e usado na analise de CRMs; use 'estabelecimento'.",
         )
+    # Com filtro de farmacia, o universo e o das farmacias filtradas (as mesmas de
+    # /estabelecimentos): ver crm_analysis_filtrado. Valores neutros viram None.
+    filtros_farmacia = {
+        "situacao_rf": situacao_rf if _filtro_ativo(situacao_rf, neutral={"Todos"}) else None,
+        "conexao_ms": conexao_ms if _filtro_ativo(conexao_ms, neutral={"Todos"}) else None,
+        "porte_empresa": porte_empresa if _filtro_ativo(porte_empresa, neutral={"Todos"}) else None,
+        "grande_rede": grande_rede if _filtro_ativo(grande_rede, neutral={"Todos"}) else None,
+        "cnpj_raiz": cnpj_raiz if _filtro_ativo(cnpj_raiz) else None,
+        "estabelecimento": estabelecimento if _filtro_ativo(estabelecimento) else None,
+        "unidade_pf": unidade_pf if _filtro_ativo(unidade_pf, neutral={"Todos"}) else None,
+        "par_teia": par_teia if _filtro_ativo(par_teia) else None,
+        "socio_beneficio": socio_beneficio if _filtro_ativo(socio_beneficio) else None,
+        "socio_esocial": socio_esocial if _filtro_ativo(socio_esocial) else None,
+        "cnae_incompativel": cnae_incompativel,
+        "socio_idade_atipica": socio_idade_atipica,
+        "socio_falecido": socio_falecido,
+        "dispersao_uf_sem_fronteira": dispersao_uf_sem_fronteira,
+        "dispersao_uf_sem_fronteira_limite": dispersao_uf_sem_fronteira_limite if dispersao_uf_sem_fronteira else None,
+        "perc_min": perc_min if perc_min is not None and float(perc_min) != 0 else None,
+        "perc_max": perc_max if perc_max is not None and float(perc_max) != 100 else None,
+        "val_min": val_min if val_min is not None and float(val_min) > 0 else None,
+        "volume_atipico": volume_atipico,
+        "volume_atipico_limite": volume_atipico_limite if volume_atipico else None,
+    }
 
     try:
-        if include_map or map_only:
+        if (include_map or map_only) and filtro_farmacias_ativo:
+            from .crm_analysis_filtrado import mapa_filtrado
+            manager_map, map_qtd_medicos, map_referencia = mapa_filtrado(
+                filtros=filtros_farmacia,
+                map_level=nivel_mapa,
+                inicio=inicio,
+                fim=fim,
+                uf=uf,
+                regiao_id=regiao_id,
+                id_ibge7=id_ibge7,
+            )
+        elif include_map or map_only:
             manager_map, map_qtd_medicos, map_referencia = _build_manager_map(
-                map_level=map_level,
+                map_level=nivel_mapa,
                 inicio=inicio,
                 fim=fim,
                 uf=uf,
@@ -1060,7 +1104,7 @@ def get_crm_prescricoes_analise(
         # Legenda: faixa do corte P95 nos meses do periodo.
         limiares = _limiares_do_periodo(inicio, fim)
         return CrmPrescricoesAnaliseResponse(
-            map_level=map_level,
+            map_level=nivel_mapa,
             escopo=escopo,
             periodo_inicio=inicio,
             periodo_fim=fim,
@@ -1072,51 +1116,62 @@ def get_crm_prescricoes_analise(
             percentual_referencia_brasil=map_referencia.get("percentual_referencia_brasil"),
             percentual_referencia_uf=map_referencia.get("percentual_referencia_uf"),
             percentual_referencia_regiao=map_referencia.get("percentual_referencia_regiao"),
-            limiar_p95_min=float(limiares.get_column("p95_taxa_dia").min()),
-            limiar_p95_max=float(limiares.get_column("p95_taxa_dia").max()),
+            limiar_p95_min=float(limiares.select(pl.col("p95_taxa_dia").min()).item()),
+            limiar_p95_max=float(limiares.select(pl.col("p95_taxa_dia").max()).item()),
             min_medicos_amostra_municipio=CRM_MAPA_MIN_MEDICOS_ATIVOS_MUNICIPIO,
+            filtro_farmacias_ativo=filtro_farmacias_ativo,
         )
 
-    use_national_module = (
-        map_level == "uf"
-        and (not uf or uf == "Todos")
-        and regiao_id is None
-        and id_ibge7 is None
-    )
+    if filtro_farmacias_ativo:
+        from .crm_analysis_filtrado import ranking_filtrado
+        if page < 1 or page_size < 1 or page_size > 100:
+            raise HTTPException(status_code=422, detail="Pagina ou tamanho de pagina invalido.")
+        try:
+            ranking_aggregated, prescricoes_filtradas = ranking_filtrado(
+                filtros=filtros_farmacia,
+                inicio=inicio,
+                fim=fim,
+                uf=uf,
+                regiao_id=regiao_id,
+                id_ibge7=id_ibge7,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Indice CRM de farmacias indisponivel: {exc}",
+            ) from exc
+        return _montar_resposta_ranking(
+            ranking_aggregated,
+            map_level=nivel_mapa,
+            escopo=escopo,
+            inicio=inicio,
+            fim=fim,
+            page=page,
+            page_size=page_size,
+            manager_map=manager_map,
+            prescricoes_filtradas=prescricoes_filtradas,
+        )
+
     try:
-        monthly = (
-            scan_crm_medico_brasil_mes()
-            if use_national_module
-            else scan_crm_medico_territorio_mes()
-        ).filter(
-            pl.col("competencia").is_between(_competencia(inicio), _competencia(fim))
+        ranking_aggregated = ranking_agregado_escopo(
+            inicio=inicio, fim=fim, uf=uf, regiao_id=regiao_id, id_ibge7=id_ibge7,
         )
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail=(
-                (
-                    "Cache de prescricoes nacionais por medico/mes indisponivel: "
-                    if use_national_module
-                    else "Cache de prescricoes por medico/territorio/mes indisponivel: "
-                )
-                + f"{exc}"
-            ),
+            detail=f"Cache de prescricoes por medico (mes/ano) indisponivel: {exc}",
         ) from exc
-
-    return _build_response(
-        map_level=map_level,
+    return _montar_resposta_ranking(
+        ranking_aggregated,
+        map_level=nivel_mapa,
         escopo=escopo,
         inicio=inicio,
         fim=fim,
-        monthly=monthly,
         page=page,
         page_size=page_size,
-        uf=uf,
-        regiao_id=regiao_id,
-        id_ibge7=id_ibge7,
         manager_map=manager_map,
-        use_geography=not use_national_module,
     )

@@ -7,21 +7,21 @@
 
 const ANALYSIS_TOOLTIP_COPY = Object.freeze({
   crmMap: {
-    title: 'Médicos de alta intensidade',
-    body: 'Percentual de médicos ativos no território que tiveram pelo menos um mês de alta intensidade no período, comparado a uma média de referência.',
+    title: 'Médicos com taxa elevada',
+    body: 'Percentual de médicos ativos que tiveram pelo menos um mês com taxa elevada no período.',
     icon: 'pi-map',
     sections: [
       {
-        label: 'Mês de alta intensidade',
-        text: 'Mês em que a taxa do médico no território (prescrições ÷ dias com prescrição) ficou acima do P95 nacional daquele mês, isto é, entre os 5% mais intensos do Brasil.',
+        label: 'Mês com taxa elevada',
+        text: 'Mês em que a taxa do médico no território (prescrições ÷ dias com prescrição) ficou acima do P95 nacional daquele mês, isto é, entre os 5% de maior taxa do Brasil.',
       },
       {
         label: 'Cor do território',
-        text: '% do território ÷ média de referência. 1,0× significa igual à média; 2,0×, o dobro.',
+        text: 'Municípios: percentual do município ÷ percentual da sua Região de Saúde. No mapa do Brasil, cada UF é comparada à média das 27 UFs. 1,0× significa igual à referência; 2,0×, o dobro.',
       },
       {
         label: 'Média de referência',
-        text: 'Soma dos médicos de alta intensidade ÷ soma dos médicos ativos dos territórios do mesmo nível. Um médico conta em cada território onde prescreveu.',
+        text: 'Soma dos médicos com taxa elevada ÷ soma dos médicos ativos dos municípios da região ou, no mapa nacional, das 27 UFs. Um médico conta em cada território onde prescreveu.',
       },
     ],
   },
@@ -35,13 +35,39 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
         text: 'Prescrições ÷ dias com prescrição, somando os meses do período dentro do escopo.',
       },
       {
-        label: 'Mês de alta intensidade',
-        text: 'Mês em que a taxa do médico ficou acima do P95 nacional daquele mês, o corte dos 5% de médicos mais intensos do Brasil.',
+        label: 'Mês com taxa elevada',
+        text: 'Mês em que a taxa do médico ficou acima do P95 nacional daquele mês, o corte dos 5% de médicos com maior taxa do Brasil.',
       },
       {
-        label: '% meses de alta intensidade',
-        text: 'Meses de alta intensidade ÷ meses com prescrição no período.',
+        label: '% meses com taxa elevada',
+        text: 'Meses com taxa elevada ÷ meses com prescrição no período.',
       },
+    ],
+  },
+  crmHistorico: {
+    title: 'Histórico do CRM',
+    body: 'Tudo o que o CRM prescreveu no Farmácia Popular, em todas as farmácias. Os indicadores, a tabela, o mapa de calor e os pontos de atenção são do período filtrado; a linha do tempo mostra o histórico completo, com o período sombreado.',
+    icon: 'pi-history',
+    sections: [
+      {
+        label: 'Taxa diária',
+        text: 'Prescrições ÷ dias com prescrição no Brasil (todas as farmácias). Um dia com prescrição em duas farmácias conta uma vez.',
+      },
+      {
+        label: 'Mês com taxa elevada',
+        text: 'Mês em que a taxa diária do médico ficou acima do P95 nacional daquele mês (os 5% de maior taxa do Brasil).',
+      },
+    ],
+  },
+  crmHistoricoAtencao: {
+    title: 'Pontos de atenção',
+    body: 'Fatos calculados sobre o período filtrado, sem juízo de valor. Servem para orientar a análise do auditor.',
+    icon: 'pi-exclamation-circle',
+    sections: [
+      { label: 'Antes da inscrição no CFM', text: 'Meses com prescrição anteriores à data da 1ª inscrição do médico no CFM.' },
+      { label: 'Mais de uma UF no mesmo mês', text: 'Meses em que o CRM aparece em farmácias de UFs diferentes.' },
+      { label: 'Meses consecutivos com taxa elevada', text: 'A maior sequência de meses seguidos com taxa elevada (a partir de 2 meses).' },
+      { label: 'Concentração em uma farmácia', text: 'A farmácia principal concentra ao menos o limite definido (50%) das prescrições do período.' },
     ],
   },
 });

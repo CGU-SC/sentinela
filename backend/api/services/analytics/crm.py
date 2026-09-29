@@ -227,7 +227,7 @@ def _filter_competencia(df: pl.DataFrame, comp_ini: int | None, comp_fim: int | 
     return df
 
 
-def _count_rows_by_medico(df: pl.DataFrame) -> dict[str, int]:
+def _count_rows_by_medico(df: Optional[pl.DataFrame]) -> dict[str, int]:
     if df is None or df.is_empty() or "id_medico" not in df.columns:
         return {}
     return {
@@ -870,7 +870,7 @@ def get_crm_medico_alertas(
     cnpj_dir = _get_cnpj_cache_dir(cnpj)
     comp_ini = _to_comp(data_inicio) if data_inicio else None
     comp_fim = _to_comp(data_fim) if data_fim else None
-    medico_key = str(id_medico)
+    medico_key = id_medico
 
     df_ad = _load_crm_unico_alertas(cnpj, cnpj_dir)
     df_ad = _filter_competencia(df_ad, comp_ini, comp_fim)
@@ -1057,7 +1057,7 @@ def _build_timeline_hours_by_date(df: pl.DataFrame) -> dict[str, list[dict[str, 
         day_hours = []
         for hour in range(24):
             row = activity.get((dt, hour))
-            item = {
+            item: dict[str, Any] = {
                 "dt_janela": dt,
                 "hr_janela": hour,
                 "nu_prescricoes": _to_int(row.get("nu_prescricoes")) if row else 0,
@@ -1136,7 +1136,7 @@ def get_crm_timeline_dataset(
 
     days = []
     for r in df_daily.iter_rows(named=True):
-        day = {
+        day: dict[str, Any] = {
             "dt_janela": str(r["dt_janela"])[:10],
             "competencia": _to_int(r.get("competencia")),
             "nu_prescricoes_dia": _to_int(r.get("nu_prescricoes_dia")),
@@ -1188,14 +1188,14 @@ def get_crm_timeline_dataset(
     return CrmTimelineDatasetResponse(
         cnpj=cnpj,
         days=days,
-        from_cache=bool(
+        from_cache=(
             daily_result.from_cache
             and hourly_result.from_cache
             and events_result.from_cache
             and raio_x_result.from_cache
         ),
-        daily_from_cache=bool(daily_result.from_cache),
-        hourly_from_cache=bool(hourly_result.from_cache),
+        daily_from_cache=daily_result.from_cache,
+        hourly_from_cache=hourly_result.from_cache,
         read_time_ms=read_time_ms,
         query_time_ms=query_time_ms,
         save_time_ms=save_time_ms,
@@ -1291,11 +1291,11 @@ def get_crm_raio_x(cnpj: str, date_str: str, hour: Optional[int] = None) -> "Crm
             read_time_ms = round((_time.perf_counter() - t0) * 1000, 1)
 
             if not filtered_df.is_empty():
-                from data_cache import scan_dados_medico
+                from data_cache import get_dados_medico_df
 
                 id_medicos = filtered_df["id_medico"].cast(pl.Utf8).unique().to_list()
                 df_med = (
-                    scan_dados_medico()
+                    get_dados_medico_df().lazy()
                     .filter(pl.col("id_medico").cast(pl.Utf8).is_in(id_medicos))
                     .select(["id_medico", "no_medico"])
                     .with_columns(pl.col("id_medico").cast(pl.Utf8))

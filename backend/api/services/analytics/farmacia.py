@@ -215,6 +215,12 @@ def get_movimentacao_data(cnpj: str, engine, check_cache: bool = False) -> Movim
             detail="Memória de calculo indisponível e Banco de Dados Offline.",
         )
 
+    if result.df is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Memória de calculo sem dados carregados para o estabelecimento.",
+        )
+
     return _build_movimentacao_response_from_df(
         cnpj=cnpj,
         df=result.df,

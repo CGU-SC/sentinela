@@ -192,3 +192,22 @@ export const CRM_IDENTITY_PALETTE = {
   dark: ["#60A5FA", "#22D3EE", "#4ADE80", "#F472B6", "#FDE047", "#D4A373"],
   light: ["#2563EB", "#0891B2", "#16A34A", "#DB2777", "#65A30D", "#8B5E34"],
 };
+
+// ── Farmácias no histórico do CRM (modal do ranking em /analises) ───────────
+// Paleta categórica de referência (skill de dataviz), 5 primeiras posições em
+// ordem fixa, validada com scripts/validate_palette.js (claro e escuro: todas as
+// checagens passam; no claro, 3 cores ficam abaixo de 3:1 com o fundo, por isso
+// a tabela de farmácias repete a cor e o valor). A 6ª série ("outras") é neutra.
+export const CRM_FARMACIA_SERIES = {
+  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"],
+  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"],
+  outras: { light: "#b4b2a9", dark: "#5c5b56" },
+};
+
+// Rampa sequencial do mapa de calor farmácia x mês: taxa diária do médico na
+// farmácia no mês (bege claro = baixa, vermelho escuro = alta). Uma família de
+// matiz, claridade monotônica; no escuro, a ordem de claridade se inverte.
+export const CRM_HEATMAP_TAXA_RAMP = {
+  light: ["#fbeee4", "#f8d2b8", "#f2a887", "#e77858", "#d34a3c", "#ac2a2c", "#7c1a21"],
+  dark: ["#3a2320", "#5e2a24", "#8a3129", "#b8412f", "#dc6446", "#ef9270", "#f8c2a4"],
+};

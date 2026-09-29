@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, shallowRef } from 'vue';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../config/api';
 
@@ -20,8 +20,11 @@ export const useGeoStore = defineStore('geo', () => {
     return map;
   });
 
-  // GeoJSON de municípios — carregado no boot, filtrado por UF sob demanda
-  const municipiosGeoJson = ref(null);
+  // GeoJSON de municípios — carregado no boot, filtrado por UF sob demanda.
+  // shallowRef: 22 MB e 642 mil pontos; so e trocado inteiro, nunca editado por
+  // dentro. Sem reatividade profunda, filtrar a UF e ler coordenadas fica ~5x
+  // mais rapido e o ECharts recebe o objeto puro.
+  const municipiosGeoJson = shallowRef(null);
 
   async function loadMunicipiosGeo() {
     try {

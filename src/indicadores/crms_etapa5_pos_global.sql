@@ -11,7 +11,7 @@
 --   1. temp_CGUSC.fp.build_crm_detalhado_lote_metadata com status OK
 --   2. temp_CGUSC.fp.build_crm_pipeline_uf_controle com UFs OK no loteado
 --   3. temp_CGUSC.fp.build_dados_medico
---   4. temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos
+--   4. temp_CGUSC.fp.build_crm_medico_brasil_mes
 --   5. temp_CGUSC.fp.build_dados_crm_detalhado
 --   6. temp_CGUSC.fp.build_crm_concentracao_multiplo_alertas
 --   7. temp_CGUSC.fp.build_crm_raiox_tx
@@ -129,7 +129,7 @@ BEGIN
 END;
 
 IF OBJECT_ID('temp_CGUSC.fp.build_dados_medico') IS NULL
-    OR OBJECT_ID('temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos') IS NULL
+    OR OBJECT_ID('temp_CGUSC.fp.build_crm_medico_brasil_mes') IS NULL
     OR OBJECT_ID('temp_CGUSC.fp.build_dados_crm_detalhado') IS NULL
     OR OBJECT_ID('temp_CGUSC.fp.build_crm_concentracao_unico_alertas') IS NULL
     OR OBJECT_ID('temp_CGUSC.fp.build_crm_concentracao_multiplo_alertas') IS NULL
@@ -365,9 +365,9 @@ BEGIN
     RETURN;
 END;
 
-IF OBJECT_ID('temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos') IS NULL
+IF OBJECT_ID('temp_CGUSC.fp.build_crm_medico_brasil_mes') IS NULL
 BEGIN
-    RAISERROR('Tabela temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos nao encontrada. Rode o pre-global primeiro.', 16, 1);
+    RAISERROR('Tabela temp_CGUSC.fp.build_crm_medico_brasil_mes nao encontrada. Rode o pre-global primeiro.', 16, 1);
     RETURN;
 END;
 
@@ -886,8 +886,8 @@ SELECT
     A.vl_autorizacoes_medico AS vl_total_prescricoes,
     A.nu_prescricoes_pico_h,
     A.taxa_pico_h,
-    P.nu_prescricoes_medico_em_todos_estabelecimentos AS nu_prescricoes_total_brasil,
-    P.nu_estabelecimentos_com_registro_mesmo_crm AS nu_estabelecimentos,
+    P.nu_prescricoes_mes AS nu_prescricoes_total_brasil,
+    P.nu_estabelecimentos_mes AS nu_estabelecimentos,
     CAST(CASE WHEN CONC.nu_cnpj IS NOT NULL THEN 1 ELSE 0 END AS BIT) AS flag_concentracao_mesmo_crm,
     CAST(CASE WHEN G.id_medico IS NOT NULL THEN 1 ELSE 0 END AS BIT) AS flag_distancia_geografica,
     A.dt_prescricao_inicial_medico AS dt_primeira_prescricao,
@@ -905,7 +905,7 @@ LEFT JOIN temp_CGUSC.fp.build_alertas_crm AL
     ON  AL.nu_cnpj = A.nu_cnpj
     AND AL.id_medico = A.id_medico
     AND AL.competencia = A.competencia
-LEFT JOIN temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos P
+LEFT JOIN temp_CGUSC.fp.build_crm_medico_brasil_mes P
     ON  P.id_medico = A.id_medico
     AND P.competencia = A.competencia
 LEFT JOIN (
@@ -972,10 +972,10 @@ SET @id_etapa_log = CONVERT(BIGINT, SCOPE_IDENTITY());
 SELECT
     P.id_medico,
     CAST((P.competencia / 100) * 10 + CASE WHEN P.competencia % 100 BETWEEN 1 AND 6 THEN 1 ELSE 2 END AS INT) AS chave_semestre,
-    CAST(SUM(CAST(P.nu_prescricoes_medico_em_todos_estabelecimentos AS BIGINT)) AS INT) AS nu_prescricoes_total_brasil,
+    CAST(SUM(CAST(P.nu_prescricoes_mes AS BIGINT)) AS INT) AS nu_prescricoes_total_brasil,
     CAST(SUM(DAY(EOMONTH(DATEFROMPARTS(P.competencia / 100, P.competencia % 100, 1)))) AS SMALLINT) AS dias_ativos_brasil
 INTO temp_CGUSC.fp.build_crm_prescricoes_brasil_semestre
-FROM temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos P
+FROM temp_CGUSC.fp.build_crm_medico_brasil_mes P
 GROUP BY
     P.id_medico,
     P.competencia / 100,

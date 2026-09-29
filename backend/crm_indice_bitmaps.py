@@ -274,13 +274,13 @@ class IndiceBitmaps:
         fontes = [self.farmacia_ano.get(ano, {}) for ano in anos]
         fontes += [self._mes(m)[0] for m in meses]
         partes = [bm for fonte in fontes for cnpj in cnpjs if (bm := fonte.get(cnpj)) is not None]
-        return BitMap.union(*partes) if partes else BitMap()
+        return BitMap().union(*partes)
 
     def alta(self, chave: str, anos: list[int], meses: list[int]) -> BitMap:
         """Medicos com pelo menos um mes de alta intensidade no territorio."""
         partes = [bm for ano in anos if (bm := self.alta_ano.get(ano, {}).get(chave)) is not None]
         partes += [bm for m in meses if (bm := self._mes(m)[1].get(chave)) is not None]
-        return BitMap.union(*partes) if partes else BitMap()
+        return BitMap().union(*partes)
 
     def ids_medico(self, medicos: BitMap) -> pl.Series:
         """id_medico (texto) dos codigos do bitmap, em ordem de codigo."""

@@ -38,6 +38,7 @@ export const API_ENDPOINTS = {
   analyticsFalecidos:   (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/falecidos`,
   analyticsCrmData: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm-data`,
   analyticsCrmPrescricoesAnalise: `${BASE_URL}/api/v1/analytics/crm-prescricoes-analise`,
+  analyticsCrmMedicoHistorico: `${BASE_URL}/api/v1/analytics/crm-medico-historico`,
   analyticsCrmMedicoAlertas: (cnpj, idMedico) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/medico-alertas/${encodeURIComponent(idMedico)}`,
   analyticsCrmTimelineDataset: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/timeline-dataset`,
   analyticsCrmRaioXExport: (cnpj, inicio, fim, formato) => {

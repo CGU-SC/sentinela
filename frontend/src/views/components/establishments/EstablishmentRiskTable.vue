@@ -31,6 +31,7 @@ const props = defineProps({
   /** Chave do indicador */
   indicadorKey: { type: String, default: null },
   isLoading: { type: Boolean, default: false },
+  error: { type: String, default: null },
   indicadorLabel: { type: String, default: 'Indicador' },
   /**
    * Quando true, a tabela assume sua altura natural em vez de reservar
@@ -101,7 +102,7 @@ const loadingDetailCnpj = ref(null);
 const detailPerfSession = ref(null);
 
 const canShowDetailButton = computed(() => {
-  const key = props.indicadorKey;
+  const key = tableSnapshot.value.indicadorKey;
   return key === 'dispersao_geografica'
     || key === 'incompatibilidade_patologica'
     || GENERIC_INDICATOR_DETAIL_KEYS.includes(key);
@@ -244,10 +245,13 @@ async function openDetailForRow(cnpj) {
     loadingDetailCnpj.value = null;
   }
 }
-const loadingRef = computed(() => props.isLoading);
+const tableUnavailable = computed(() => props.isLoading || Boolean(props.error));
 const tableSnapshot = useFrozenData(
   () => ({
     cnpjs: props.cnpjs,
+    indicadorKey: props.indicadorKey,
+    indicadorLabel: props.indicadorLabel,
+    formato: props.formato,
     totalRecords: props.totalRecords,
     first: props.first,
     rows: props.rows,
@@ -255,11 +259,12 @@ const tableSnapshot = useFrozenData(
     sortOrder: props.sortOrder,
     tableKpis: props.tableKpis,
   }),
-  loadingRef,
+  tableUnavailable,
 );
 
 const extraColumns = computed(() => {
-  return props.indicadorKey ? (indicadorExtraColumns[props.indicadorKey] || []) : [];
+  const key = tableSnapshot.value.indicadorKey;
+  return key ? (indicadorExtraColumns[key] || []) : [];
 });
 
 function formatValueExtra(valor, type) {
@@ -273,7 +278,7 @@ function formatValueExtra(valor, type) {
 
 function formatValue(valor) {
   if (valor == null) return '—';
-  const fmt = props.formato;
+  const fmt = tableSnapshot.value.formato;
   if (fmt === 'pct')         return valor.toFixed(2) + '%';
   if (fmt === 'pct3')        return valor.toFixed(3) + '%';
   if (fmt === 'val')         return formatCurrencyFull(valor);
@@ -324,6 +329,7 @@ function statusClass(status) {
 }
 
 function goToDetail(event) {
+  if (tableUnavailable.value) return;
   if (event.originalEvent?.target?.closest('.clickable-badge, .copy-btn, .row-action-btn')) return;
   router.push({ name: 'EstablishmentDetail', params: { cnpj: event.data.cnpj } });
 }
@@ -373,6 +379,7 @@ function applyFilter(field, value) {
 }
 
 function onLazyLoad(event) {
+  if (tableUnavailable.value) return;
   emit('lazy-load', event);
 }
 
@@ -389,7 +396,7 @@ const tableFooter = computed(() => {
 });
 
 const indicatorColumnHeader = computed(() => {
-  const label = props.indicadorLabel?.trim() || 'Indicador';
+  const label = tableSnapshot.value.indicadorLabel?.trim() || 'Indicador';
   if (label.toLowerCase() === 'crescimento semestral atípico') return 'Crescimento Semestral';
   if (label.toLowerCase() === 'dispersão interestadual') return 'Vendas para Outras UFs';
   return label;
@@ -404,8 +411,14 @@ const indicatorColumnHeader = computed(() => {
       </div>
       <div class="header-text-box">
         <h3>Farmácias por Indicador</h3>
-        <span class="subtitle">
-          {{ indicadorLabel }} — {{ tableSnapshot.totalRecords }} estabelecimentos
+        <span v-if="error && tableSnapshot.cnpjs.length" class="subtitle subtitle--error" role="alert" v-tooltip.bottom="error">
+          Falha ao atualizar · resultado anterior de {{ tableSnapshot.indicadorLabel }} exibido
+        </span>
+        <span v-else-if="isLoading && tableSnapshot.cnpjs.length" class="subtitle" role="status">
+          Atualizando resultados · resultado anterior de {{ tableSnapshot.indicadorLabel }} exibido
+        </span>
+        <span v-else class="subtitle">
+          {{ tableSnapshot.indicadorLabel }} — {{ tableSnapshot.totalRecords }} estabelecimentos
         </span>
       </div>
       <div v-if="selectedRegiaoNome || selectedMunicipioNome" class="header-filter-chips">
@@ -427,6 +440,15 @@ const indicatorColumnHeader = computed(() => {
       </div>
     </div>
 
+    <div v-if="error && !tableSnapshot.cnpjs.length" class="table-state table-state--error" :style="{ minHeight: dataTablePt.wrapper.style.minHeight }" role="alert">
+      <i class="pi pi-exclamation-circle" />
+      <span>{{ error }}</span>
+    </div>
+    <div v-else-if="isLoading && !tableSnapshot.cnpjs.length" class="table-state" :style="{ minHeight: dataTablePt.wrapper.style.minHeight }" role="status">
+      <i class="pi pi-spin pi-spinner" />
+      <span>Carregando estabelecimentos...</span>
+    </div>
+    <div v-else class="table-results" :inert="tableUnavailable" :aria-busy="isLoading">
     <DataTable
       :value="tableSnapshot.cnpjs"
       size="small"
@@ -591,7 +613,7 @@ const indicatorColumnHeader = computed(() => {
             class="risk-cell"
             :class="{ muted: data.risco_benchmark == null }"
             v-tooltip.top="establishmentRiskTooltip({
-              indicator: indicadorLabel,
+              indicator: tableSnapshot.indicadorLabel,
               value: formatValue(data.valor),
               median: formatValue(benchmarkValue(data)),
               scope: benchmarkLabel(data),
@@ -733,6 +755,7 @@ const indicatorColumnHeader = computed(() => {
       </Column>
 
     </DataTable>
+    </div>
 
     <ObservationDialog
       v-if="observationCnpj"
@@ -743,19 +766,19 @@ const indicatorColumnHeader = computed(() => {
 
     <!-- Dialogs de detalhamento (reutilizam os mesmos da aba Indicadores) -->
     <IndicatorDetailDialog
-      v-if="canShowDetailButton && !['dispersao_geografica','incompatibilidade_patologica'].includes(indicadorKey)"
+      v-if="canShowDetailButton && !['dispersao_geografica','incompatibilidade_patologica'].includes(tableSnapshot.indicadorKey)"
       v-model="showGenericDetailDialog"
       :cnpj="detailCnpj"
-      :indicator-key="indicadorKey"
+      :indicator-key="tableSnapshot.indicadorKey"
       :perf-session="detailPerfSession"
     />
     <GeographicDispersionDialog
-      v-if="indicadorKey === 'dispersao_geografica'"
+      v-if="tableSnapshot.indicadorKey === 'dispersao_geografica'"
       v-model="showGeographicDetailDialog"
       :cnpj="detailCnpj"
     />
     <ClinicalIncompatibilityDialog
-      v-if="indicadorKey === 'incompatibilidade_patologica'"
+      v-if="tableSnapshot.indicadorKey === 'incompatibilidade_patologica'"
       v-model="showClinicalDetailDialog"
       :cnpj="detailCnpj"
     />
@@ -935,8 +958,19 @@ const indicatorColumnHeader = computed(() => {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  transition: opacity 0.3s ease;
 }
+
+.table-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.table-state--error { color: var(--risk-high); }
 
 .section-header {
   display: flex;
@@ -1034,10 +1068,13 @@ const indicatorColumnHeader = computed(() => {
 .subtitle {
   font-size: 0.82rem;
   color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+.subtitle--error { color: var(--risk-high); }
 
 .razao-block {
   display: flex;

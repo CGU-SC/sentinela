@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { use, registerMap } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { MapChart } from 'echarts/charts';
@@ -11,6 +11,8 @@ import { useChartTheme } from '@/config/chartTheme';
 import { MAP_VISUAL_SCALE } from '@/config/colors';
 import { useFormatting } from '@/composables/useFormatting';
 import { buildHealthRegionGeoJson } from '@/utils/geo/municipalTerritory';
+import { useStableMapSize } from '@/composables/useStableMapSize';
+import MapBackButton from '@/views/components/maps/MapBackButton.vue';
 
 use([CanvasRenderer, MapChart, TooltipComponent, VisualMapComponent]);
 
@@ -19,6 +21,7 @@ const props = defineProps({
   kpis: { type: Object, default: null },
   activeUf: { type: String, default: 'Todos' },
   isLoading: { type: Boolean, default: false },
+  error: { type: String, default: null },
   selectedIbge7: { type: Number, default: null },
   metricMode: { type: String, default: 'audit' },
   metricLabel: { type: String, default: 'Percentual não comprovação' },
@@ -39,10 +42,8 @@ const containerRef = ref(null);
 const mapKey = ref(0);
 const nationalMapReady = ref(false);
 const zoomLevel = ref(1);
-const containerWidth = ref(900);
-const containerHeight = ref(430);
+const { containerWidth, containerHeight, hasMeasured } = useStableMapSize(containerRef, chartRef);
 const regionDataSnapshot = ref(null);
-let resizeObserver = null;
 
 const isNational = computed(() => !props.activeUf || props.activeUf === 'Todos');
 const hasRegionScope = computed(
@@ -54,6 +55,13 @@ const backButtonTooltip = computed(
     ? `Voltar ao mapa de ${props.activeUf}`
     : 'Voltar ao mapa do Brasil'
 );
+const mapScopeLabel = computed(() => {
+  if (isNational.value) return 'Brasil';
+  const parts = [`UF ${props.activeUf}`];
+  if (props.selectedRegiaoNome) parts.push(formatTitleCase(props.selectedRegiaoNome));
+  if (props.selectedMunicipioNome) parts.push(formatTitleCase(props.selectedMunicipioNome));
+  return parts.join(' › ');
+});
 
 function handleBackClick() {
   emit(hasRegionScope.value ? 'back-to-uf' : 'clear-geography');
@@ -222,22 +230,6 @@ onMounted(async () => {
     window.__brasilUfRegistered = true;
   }
   nationalMapReady.value = true;
-
-  if (containerRef.value) {
-    resizeObserver = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      containerWidth.value = rect.width;
-      containerHeight.value = rect.height;
-    });
-    resizeObserver.observe(containerRef.value);
-    containerWidth.value = containerRef.value.clientWidth;
-    containerHeight.value = containerRef.value.clientHeight;
-  }
-});
-
-onBeforeUnmount(() => {
-  resizeObserver?.disconnect();
 });
 
 const geoAspectRatio = computed(() => {
@@ -445,24 +437,18 @@ function onMapClick(params) {
       <i class="pi pi-map" />
       <div class="map-title">
         <h2>Municípios</h2>
-        <span v-if="selectedMunicipioNome && selectedRegiaoNome" class="map-scope">
-          {{ formatTitleCase(selectedRegiaoNome) }} · {{ formatTitleCase(selectedMunicipioNome) }}
-        </span>
-        <span>
+        <span v-if="error" class="map-status-error" role="alert">{{ error }}</span>
+        <span v-else>
           {{ metricMode === 'indicator' ? '% de farmácias críticas' : '% de valor sem comprovação' }}
           por {{ isNational ? 'UF' : 'município' }} · {{ metricLabel }}
         </span>
       </div>
-      <button
+      <MapBackButton
         v-if="!isNational"
-        type="button"
-        class="map-back-button"
-        v-tooltip.bottom="backButtonTooltip"
+        :label="backButtonLabel"
+        :tooltip="backButtonTooltip"
         @click="handleBackClick"
-      >
-        <i class="pi pi-arrow-left" />
-        <span>{{ backButtonLabel }}</span>
-      </button>
+      />
       <div class="map-summary">
         <div v-if="metricMode === 'indicator'" class="summary-item summary-item--critical">
           <span>Críticos</span>
@@ -491,13 +477,21 @@ function onMapClick(params) {
 
     <div v-show="!isNational || nationalMapReady" ref="containerRef" class="map-wrapper">
       <VChart
+        v-if="hasMeasured"
         ref="chartRef"
         :key="mapKey"
         class="echart"
         :option="chartOption"
-        autoresize
         @click="onMapClick"
       />
+
+      <div
+        class="map-scope-badge"
+        :aria-label="`Recorte do mapa: ${mapScopeLabel}`"
+      >
+        <i class="pi pi-map-marker" aria-hidden="true" />
+        <span>{{ mapScopeLabel }}</span>
+      </div>
 
       <div class="map-controls">
         <button class="zoom-btn" type="button" @click="handleZoom(0.5)" v-tooltip.bottom="'Aumentar zoom'">
@@ -540,20 +534,28 @@ function onMapClick(params) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: opacity 0.25s ease;
 }
 
 .municipal-map-card.is-refreshing {
-  opacity: 0.55;
   pointer-events: none;
 }
 
+.map-status-error {
+  color: var(--risk-indicator-critical);
+}
+
 .map-header {
+  --map-header-item-height: 2.75rem;
   display: flex;
   align-items: center;
   gap: 0.8rem;
   padding: 0.8rem 1.15rem;
   border-bottom: 1px solid var(--tabs-border);
+  flex-shrink: 0;
+}
+
+.map-header :deep(.map-back-button) {
+  height: var(--map-header-item-height);
   flex-shrink: 0;
 }
 
@@ -591,36 +593,6 @@ function onMapClick(params) {
   font-weight: 500;
 }
 
-.map-back-button {
-  height: 2rem;
-  padding: 0 0.65rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  border: 1px solid var(--card-border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--card-bg) 92%, var(--primary-color) 8%);
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.map-back-button:hover {
-  border-color: color-mix(in srgb, var(--primary-color) 42%, var(--card-border));
-  color: var(--primary-color);
-}
-
-.map-back-button:focus {
-  outline: none;
-  box-shadow: none;
-}
-
-.map-back-button:focus-visible {
-  outline: 1px solid var(--primary-color);
-  outline-offset: 2px;
-}
-
 .map-summary {
   margin-left: auto;
   display: flex;
@@ -629,15 +601,20 @@ function onMapClick(params) {
 }
 
 .summary-item {
+  box-sizing: border-box;
+  height: var(--map-header-item-height);
   min-width: 104px;
-  padding: 0.48rem 0.62rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 0.62rem;
   border: 1px solid color-mix(in srgb, var(--card-border) 82%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--card-bg) 86%, transparent);
 }
 
 .summary-item--critical {
-  min-width: 146px;
+  width: 120px;
   border-color: color-mix(in srgb, var(--risk-critical) 34%, var(--card-border));
   background:
     linear-gradient(
@@ -667,7 +644,7 @@ function onMapClick(params) {
 }
 
 .summary-item--warning {
-  min-width: 146px;
+  width: 120px;
   border-color: color-mix(in srgb, var(--risk-indicator-warning) 34%, var(--card-border));
   background:
     linear-gradient(
@@ -713,6 +690,39 @@ function onMapClick(params) {
   height: 100%;
 }
 
+.map-scope-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: min(55%, 24rem);
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.map-scope-badge i {
+  flex: none;
+  color: var(--primary-color);
+  font-size: 0.7rem;
+}
+
+.map-scope-badge span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .map-loading {
   flex: 1;
   min-height: 0;
@@ -726,7 +736,7 @@ function onMapClick(params) {
 .map-legend {
   position: absolute;
   left: 0.75rem;
-  bottom: 0.75rem;
+  top: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.12rem;

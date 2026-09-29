@@ -519,7 +519,7 @@ def get_indicadores(
     """Retorna os indicadores de risco para um CNPJ calculados a partir da matriz anual."""
     try:
         perfil_df = get_df_perfil_estabelecimento()
-        cnpj_limpo = "".join(ch for ch in str(cnpj) if ch.isdigit()).zfill(14)
+        cnpj_limpo = "".join(ch for ch in cnpj if ch.isdigit()).zfill(14)
         target = perfil_df.filter(pl.col("cnpj") == cnpj_limpo)
         if target.is_empty():
             return IndicadoresResponse(cnpj=cnpj, indicadores={})
@@ -680,9 +680,9 @@ def _get_pct_dispersao_uf_nao_vizinha_df(data_inicio: date | None = None, data_f
     origem_scan = scan_geografico_origem_uf()
 
     if data_inicio:
-        origem_scan = origem_scan.filter(pl.col("ano_base") >= int(data_inicio.year))
+        origem_scan = origem_scan.filter(pl.col("ano_base") >= data_inicio.year)
     if data_fim:
-        origem_scan = origem_scan.filter(pl.col("ano_base") <= int(data_fim.year))
+        origem_scan = origem_scan.filter(pl.col("ano_base") <= data_fim.year)
 
     df_agg = (
         origem_scan
@@ -785,6 +785,37 @@ def _build_indicador_dataset(
         indicador_dataset = indicador_dataset.with_columns(pl.lit("SEM DADOS").alias("status"))
 
     return indicador_dataset, perfil_df, df_risco, c_val, c_mr, rr_col, score_col
+
+
+def get_indicador_scope_base_cached(**filtros: object) -> pl.DataFrame:
+    """Farmacias que passam nos filtros, exatamente como em /estabelecimentos.
+
+    Usa o mesmo cache da base de escopo dos indicadores. Campos ausentes em
+    `filtros` valem None/False, como na chamada dos indicadores.
+    """
+    desconhecidos = set(filtros) - {nome for nome, _normalizer in _INDICADOR_SCOPE_FILTER_FIELDS}
+    if desconhecidos:
+        raise ValueError(f"Filtros desconhecidos para a base de escopo: {sorted(desconhecidos)}")
+    filters: dict[str, Any] = {
+        nome: filtros.get(nome, False if normalizer is _normalize_cache_bool else None)
+        for nome, normalizer in _INDICADOR_SCOPE_FILTER_FIELDS
+    }
+    scope_cache_key = _make_indicador_scope_base_cache_key(filters=filters)
+    generation = _cache_generation_from_key(scope_cache_key)
+    with _INDICADOR_CACHE_LOCK:
+        _prune_indicador_cache(_INDICADOR_SCOPE_BASE_CACHE, generation)
+        cached_scope = _get_indicador_cache(_INDICADOR_SCOPE_BASE_CACHE, scope_cache_key)
+    if cached_scope is not None:
+        return cached_scope[0]
+    scope_base, perfil_df = _build_indicador_scope_base(**filters)
+    with _INDICADOR_CACHE_LOCK:
+        _put_indicador_cache(
+            _INDICADOR_SCOPE_BASE_CACHE,
+            scope_cache_key,
+            (scope_base, perfil_df),
+            generation,
+        )
+    return scope_base
 
 
 def _build_indicador_dataset_cached(
@@ -942,7 +973,7 @@ def get_indicador_benchmark_local(
     data_inicio: date | None = None,
     data_fim: date | None = None,
 ) -> IndicadorBenchmarkResponse:
-    clean_cnpj = str(cnpj or "").replace(".", "").replace("/", "").replace("-", "")
+    clean_cnpj = (cnpj or "").replace(".", "").replace("/", "").replace("-", "")
     if len(clean_cnpj) != 14:
         raise HTTPException(status_code=422, detail="CNPJ deve conter 14 digitos.")
     if indicador not in _INDICADOR_BENCHMARK_LOCAL_KEYS:
@@ -1128,7 +1159,7 @@ def get_indicador_evolucao_benchmark(
     data_inicio: date | None = None,
     data_fim: date | None = None,
 ) -> IndicadorEvolucaoBenchmarkResponse:
-    clean_cnpj = str(cnpj or "").replace(".", "").replace("/", "").replace("-", "")
+    clean_cnpj = (cnpj or "").replace(".", "").replace("/", "").replace("-", "")
     if len(clean_cnpj) != 14:
         raise HTTPException(status_code=422, detail="CNPJ deve conter 14 digitos.")
     if indicador not in _INDICADOR_BENCHMARK_LOCAL_KEYS:
@@ -1535,8 +1566,8 @@ def get_indicadores_analise_cnpjs(
         )
 
         normalized_order, descending = _normalizar_sort_order(sort_order)
-        page = max(1, int(page or 1))
-        page_size = min(200, max(1, int(page_size or 20)))
+        page = max(1, page or 1)
+        page_size = min(200, max(1, page_size or 20))
 
         if df_joined.is_empty():
             return IndicadorCnpjPageResponse(

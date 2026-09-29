@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
@@ -11,6 +11,8 @@ const props = defineProps({
   municipios: { type: Array, default: () => [] },
   participationRows: { type: Array, default: () => [] },
   isLoading: { type: Boolean, default: false },
+  isStale: { type: Boolean, default: false },
+  error: { type: String, default: null },
   selectedIbge7: { type: Number, default: null },
   metricMode: { type: String, default: 'audit' },
   metricLabel: { type: String, default: 'Percentual não comprovação' },
@@ -21,24 +23,13 @@ const emit = defineEmits(['select-municipio', 'clear-regiao-filter']);
 
 const loadingRef = computed(() => props.isLoading);
 const showRefreshing = useDelayedLoading(loadingRef);
-const cachedMunicipios = ref(props.municipios);
 const { formatBRL, formatNumberFull, formatPercent, formatTitleCase } = useFormatting();
 const { getRiskClass } = useRiskMetrics();
 
-watch(
-  () => [props.municipios, props.isLoading],
-  ([newRows, loading]) => {
-    if (Array.isArray(newRows) && newRows.length > 0 && !loading) {
-      cachedMunicipios.value = newRows;
-    }
-  },
-  { immediate: true },
-);
-
 const displayedMunicipios = computed(() => {
-  if (props.selectedIbge7 == null) return cachedMunicipios.value;
+  if (props.selectedIbge7 == null) return props.municipios;
 
-  const selectedFromCurrent = cachedMunicipios.value.filter(
+  const selectedFromCurrent = props.municipios.filter(
     (row) => Number(row.id_ibge7) === Number(props.selectedIbge7)
   );
   if (selectedFromCurrent.length) return selectedFromCurrent;
@@ -50,7 +41,7 @@ const displayedMunicipios = computed(() => {
 
 const selectedMunicipio = computed(() => {
   if (props.selectedIbge7 == null) return null;
-  return cachedMunicipios.value.find((row) => Number(row.id_ibge7) === Number(props.selectedIbge7))
+  return props.municipios.find((row) => Number(row.id_ibge7) === Number(props.selectedIbge7))
     ?? props.participationRows.find((row) => Number(row.id_ibge7) === Number(props.selectedIbge7))
     ?? null;
 });
@@ -120,6 +111,7 @@ function rowClass(row) {
 }
 
 function onRowClick(event) {
+  if (props.isStale) return;
   const id = event.data?.id_ibge7;
   if (id == null) throw new Error('Municipio sem id_ibge7 no resultado analitico.');
   emit('select-municipio', Number(id) === Number(props.selectedIbge7) ? null : Number(id));
@@ -127,19 +119,16 @@ function onRowClick(event) {
 </script>
 
 <template>
-  <section class="municipal-table-card" :class="{ 'is-refreshing': showRefreshing }">
+  <section class="municipal-table-card" :class="{ 'is-refreshing': showRefreshing, 'is-stale': isStale }">
     <div class="table-header">
       <div class="header-main">
         <i class="pi pi-list" />
       <div>
           <h2>Ranking municipal</h2>
-          <span>{{ metricLabel }} — {{ displayedMunicipios.length }} municípios no recorte atual</span>
+          <span v-if="error" class="table-status-error" role="alert">{{ error }}</span>
+          <span v-else-if="showRefreshing" role="status">Atualizando resultados</span>
+          <span v-else>{{ metricLabel }} — {{ displayedMunicipios.length }} municípios no recorte atual</span>
         </div>
-      </div>
-
-      <div v-if="showRefreshing" class="refresh-chip">
-        <i class="pi pi-spin pi-spinner" />
-        <span>Atualizando</span>
       </div>
 
       <div v-if="selectedRegiaoNome || selectedMunicipio" class="header-filter-chips">
@@ -149,6 +138,7 @@ function onRowClick(event) {
           <button
             type="button"
             class="chip-clear"
+            :disabled="isStale"
             @click="emit('clear-regiao-filter')"
             v-tooltip.bottom="'Limpar região'"
           >
@@ -162,6 +152,7 @@ function onRowClick(event) {
           <button
             type="button"
             class="chip-clear"
+            :disabled="isStale"
             @click="emit('select-municipio', null)"
             v-tooltip.bottom="'Limpar município'"
           >
@@ -310,6 +301,14 @@ function onRowClick(event) {
   border-color: color-mix(in srgb, var(--primary-color) 24%, var(--card-border));
 }
 
+.municipal-table-card.is-stale :deep(.municipal-risk-table) {
+  pointer-events: none;
+}
+
+.table-status-error {
+  color: var(--risk-indicator-critical) !important;
+}
+
 .table-header {
   display: flex;
   align-items: center;
@@ -385,25 +384,6 @@ function onRowClick(event) {
   color: var(--risk-indicator-critical, #ef4444);
   font-size: 0.72rem;
   flex-shrink: 0;
-}
-
-.refresh-chip {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.34rem 0.48rem;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 24%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  white-space: nowrap;
-}
-
-.refresh-chip i {
-  color: var(--primary-color);
-  font-size: 0.72rem;
 }
 
 .chip-clear {

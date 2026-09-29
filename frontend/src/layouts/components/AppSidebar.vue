@@ -1937,13 +1937,17 @@ const clearSearch = () => {
   width: var(--sidebar-width);
   background: var(--sidebar-bg) !important;
   color: var(--sidebar-text);
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--sidebar-motion-duration) cubic-bezier(0.4, 0, 0.2, 1);
   will-change: width;
   display: flex;
   flex-direction: column;
   height: calc(100vh - 56px);
   border-right: 1px solid var(--sidebar-border);
   overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-sidebar { transition-duration: 0ms; }
 }
 
 /* BOTÃO FLUTUANTE DE LIMPAR TODOS OS FILTROS */

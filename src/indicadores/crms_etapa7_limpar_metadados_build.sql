@@ -110,7 +110,7 @@ INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
 LEFT JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
 WHERE s.name = 'fp'
   AND t.name IN (
-      'build_crm_detalhado_pre_global_metadata',
+      'build_crm_pipeline_pre_global_metadata',
       'build_crm_pipeline_uf_controle',
       'build_crm_concentracao_unico_uf_metadata',
       'build_crm_concentracao_unico_etapa_log',
@@ -134,7 +134,8 @@ ORDER BY t.name;
 BEGIN TRY
     BEGIN TRAN;
 
-    DROP TABLE IF EXISTS fp.build_crm_detalhado_pre_global_metadata;
+    DROP TABLE IF EXISTS fp.build_crm_pipeline_pre_global_metadata;
+    DROP TABLE IF EXISTS fp.build_crm_detalhado_pre_global_metadata; -- nome anterior
     DROP TABLE IF EXISTS fp.build_crm_pipeline_uf_controle;
 
     DROP TABLE IF EXISTS fp.build_crm_concentracao_unico_uf_metadata;
@@ -160,6 +161,7 @@ BEGIN TRY
     BEGIN
         DROP TABLE IF EXISTS fp.build_dados_medico;
         DROP TABLE IF EXISTS fp.build_crm_prescricoes_todos_estabelecimentos;
+        DROP TABLE IF EXISTS fp.build_crm_medico_brasil_mes;
         DROP TABLE IF EXISTS fp.build_dados_crm_detalhado;
     END;
 

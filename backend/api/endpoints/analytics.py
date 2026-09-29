@@ -22,6 +22,7 @@ from ..schemas.analytics import (
     ClinicoIncompatibilidadeResponse,
     AlertasPanoramaResponse,
     CrmPrescricoesAnaliseResponse,
+    CrmMedicoHistoricoResponse,
     NotaTecnicaReadinessResponse,
     NotaTecnicaPrepareResponse,
 )
@@ -104,6 +105,20 @@ def get_crm_prescricoes_analise(
         volume_atipico_limite=volume_atipico_limite,
         dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
         dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
+    )
+
+
+@router.get("/crm-medico-historico", response_model=CrmMedicoHistoricoResponse)
+def get_crm_medico_historico(
+    id_medico: str = Query(..., description="CRM no formato numero/UF, ex.: 26188/SC."),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+):
+    """Historico completo de um CRM: meses, farmacias e pontos de atencao."""
+    return AnalyticsService.get_crm_medico_historico(
+        id_medico=id_medico,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
     )
 
 

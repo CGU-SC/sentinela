@@ -198,13 +198,13 @@ def _vez_ou_vezes(value: float) -> str:
 
 
 def _build_codigo_verificacao(cnpj: str, generated_at: datetime) -> str:
-    cnpj_digits = ''.join(ch for ch in str(cnpj or '') if ch.isdigit()) or 'SEM-CNPJ'
+    cnpj_digits = ''.join(ch for ch in (cnpj or '') if ch.isdigit()) or 'SEM-CNPJ'
     suffix = uuid.uuid4().hex[:8].upper()
     return f'NT-{cnpj_digits}-{generated_at:%Y%m%d}-{suffix}'
 
 
 def _resolve_numero_nota_input(numero_nota: Optional[str]) -> tuple[str, bool]:
-    text = str(numero_nota or "").strip()
+    text = (numero_nota or "").strip()
     if not text:
         return "XXX", True
     if not text.isdigit():
@@ -213,7 +213,7 @@ def _resolve_numero_nota_input(numero_nota: Optional[str]) -> tuple[str, bool]:
 
 
 def _resolve_numero_processo_input(numero_processo: Optional[str], ano_nota: int) -> tuple[str, bool]:
-    text = str(numero_processo or "").strip()
+    text = (numero_processo or "").strip()
     if not text:
         return f"00XXX.XXXXXX/{ano_nota}-XX", True
 
@@ -1344,7 +1344,7 @@ def generate_nota_tecnica(
     )
     _run(p_regional_53, ' que contempla ', color='0F172A', size=12)
     _run(p_regional_53, f'{qtd_farmacias} {farmacia_txt}', color='334155', size=12, underline=True)
-    _run(p_regional_53, f' {que_registra_txt} dispensações no PFPB no período analisado, {localizada_txt} em {qtd_municipios} {municipio_txt} do Estado ({regional_comp["uf"]}): {municipios_txt}.', color='0F172A', size=12)
+    _run(p_regional_53, f' {que_registra_txt} pelo menos uma dispensação no PFPB no período analisado, {localizada_txt} em {qtd_municipios} {municipio_txt} do Estado ({regional_comp["uf"]}): {municipios_txt}.', color='0F172A', size=12)
 
     p_geo_ampliado = doc.add_paragraph()
     _run(p_geo_ampliado, 'Ampliando-se o comparativo geográfico, o percentual equivale a ', color='0F172A', size=12)

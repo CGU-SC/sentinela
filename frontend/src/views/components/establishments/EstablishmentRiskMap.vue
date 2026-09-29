@@ -8,11 +8,15 @@
  * Diferente de MunicipalMap.vue, este componente é inteiramente prop-based
  * e não lê dados do analyticsStore.
  */
-import { computed, watch, ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { computed, watch, ref, onMounted } from 'vue';
 import { useGeoStore } from '@/stores/geo';
+import { useFrozenData } from '@/composables/useFrozenData';
 import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
 import { MAP_VISUAL_SCALE } from '@/config/colors.js';
+import { useStableMapSize } from '@/composables/useStableMapSize';
+import MapBackButton from '@/views/components/maps/MapBackButton.vue';
+import { useFormatting } from '@/composables/useFormatting';
 import { use, registerMap } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { MapChart } from 'echarts/charts';
@@ -27,6 +31,7 @@ const props = defineProps({
   /** UF ativa (do filterStore). 'Todos' ou null = modo nacional (UF-level). */
   activeUf: { type: String, default: null },
   isLoading: { type: Boolean, default: false },
+  error: { type: String, default: null },
   kpis: { type: Object, default: null },
   formato: { type: String, default: 'dec' },
   /** Label do indicador para o título */
@@ -35,29 +40,43 @@ const props = defineProps({
   selectedIbge7: { type: Number, default: null },
   /** Região de Saúde selecionada */
   selectedRegiao: { type: String, default: null },
+  selectedMunicipioNome: { type: String, default: null },
+  selectedRegiaoNome: { type: String, default: null },
 });
 
 const emit = defineEmits(['select-municipio', 'select-uf', 'back-to-uf', 'clear-geography']);
 
 const geoStore = useGeoStore();
 const { chartTheme } = useChartTheme();
+const { formatNumberFull, formatPercent, formatTitleCase } = useFormatting();
 const themeStore = useThemeStore();
+const mapSnapshot = useFrozenData(
+  () => ({
+    mapData: props.mapData,
+    kpis: props.kpis,
+    indicadorLabel: props.indicadorLabel,
+    activeUf: props.activeUf,
+    selectedRegiaoNome: props.selectedRegiaoNome,
+    selectedMunicipioNome: props.selectedMunicipioNome,
+  }),
+  computed(() => props.isLoading || Boolean(props.error)),
+);
 
 function formatShare(value, total) {
   if (!total) return null;
-  return `${((value / total) * 100).toFixed(1)}%`;
+  return formatPercent((value / total) * 100);
 }
 
 const summaryItems = computed(() => {
-  const estabelecimentos = props.mapData.reduce(
+  const estabelecimentos = mapSnapshot.value.mapData.reduce(
     (total, row) => total + Number(row.total_cnpjs ?? 0),
     0
   );
-  const criticos = props.mapData.reduce(
+  const criticos = mapSnapshot.value.mapData.reduce(
     (total, row) => total + Number(row.total_critico ?? 0),
     0
   );
-  const k = props.kpis ?? {};
+  const k = mapSnapshot.value.kpis ?? {};
   const total = (k.total_critico ?? 0)
     + (k.total_atencao ?? 0)
     + (k.total_normal ?? 0)
@@ -65,7 +84,7 @@ const summaryItems = computed(() => {
 
   return [
     {
-      label: 'Crítico',
+      label: 'Críticos',
       value: criticos,
       sub: formatShare(criticos, estabelecimentos),
       tone: 'critical',
@@ -112,6 +131,13 @@ const backButtonTooltip = computed(
     ? `Voltar ao mapa de ${props.activeUf}`
     : 'Voltar ao mapa do Brasil'
 );
+const requestedScopeLabel = computed(() => {
+  if (!mapSnapshot.value.activeUf || mapSnapshot.value.activeUf === 'Todos') return 'Brasil';
+  const parts = [`UF ${mapSnapshot.value.activeUf}`];
+  if (mapSnapshot.value.selectedRegiaoNome) parts.push(formatTitleCase(mapSnapshot.value.selectedRegiaoNome));
+  if (mapSnapshot.value.selectedMunicipioNome) parts.push(formatTitleCase(mapSnapshot.value.selectedMunicipioNome));
+  return parts.join(' › ');
+});
 
 function handleBackClick() {
   emit(hasRegionScope.value ? 'back-to-uf' : 'clear-geography');
@@ -123,10 +149,8 @@ const chartRef = ref(null);
 
 // ── Dimensões reais do container (ResizeObserver) ────────────────────────────
 const containerRef = ref(null);
-const containerWidth = ref(800);
-const containerHeight = ref(400);
+const { containerWidth, containerHeight, hasMeasured } = useStableMapSize(containerRef, chartRef);
 const zoomLevel = ref(1);
-let _resizeObserver = null;
 
 function handleZoom(delta) {
   const next = zoomLevel.value + delta;
@@ -142,42 +166,25 @@ onMounted(async () => {
     window.__brasilUfRegistered = true;
   }
   nationalMapReady.value = true;
-
-  // Observa mudanças no tamanho do container para recalcular o layoutSize
-  if (containerRef.value) {
-    _resizeObserver = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        containerWidth.value = entry.contentRect.width;
-        containerHeight.value = entry.contentRect.height;
-      }
-    });
-    _resizeObserver.observe(containerRef.value);
-    containerWidth.value = containerRef.value.clientWidth;
-    containerHeight.value = containerRef.value.clientHeight;
-  }
-
-  await nextTick();
-  chartRef.value?.chart?.resize();
-  mapKey.value++;
-});
-
-onBeforeUnmount(() => {
-  _resizeObserver?.disconnect();
 });
 
 // ── GeoJSON municipal (para modo UF) ─────────────────────────────────────────
 const mapKey = ref(0);
+// Mapas ja registrados no ECharts (troca o Set inteiro para ser reativo).
+const registeredMaps = ref(new Set());
+function markRegistered(name) {
+  if (registeredMaps.value.has(name)) return;
+  registeredMaps.value = new Set([...registeredMaps.value, name]);
+}
+
 watch(
   [() => props.activeUf, () => geoStore.municipiosGeoJson],
   ([uf, geoJson]) => {
-    if (!uf || uf === "Todos" || !geoJson) {
-      mapKey.value++;
-      return;
-    }
+    if (!uf || uf === "Todos" || !geoJson) return;
     const geo = geoStore.getMunicipiosGeoByUF(uf);
     if (geo) {
       registerMap(`municipios-${uf}`, geo);
-      mapKey.value++;
+      markRegistered(`municipios-${uf}`);
     }
   },
   { immediate: true },
@@ -204,7 +211,7 @@ watch(
     );
     if (!features.length) return;
     registerMap(`regiao-filter-${regiao}`, { type: "FeatureCollection", features });
-    mapKey.value++;
+    markRegistered(`regiao-filter-${regiao}`);
   },
   { immediate: true }
 );
@@ -212,7 +219,7 @@ watch(
 // ── Lookup de dados por id_ibge7 ──────────────────────────────────────────────
 const dataByIbge7 = computed(() => {
   const m = new Map();
-  for (const row of props.mapData) {
+  for (const row of mapSnapshot.value.mapData) {
     if (row.id_ibge7) m.set(Number(row.id_ibge7), row);
   }
   return m;
@@ -221,7 +228,7 @@ const dataByIbge7 = computed(() => {
 // ── Lookup de dados agregados por UF (modo nacional) ─────────────────────────
 const dataByUf = computed(() => {
   const m = new Map();
-  for (const row of props.mapData) {
+  for (const row of mapSnapshot.value.mapData) {
     if (!row.uf) continue;
     const existing = m.get(row.uf);
     if (!existing) {
@@ -371,8 +378,45 @@ const optimalLayoutSize = computed(() => {
   return `${Math.round(96 * fillBoost)}%`;
 });
 
-// ── Chart option ──────────────────────────────────────────────────────────────
+// ── Troca de escopo (Brasil -> UF -> região) ──────────────────────────────────
+// Ao clicar numa UF, o mapa atual continua na tela ate o GeoJSON da UF estar
+// registrado E os dados dela chegarem; so entao o grafico e recriado, uma vez,
+// ja com as cores certas. Antes ele era recriado na hora com os dados antigos
+// (tudo cinza) e redesenhado de novo quando os dados chegavam.
+const committedMapName = ref(null);
+let lastCommittedOption = null;
+const mapReady = computed(() => (
+  isNational.value ? nationalMapReady.value : registeredMaps.value.has(mapName.value)
+));
+const changingScope = computed(() => mapName.value !== committedMapName.value);
+const committedScopeLabel = ref(null);
+
+watch(
+  [mapName, mapReady, () => props.isLoading, () => props.error],
+  () => {
+    if (!mapReady.value || props.isLoading || props.error || !changingScope.value) return;
+    committedMapName.value = mapName.value;
+    mapKey.value++;
+  },
+  { immediate: true },
+);
+watch(
+  [requestedScopeLabel, changingScope, () => props.isLoading],
+  () => {
+    if (!changingScope.value && !props.isLoading) committedScopeLabel.value = requestedScopeLabel.value;
+  },
+  { immediate: true },
+);
+const mapScopeLabel = computed(() => committedScopeLabel.value ?? requestedScopeLabel.value);
+
 const chartOption = computed(() => {
+  if (changingScope.value) return lastCommittedOption ?? {};
+  lastCommittedOption = buildChartOption();
+  return lastCommittedOption;
+});
+
+// ── Chart option ──────────────────────────────────────────────────────────────
+function buildChartOption() {
   const c = chartTheme.value;
   return {
     backgroundColor: c.bg,
@@ -444,7 +488,7 @@ const chartOption = computed(() => {
       data: echartsMapData.value,
     }],
   };
-});
+}
 
 watch(() => themeStore.isDark, () => mapKey.value++);
 
@@ -474,19 +518,15 @@ function onMapClick(params) {
       <i class="pi pi-map" />
       <div class="map-title">
         <h2>Municípios</h2>
-        <span>% de farmácias críticas por {{ isNational ? 'UF' : 'município' }} · {{ indicadorLabel }}</span>
+        <span>% de farmácias críticas por {{ isNational ? 'UF' : 'município' }} · {{ mapSnapshot.indicadorLabel }}</span>
       </div>
-      <button
+      <MapBackButton
         v-if="!isNational"
-        type="button"
-        class="map-back-button"
-        v-tooltip.bottom="backButtonTooltip"
+        :label="backButtonLabel"
+        :tooltip="backButtonTooltip"
         @click="handleBackClick"
-      >
-        <i class="pi pi-arrow-left" />
-        <span>{{ backButtonLabel }}</span>
-      </button>
-      <div v-if="summaryItems.length" class="map-summary">
+      />
+      <div v-if="!error && summaryItems.length" class="map-summary">
         <div
           v-for="item in summaryItems"
           :key="item.label"
@@ -495,7 +535,7 @@ function onMapClick(params) {
         >
           <span>{{ item.label }}</span>
           <div class="summary-inline">
-            <strong class="summary-main">{{ item.value }}</strong>
+            <strong class="summary-main">{{ formatNumberFull(item.value) }}</strong>
             <small v-if="item.sub" class="summary-sub">{{ item.sub }}</small>
           </div>
         </div>
@@ -503,15 +543,24 @@ function onMapClick(params) {
     </div>
 
     <!-- v-show em vez de v-if: mantém o elemento no DOM para ECharts medir dimensões -->
-    <div v-show="!isNational || nationalMapReady" ref="containerRef" class="map-wrapper">
+    <div v-show="!isNational || nationalMapReady || error" ref="containerRef" class="map-wrapper">
+      <div v-if="error && !isLoading" class="map-error-state" role="alert">
+        <i class="pi pi-exclamation-circle" />
+        <span>{{ error }}</span>
+      </div>
       <VChart
+        v-if="hasMeasured"
         ref="chartRef"
         :key="mapKey"
         class="echart"
         :option="chartOption"
-        autoresize
         @click="onMapClick"
       />
+
+      <div class="map-scope-badge" :aria-label="`Recorte do mapa: ${mapScopeLabel}`">
+        <i class="pi pi-map-marker" aria-hidden="true" />
+        <span>{{ mapScopeLabel }}</span>
+      </div>
 
       <!-- Controles de Zoom -->
       <div class="map-controls">
@@ -526,7 +575,7 @@ function onMapClick(params) {
         </button>
       </div>
 
-      <!-- Legenda flutuante no canto inferior esquerdo: nao ocupa altura do card. -->
+      <!-- Legenda flutuante no canto superior esquerdo: nao ocupa altura do card. -->
       <div class="map-legend" aria-label="Escala do percentual de farmácias críticas">
         <span class="legend-title">% farmácias críticas</span>
         <span v-for="piece in legendPieces" :key="piece.label" class="legend-step">
@@ -539,7 +588,7 @@ function onMapClick(params) {
         </span>
       </div>
     </div>
-    <div v-show="isNational && !nationalMapReady" class="map-loading">
+    <div v-show="isNational && !nationalMapReady && !error" class="map-loading">
       <i class="pi pi-spin pi-spinner" />
     </div>
   </div>
@@ -554,20 +603,24 @@ function onMapClick(params) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: opacity 0.25s ease;
 }
 
 .ind-map-card.is-refreshing {
-  opacity: 0.55;
   pointer-events: none;
 }
 
 .map-header {
+  --map-header-item-height: 2.75rem;
   display: flex;
   align-items: center;
   gap: 0.8rem;
   padding: 0.8rem 1.15rem;
   border-bottom: 1px solid var(--tabs-border);
+  flex-shrink: 0;
+}
+
+.map-header :deep(.map-back-button) {
+  height: var(--map-header-item-height);
   flex-shrink: 0;
 }
 
@@ -599,36 +652,6 @@ function onMapClick(params) {
   color: var(--text-muted);
 }
 
-.map-back-button {
-  height: 2rem;
-  padding: 0 0.65rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  border: 1px solid var(--card-border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--card-bg) 92%, var(--primary-color) 8%);
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.map-back-button:hover {
-  border-color: color-mix(in srgb, var(--primary-color) 42%, var(--card-border));
-  color: var(--primary-color);
-}
-
-.map-back-button:focus {
-  outline: none;
-  box-shadow: none;
-}
-
-.map-back-button:focus-visible {
-  outline: 1px solid var(--primary-color);
-  outline-offset: 2px;
-}
-
 .map-summary {
   margin-left: auto;
   display: flex;
@@ -637,15 +660,20 @@ function onMapClick(params) {
 }
 
 .summary-item {
+  box-sizing: border-box;
+  height: var(--map-header-item-height);
   min-width: 104px;
-  padding: 0.48rem 0.62rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 0.62rem;
   border: 1px solid color-mix(in srgb, var(--card-border) 82%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--card-bg) 86%, transparent);
 }
 
 .summary-item--critical {
-  min-width: 146px;
+  width: 120px;
   border-color: color-mix(in srgb, var(--risk-critical) 34%, var(--card-border));
   background:
     linear-gradient(
@@ -687,6 +715,17 @@ function onMapClick(params) {
   color: color-mix(in srgb, var(--risk-critical) 78%, var(--text-muted));
 }
 
+.summary-item--warning {
+  width: 120px;
+  border-color: color-mix(in srgb, var(--risk-indicator-warning) 34%, var(--card-border));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--risk-indicator-warning) 13%, var(--card-bg)),
+      color-mix(in srgb, var(--card-bg) 92%, transparent)
+    );
+}
+
 .summary-item--warning .summary-main {
   color: var(--risk-indicator-warning);
 }
@@ -699,6 +738,21 @@ function onMapClick(params) {
   position: relative;
   flex: 1;
   min-height: 0;
+}
+
+.map-error-state {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1.25rem;
+  background: var(--card-bg);
+  color: var(--risk-high);
+  font-size: 0.8rem;
+  text-align: center;
 }
 
 .echart {
@@ -716,10 +770,43 @@ function onMapClick(params) {
   font-size: 1.4rem;
 }
 
+.map-scope-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: min(55%, 24rem);
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.map-scope-badge i {
+  flex: none;
+  color: var(--primary-color);
+  font-size: 0.7rem;
+}
+
+.map-scope-badge span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .map-legend {
   position: absolute;
   left: 0.75rem;
-  bottom: 0.75rem;
+  top: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.12rem;

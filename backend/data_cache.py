@@ -3,6 +3,7 @@ import os
 import threading
 import json
 import time
+import uuid
 import pandas as pd
 import polars as pl
 from sqlalchemy import text
@@ -593,6 +594,7 @@ _cache_progress: int = 0
 _cache_status: str = "idle"
 _cache_error_message: str = ""
 _cache_generation: int = 0
+_cache_instance_id: str = uuid.uuid4().hex
 
 def _get_cache_module_status(loaded: bool, exists: bool) -> str:
     if loaded:
@@ -5877,6 +5879,7 @@ def get_cache_status() -> dict:
     return {
         "progress": _cache_progress,
         "status": _cache_status,
+        "cache_version": f"{_cache_instance_id}:{_cache_generation}",
         "is_ready": is_ready,
         "loaded_modules": loaded_modules,
         "total_modules": total_modules,

@@ -5,7 +5,7 @@ import io
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Iterator
+from typing import Iterator, overload
 
 import polars as pl
 import xlsxwriter
@@ -13,7 +13,7 @@ import xlsxwriter.utility
 from fastapi import HTTPException
 
 from cache_producers.crm import sync_crm_raiox_tx
-from data_cache import get_df_perfil_estabelecimento, scan_dados_medico
+from data_cache import get_df_perfil_estabelecimento, get_dados_medico_df
 
 
 CSV_COLUMNS = (
@@ -50,23 +50,29 @@ def _data_inconsistente(detail: str) -> HTTPException:
 _TITLE_CASE_BOUNDARY = re.compile(r"(^|\s|-|/)(\S)")
 
 
+@overload
+def _title_case(value: str) -> str: ...
+@overload
+def _title_case(value: None) -> None: ...
+@overload
+def _title_case(value: str | None) -> str | None: ...
 def _title_case(value: str | None) -> str | None:
     """Converte nomes em caixa alta para TitleCase, com a mesma regra do
     `formatTitleCase` do frontend (maiúscula após início, espaço, hífen ou barra)."""
     if value is None:
         return None
-    return _TITLE_CASE_BOUNDARY.sub(lambda m: m.group(1) + m.group(2).upper(), str(value).lower())
+    return _TITLE_CASE_BOUNDARY.sub(lambda m: m.group(1) + m.group(2).upper(), value.lower())
 
 
 def _csv_text(value: str | None) -> str:
     """Evita que texto vindo da base seja interpretado como fórmula ao abrir o CSV."""
-    text = "" if value is None else str(value)
+    text = "" if value is None else value
     if text.startswith(_FORMULA_PREFIXES) or text.lstrip().startswith(_FORMULA_PREFIXES[:4]):
         return "'" + text
     return text
 
 
-def _csv_literal_text(value: str) -> str:
+def _csv_literal_text(value: object) -> str:
     """Força o Excel a tratar o valor como texto literal (preserva zeros à esquerda
     e dígitos de números longos). A fórmula gerada é sempre uma constante de string
     com aspas escapadas, portanto não executa conteúdo vindo da base."""
@@ -133,7 +139,7 @@ def _validate_rows(rows: pl.DataFrame) -> None:
 
 def _load_doctor_names(ids_medicos: list[str]) -> dict[str, str | None]:
     medico_df = (
-        scan_dados_medico()
+        get_dados_medico_df().lazy()
         .filter(pl.col("id_medico").cast(pl.Utf8).is_in(ids_medicos))
         .select(["id_medico", "no_medico"])
         .collect()
@@ -254,7 +260,7 @@ def _load_farmacia(cnpj: str) -> _Farmacia:
     )
 
 
-def _iso_to_date(value: str) -> date:
+def _iso_to_date(value: object) -> date:
     return date.fromisoformat(str(value)[:10])
 
 

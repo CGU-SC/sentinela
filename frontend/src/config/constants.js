@@ -94,18 +94,6 @@ export const PERCENTUAL_QUICK_SELECT = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 /** Comprimento do CNPJ raiz (primeiros 8 dígitos). */
 export const CNPJ_RAIZ_LENGTH = 8;
 
-/** Filtros suportados pelos agregados gerenciais da análise de CRMs. */
-export const CRM_ANALYSIS_ALLOWED_QUERY_PARAMS = Object.freeze([
-    'data_inicio',
-    'data_fim',
-    'uf',
-    'regiao_id',
-    'id_ibge7',
-]);
-
-export const CRM_ANALYSIS_FILTER_SCOPE_NOTICE =
-    'Mapa e ranking de CRMs consideram apenas período e localização. Os demais filtros ativos continuam aplicados somente aos indicadores gerais.';
-
 // ─────────────────────────────────────────────────────────────
 // TIMING (ms)
 // Centraliza todos os delays/debounces/intervalos do sistema.
@@ -115,6 +103,7 @@ export const TIMING = {
     POLL_INTERVAL:        1000,  // Intervalo de polling do status de cache
     DROPDOWN_FOCUS_DELAY:   50,  // Delay para focar o input do dropdown
     FILTER_DEBOUNCE:       200,  // Debounce da persistência de filtros no localStorage
+    SIDEBAR_MOTION_MS:     240,  // Abertura/fechamento do painel lateral
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -140,3 +129,9 @@ export const KPI_PRIORITY_ORDER = [
 
 /** KPIs mantidos no dashboard, mas ocultos na tela de estabelecimentos. */
 export const ESTABLISHMENTS_HIDDEN_KPI_LABELS = [KPI_LABEL_MAP['QTDE DE MEDICAMENTOS']];
+
+/** KPIs mantidos no dashboard, mas ocultos na tela de análises. */
+export const ANALISES_HIDDEN_KPI_LABELS = [KPI_LABEL_MAP['QTDE DE MEDICAMENTOS']];
+
+/** KPIs mantidos no dashboard, mas ocultos na tela de municípios. */
+export const MUNICIPIOS_HIDDEN_KPI_LABELS = [KPI_LABEL_MAP['QTDE DE MEDICAMENTOS']];

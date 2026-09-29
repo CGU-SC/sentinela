@@ -19,11 +19,10 @@ const riskIndicatorsStore = useRiskIndicatorsStore();
 const geoStore = useGeoStore();
 const {
   selectedRiskIndicator, kpis, cnpjKpis, municipios, cnpjs, cnpjsTotal, cnpjsPage, cnpjsRows,
-  cnpjsSortField, cnpjsSortOrder, isLoading, isTableLoading, error
+  cnpjsSortField, cnpjsSortOrder, isLoading, isTableLoading, summaryError, tableError
 } = storeToRefs(riskIndicatorsStore);
 const { fetchRiskIndicator, fetchRiskIndicatorEstablishmentsPage } = useRiskIndicatorAnalysis();
 useFetchAnalytics({ includeFatorRisco: false, includeNationalContext: false });
-riskIndicatorsStore.loadPreferences();
 
 // Metadados do indicador ativo (label, formato, metodologia)
 const activeRiskIndicatorMeta = computed(() => {
@@ -135,13 +134,17 @@ const displayedCnpjs = computed(() => {
 const selectedMunicipioNome = computed(() => {
   const code = filterStore.selectedMunicipio;
   if (!code || code === 'Todos') return null;
-  return geoStore.getMunicipioNomeByIbge7(code);
+  const nome = geoStore.getMunicipioNomeByIbge7(code);
+  if (!nome) throw new Error('Municipio selecionado sem nome no contrato de localidades.');
+  return nome;
 });
 
 const selectedRegiaoNome = computed(() => {
   const code = filterStore.selectedRegiaoSaude;
   if (!code || code === 'Todos') return null;
-  return geoStore.getRegiaoNomeById(code) ?? code;
+  const nome = geoStore.getRegiaoNomeById(code);
+  if (!nome) throw new Error('Regiao de saude selecionada sem nome no contrato de localidades.');
+  return nome;
 });
 
 function onRiskIndicatorSelect(key) {
@@ -190,12 +193,6 @@ function onCnpjTableLazy(event) {
         </div>
       </div>
 
-      <!-- Estado de erro -->
-      <div v-else-if="error && !isLoading" class="error-state">
-        <i class="pi pi-exclamation-circle error-icon" />
-        <p>{{ error }}</p>
-      </div>
-
       <!-- Conteúdo (carregado ou carregando) -->
       <template v-else>
 
@@ -204,11 +201,14 @@ function onCnpjTableLazy(event) {
           :map-data="municipios"
           :active-uf="activeUf"
           :is-loading="isLoading"
+          :error="summaryError"
           :kpis="displayedKpis"
           :formato="activeRiskIndicatorMeta?.formato ?? 'dec'"
           :indicador-label="activeRiskIndicatorMeta?.label ?? ''"
           :selected-ibge7="selectedMunicipioIbge7"
           :selected-regiao="filterStore.selectedRegiaoSaude"
+          :selected-municipio-nome="selectedMunicipioNome"
+          :selected-regiao-nome="selectedRegiaoNome"
           @select-municipio="onSelectMunicipio"
           @select-uf="onSelectUf"
           @back-to-uf="returnMapToUf"
@@ -222,6 +222,7 @@ function onCnpjTableLazy(event) {
           :indicador-key="selectedRiskIndicator"
           :indicador-label="activeRiskIndicatorMeta?.label ?? ''"
           :is-loading="isTableLoading"
+          :error="tableError"
           :total-records="cnpjsTotal"
           :first="(cnpjsPage - 1) * cnpjsRows"
           :rows="cnpjsRows"
@@ -340,26 +341,6 @@ function onCnpjTableLazy(event) {
   font-size: 0.7rem;
   color: var(--text-color-85);
   opacity: 0.75;
-}
-
-/* ── Estado de erro ── */
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 3rem;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.error-icon {
-  font-size: 2rem;
-  color: var(--risk-indicator-critical);
-  opacity: 0.7;
 }
 
 /* ── Aviso de Snapshot ── */

@@ -1,43 +1,52 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
-import axios from 'axios';
+import { computed, onActivated, onDeactivated, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAnalyticsStore } from '@/stores/analytics';
 import { buildAnalyticsParams } from '@/stores/analytics';
 import { useFilterStore } from '@/stores/filters';
 import { useRiskIndicatorsStore } from '@/stores/riskIndicators';
 import { useGeoStore } from '@/stores/geo';
+import { useMunicipalMapStore } from '@/stores/municipalMap';
 import { useFetchAnalytics } from '@/composables/useFetchAnalytics';
 import { useRiskIndicatorAnalysis } from '@/composables/useRiskIndicatorAnalysis';
-import { API_ENDPOINTS } from '@/config/api';
 import { INDICATOR_GROUPS } from '@/config/riskConfig';
+import { MUNICIPIOS_HIDDEN_KPI_LABELS } from '@/config/constants';
 import KpiSection from './components/KpiSection.vue';
 import MunicipalRiskMap from './components/municipios/MunicipalRiskMap.vue';
 import MunicipalRiskTable from './components/municipios/MunicipalRiskTable.vue';
 import RiskIndicatorSelector from './components/risk-indicators/RiskIndicatorSelector.vue';
 
+defineOptions({ name: 'MunicipalView' });
+
 const analyticsStore = useAnalyticsStore();
 const filterStore = useFilterStore();
 const riskIndicatorsStore = useRiskIndicatorsStore();
 const geoStore = useGeoStore();
-const { resultadoMunicipios, isLoading } = storeToRefs(analyticsStore);
+const municipalMapStore = useMunicipalMapStore();
+const isActive = ref(true);
+const { resultadoMunicipios, isLoading, error: analyticsError, lastParamsHash } = storeToRefs(analyticsStore);
 const {
   selectedRiskIndicator,
   kpis,
   municipios: riskIndicatorMunicipios,
   isLoading: isRiskIndicatorLoading,
-  error: riskIndicatorError,
+  summaryError: riskIndicatorError,
+  summaryParamsKey,
 } = storeToRefs(riskIndicatorsStore);
-const { fetchRiskIndicator } = useRiskIndicatorAnalysis();
+const { fetchRiskIndicator } = useRiskIndicatorAnalysis({ active: isActive, includeTable: false });
 
-useFetchAnalytics({ includeFatorRisco: false, includeNationalContext: false });
+useFetchAnalytics({ includeFatorRisco: false, includeNationalContext: false, active: isActive });
+
+onActivated(() => {
+  isActive.value = true;
+});
+onDeactivated(() => {
+  isActive.value = false;
+});
 
 const selectedIbge7 = ref(null);
-const mapMunicipios = ref([]);
-const isMapLoading = ref(false);
-const mapError = ref(null);
-let mapAbortController = null;
-let mapRequestSeq = 0;
+const displaySnapshot = ref(null);
+const { rows: mapMunicipios, loadedKey: mapLoadedKey, isLoading: isMapLoading, error: mapError } = storeToRefs(municipalMapStore);
 
 const activeUf = computed(() => filterStore.selectedUF);
 const metricMode = computed(() => selectedRiskIndicator.value ? 'indicator' : 'audit');
@@ -67,16 +76,6 @@ function mergeIndicatorRows(baseRows) {
   });
 }
 
-const activeMapData = computed(() => mergeIndicatorRows(mapMunicipios.value));
-const activeTableData = computed(() => mergeIndicatorRows(resultadoMunicipios.value));
-const activeMapLoading = computed(() =>
-  metricMode.value === 'indicator'
-    ? (isRiskIndicatorLoading.value || isMapLoading.value)
-    : isMapLoading.value
-);
-const activeTableLoading = computed(() =>
-  metricMode.value === 'indicator' ? isRiskIndicatorLoading.value || isLoading.value : isLoading.value
-);
 const activeMetricLabel = computed(() =>
   metricMode.value === 'indicator'
     ? (activeRiskIndicatorMeta.value?.label ?? 'Indicador')
@@ -118,39 +117,67 @@ const mapApiParams = computed(() => {
 });
 
 const mapApiParamsKey = computed(() => JSON.stringify(mapApiParams.value));
+const dashboardParamsKey = computed(() => JSON.stringify(buildAnalyticsParams(filterStore.apiParams)));
+const indicatorParamsKey = computed(() => selectedRiskIndicator.value
+  ? JSON.stringify({ indicador: selectedRiskIndicator.value, params: filterStore.indicadoresApiParams })
+  : null);
+const requestedSnapshotKey = computed(() => JSON.stringify({
+  dashboard: dashboardParamsKey.value,
+  map: mapApiParamsKey.value,
+  indicator: indicatorParamsKey.value,
+}));
+const currentDataReady = computed(() =>
+  filterStore.isPeriodoValido
+  && lastParamsHash.value === dashboardParamsKey.value
+  && mapLoadedKey.value === mapApiParamsKey.value
+  && (!indicatorParamsKey.value || summaryParamsKey.value === indicatorParamsKey.value)
+  && !isLoading.value
+  && !isMapLoading.value
+  && (!indicatorParamsKey.value || !isRiskIndicatorLoading.value)
+  && !analyticsError.value
+  && !mapError.value
+  && (!indicatorParamsKey.value || !riskIndicatorError.value)
+);
 
 watch(
-  mapApiParamsKey,
-  async () => {
+  [currentDataReady, resultadoMunicipios, mapMunicipios, riskIndicatorMunicipios, kpis],
+  () => {
+    if (!currentDataReady.value) return;
+    displaySnapshot.value = {
+      key: requestedSnapshotKey.value,
+      mapData: mergeIndicatorRows(mapMunicipios.value),
+      tableData: mergeIndicatorRows(resultadoMunicipios.value),
+      kpis: kpis.value,
+      activeUf: activeUf.value,
+      selectedRegiao: filterStore.selectedRegiaoSaude,
+      selectedIbge7: selectedIbge7.value,
+      selectedMunicipioNome: selectedLocalidade.value?.no_municipio ?? null,
+      selectedRegiaoNome: selectedRegiaoNome.value,
+      metricMode: metricMode.value,
+      metricLabel: activeMetricLabel.value,
+    };
+  },
+  { immediate: true },
+);
+
+const snapshotStale = computed(() => displaySnapshot.value?.key !== requestedSnapshotKey.value || !currentDataReady.value);
+const displayError = computed(() => {
+  if (!snapshotStale.value) return null;
+  return mapError.value || analyticsError.value || (indicatorParamsKey.value ? riskIndicatorError.value : null);
+});
+
+watch(
+  [mapApiParamsKey, dashboardParamsKey, lastParamsHash, isActive],
+  ([requestKey, dashboardKey, loadedDashboardKey, active]) => {
+    if (!active) return;
     if (!filterStore.isPeriodoValido) return;
-
-    const requestId = ++mapRequestSeq;
-    if (mapAbortController) {
-      mapAbortController.abort();
-    }
-    mapAbortController = new AbortController();
-    isMapLoading.value = true;
-    mapError.value = null;
-
-    try {
-      const response = await axios.get(API_ENDPOINTS.analyticsResumo, {
-        params: mapApiParams.value,
-        signal: mapAbortController.signal,
-      });
-      if (requestId !== mapRequestSeq) return;
-      if (!Array.isArray(response.data?.resultado_municipios)) {
-        throw new Error('Contrato invalido em analytics/resumo: resultado_municipios ausente.');
+    if (mapLoadedKey.value === requestKey && !mapError.value) return;
+    if (requestKey === dashboardKey) {
+      if (loadedDashboardKey === dashboardKey && !isLoading.value && !analyticsError.value) {
+        municipalMapStore.useDashboardRows(requestKey, resultadoMunicipios.value);
       }
-      mapMunicipios.value = response.data.resultado_municipios;
-    } catch (error) {
-      if (axios.isCancel(error)) return;
-      console.error('Erro ao buscar municipios para o mapa:', error);
-      mapMunicipios.value = [];
-      mapError.value = 'Não foi possível carregar a base municipal do mapa.';
-    } finally {
-      if (requestId === mapRequestSeq) {
-        isMapLoading.value = false;
-      }
+    } else {
+      municipalMapStore.load(requestKey, mapApiParams.value).catch(() => {});
     }
   },
   { immediate: true },
@@ -203,30 +230,22 @@ function handleRiskIndicatorSelect(key) {
 
 <template>
   <div class="municipios-page">
-    <KpiSection />
+    <KpiSection :hidden-labels="MUNICIPIOS_HIDDEN_KPI_LABELS" />
 
     <div class="municipios-layout">
       <div class="municipios-analysis-panel">
-        <div v-if="riskIndicatorError" class="indicator-error">
-          <i class="pi pi-exclamation-circle" />
-          <span>{{ riskIndicatorError }}</span>
-        </div>
-        <div v-if="mapError" class="indicator-error">
-          <i class="pi pi-exclamation-circle" />
-          <span>{{ mapError }}</span>
-        </div>
-
         <MunicipalRiskMap
-          :map-data="activeMapData"
-          :kpis="kpis"
-          :active-uf="activeUf"
-          :is-loading="activeMapLoading"
-          :selected-ibge7="selectedIbge7"
-          :selected-regiao="filterStore.selectedRegiaoSaude"
-          :metric-mode="metricMode"
-          :metric-label="activeMetricLabel"
-          :selected-municipio-nome="selectedLocalidade?.no_municipio ?? null"
-          :selected-regiao-nome="selectedRegiaoNome"
+          :map-data="displaySnapshot?.mapData ?? []"
+          :kpis="displaySnapshot?.kpis ?? null"
+          :active-uf="displaySnapshot?.activeUf ?? activeUf"
+          :is-loading="snapshotStale"
+          :error="displayError"
+          :selected-ibge7="displaySnapshot?.selectedIbge7 ?? null"
+          :selected-regiao="displaySnapshot?.selectedRegiao ?? 'Todos'"
+          :metric-mode="displaySnapshot?.metricMode ?? metricMode"
+          :metric-label="displaySnapshot?.metricLabel ?? activeMetricLabel"
+          :selected-municipio-nome="displaySnapshot?.selectedMunicipioNome ?? null"
+          :selected-regiao-nome="displaySnapshot?.selectedRegiaoNome ?? null"
           @select-municipio="handleSelectMunicipio"
           @select-uf="handleSelectUf"
           @back-to-uf="handleMapBackToUf"
@@ -234,13 +253,15 @@ function handleRiskIndicatorSelect(key) {
         />
 
         <MunicipalRiskTable
-          :municipios="activeTableData"
-          :participation-rows="activeMapData"
-          :is-loading="activeTableLoading"
-          :selected-ibge7="selectedIbge7"
-          :metric-mode="metricMode"
-          :metric-label="activeMetricLabel"
-          :selected-regiao-nome="selectedRegiaoNome"
+          :municipios="displaySnapshot?.tableData ?? []"
+          :participation-rows="displaySnapshot?.mapData ?? []"
+          :is-loading="snapshotStale && !displayError"
+          :is-stale="snapshotStale"
+          :error="displayError"
+          :selected-ibge7="displaySnapshot?.selectedIbge7 ?? null"
+          :metric-mode="displaySnapshot?.metricMode ?? metricMode"
+          :metric-label="displaySnapshot?.metricLabel ?? activeMetricLabel"
+          :selected-regiao-nome="displaySnapshot?.selectedRegiaoNome ?? null"
           @select-municipio="handleSelectMunicipio"
           @clear-regiao-filter="handleClearRegiaoFilter"
         />
@@ -276,19 +297,4 @@ function handleRiskIndicatorSelect(key) {
   gap: 1rem;
 }
 
-.indicator-error {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.75rem 0.9rem;
-  border: 1px solid color-mix(in srgb, var(--risk-indicator-critical) 26%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--risk-indicator-critical) 8%, var(--card-bg));
-  color: var(--text-color-85);
-  font-size: 0.78rem;
-}
-
-.indicator-error i {
-  color: var(--risk-indicator-critical);
-}
 </style>

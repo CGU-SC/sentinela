@@ -10,7 +10,7 @@
 --
 -- Pre-requisitos:
 --   1. temp_CGUSC.fp.build_dados_medico
---   2. temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos
+--   2. temp_CGUSC.fp.build_crm_medico_brasil_mes
 --   3. temp_CGUSC.fp.build_crm_concentracao_unico_alertas
 --   4. temp_CGUSC.fp.build_crm_concentracao_multiplo_alertas
 --   5. temp_CGUSC.fp.build_crm_pipeline_uf_controle com concentracao unico/multiplo OK
@@ -833,9 +833,9 @@ WHERE uf_farmacia = @uf_farmacia
   AND dt_data_inicio = @DataInicio
   AND dt_data_fim = @DataFim;
 
-IF OBJECT_ID('temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos') IS NULL
+IF OBJECT_ID('temp_CGUSC.fp.build_crm_medico_brasil_mes') IS NULL
 BEGIN
-    RAISERROR('Tabela pre-global temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos nao encontrada. Rode crms_detalhado_pre_global_test.sql primeiro.', 16, 1);
+    RAISERROR('Tabela pre-global temp_CGUSC.fp.build_crm_medico_brasil_mes nao encontrada. Rode crms_detalhado_pre_global_test.sql primeiro.', 16, 1);
     RETURN;
 END;
 
@@ -2020,7 +2020,7 @@ BEGIN
         A.dt_prescricao_inicial_medico,
         A.dt_prescricao_final_medico
     FROM #lista_alertas_temp A
-    INNER JOIN temp_CGUSC.fp.build_crm_prescricoes_todos_estabelecimentos P
+    INNER JOIN temp_CGUSC.fp.build_crm_medico_brasil_mes P
         ON  P.id_medico = A.id_medico
         AND P.competencia = A.competencia;
 

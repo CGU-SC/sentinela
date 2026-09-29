@@ -580,6 +580,91 @@ class CrmPrescricoesAnaliseResponse(BaseModel):
     filtro_farmacias_ativo: bool = False
 
 
+class CrmHistoricoMesSchema(BaseModel):
+    """Um mes do medico no Brasil (todas as farmacias)."""
+    competencia: int
+    nu_prescricoes: int
+    qtd_dias_com_prescricao: int
+    taxa_prescricoes_dia: float
+    p95_taxa_dia: float
+    alta_intensidade: bool
+    qtd_farmacias: int
+    qtd_ufs: int
+    no_periodo: bool
+
+
+class CrmHistoricoFarmaciaSchema(BaseModel):
+    """Farmacia onde o medico prescreveu, com totais no periodo filtrado."""
+    id_cnpj: int
+    cnpj: Optional[str] = None
+    razao_social: Optional[str] = None
+    municipio: Optional[str] = None
+    uf: Optional[str] = None
+    situacao_rf: Optional[str] = None
+    conexao_ativa: Optional[bool] = None
+    nu_prescricoes: int
+    percentual_prescricoes: float
+    qtd_meses: int
+    primeira_competencia: int
+    ultima_competencia: int
+    fora_uf_crm: bool
+
+
+class CrmHistoricoFarmaciaMesSchema(BaseModel):
+    id_cnpj: int
+    competencia: int
+    nu_prescricoes: int
+    # Dias com prescricao do medico nesta farmacia no mes (taxa do mapa de calor).
+    qtd_dias_com_prescricao: int
+
+
+class CrmHistoricoKpisSchema(BaseModel):
+    nu_prescricoes: int
+    qtd_dias_com_prescricao: int
+    taxa_prescricoes_dia: Optional[float] = None
+    qtd_meses_ativos: int
+    qtd_meses_alta_intensidade: int
+    percentual_meses_alta_intensidade: Optional[float] = None
+    qtd_farmacias: int
+    qtd_municipios: int
+    qtd_ufs: int
+    percentual_farmacia_principal: Optional[float] = None
+    percentual_top3_farmacias: Optional[float] = None
+    # Pior mes do periodo: maior taxa diaria (prescricoes / dias com prescricao).
+    pior_mes_competencia: Optional[int] = None
+    pior_mes_taxa_prescricoes_dia: Optional[float] = None
+    pior_mes_prescricoes: Optional[int] = None
+    pior_mes_p95_taxa_dia: Optional[float] = None
+
+
+class CrmHistoricoAtencaoSchema(BaseModel):
+    """Fato calculado que merece atencao do auditor (sem juizo de valor)."""
+    codigo: Literal["antes_inscricao", "multiplas_ufs", "sequencia_alta", "concentracao"]
+    titulo: str
+    detalhe: str
+    competencias: List[int] = []
+
+
+class CrmMedicoHistoricoResponse(BaseModel):
+    id_medico: str
+    nu_crm: Optional[int] = None
+    sg_uf: Optional[str] = None
+    no_medico: Optional[str] = None
+    dt_primeira_inscricao: Optional[date] = None
+    localizado_cfm: bool
+    periodo_inicio: date
+    periodo_fim: date
+    kpis: CrmHistoricoKpisSchema
+    # Historico completo (todas as competencias com prescricao), para o grafico.
+    meses: List[CrmHistoricoMesSchema]
+    # Farmacias com prescricao no periodo filtrado, da maior para a menor.
+    farmacias: List[CrmHistoricoFarmaciaSchema]
+    # Farmacia x mes no historico completo (para empilhar e o mapa de calor).
+    farmacia_mes: List[CrmHistoricoFarmaciaMesSchema]
+    pontos_atencao: List[CrmHistoricoAtencaoSchema]
+    limite_concentracao_percentual: float
+
+
 class PrescritoresResponse(BaseModel):
     cnpj: str
     summary: dict

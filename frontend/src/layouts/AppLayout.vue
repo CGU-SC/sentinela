@@ -1,6 +1,6 @@
 <script setup>
-import { onMounted, computed } from "vue";
-import { useRoute } from "vue-router";
+import { computed, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useThemeStore } from "@/stores/theme";
 import { useFilterStore } from "@/stores/filters";
 import { useFarmaciaListsStore } from "@/stores/farmaciaLists";
@@ -8,24 +8,67 @@ import AppNavbar from "@/layouts/components/AppNavbar.vue";
 import AppSidebar from "@/layouts/components/AppSidebar.vue";
 import CnpjDialog from "@/layouts/components/dialogs/CnpjDialog.vue";
 import SyncDialog from "@/layouts/components/dialogs/SyncDialog.vue";
+import { ANALYSIS_PAGE_PATHS, analysisPageEntry, beginAnalysisPageNavigation, dismissAnalysisPageNavigation, prepareAnalysisPage, revealAnalysisPage } from "@/composables/prepareAnalysisPage";
+import { TIMING } from "@/config/constants";
 
 const route = useRoute();
+const router = useRouter();
 const themeStore = useThemeStore();
 const filterStore = useFilterStore();
 const farmaciaLists = useFarmaciaListsStore();
+const sidebarMotionStyle = {
+  '--sidebar-motion-duration': `${TIMING.SIDEBAR_MOTION_MS}ms`,
+  '--page-reveal-duration': `${TIMING.SIDEBAR_MOTION_MS / 2}ms`,
+};
 
 // Lógica Profissional: Esconde a sidebar se a rota atual pedir via meta: { hideSidebar: true }
 const isSidebarHidden = computed(() => !!route.meta?.hideSidebar);
 const isAnalysisRoute = computed(() =>
   route.path === "/estabelecimentos" || route.path.startsWith("/analises"),
 );
+const isPreparingDirectEntry = computed(() =>
+  ANALYSIS_PAGE_PATHS.includes(route.path) && analysisPageEntry.preparedPath !== route.path,
+);
+const entryPath = computed(() => analysisPageEntry.pendingPath || (isPreparingDirectEntry.value ? route.path : null));
+const entryHasError = computed(() => analysisPageEntry.errorPath === entryPath.value);
 
-onMounted(() => {});
+watch(() => route.path, (path) => {
+  if (!ANALYSIS_PAGE_PATHS.includes(path) || analysisPageEntry.preparedPath === path) return;
+  prepareAnalysisPage(path).catch(() => {
+    // A falha aparece no estado de entrada abaixo, com opção de tentar novamente.
+  });
+}, { immediate: true });
+
+watch([() => route.path, () => analysisPageEntry.preparedPath], ([path, preparedPath]) => {
+  if (path === preparedPath && analysisPageEntry.pendingPath === path) {
+    revealAnalysisPage(path);
+  }
+}, { immediate: true });
+
+function retryEntry() {
+  const path = analysisPageEntry.errorPath;
+  if (!path) return;
+  if (route.path === path) {
+    beginAnalysisPageNavigation(path);
+    prepareAnalysisPage(path).catch(() => {});
+  } else {
+    router.push(path);
+  }
+}
+
+function dismissEntry() {
+  if (route.path === entryPath.value) {
+    router.push('/');
+  } else {
+    dismissAnalysisPageNavigation();
+  }
+}
 </script>
 
 <template>
   <div 
     class="admin-layout" 
+    :style="sidebarMotionStyle"
     :class="{ 
       collapsed: filterStore.sidebarCollapsed,
       'no-sidebar': isSidebarHidden,
@@ -45,11 +88,25 @@ onMounted(() => {});
       </div>
       <div class="page-content">
         <router-view v-slot="{ Component }">
-          <Transition name="page-fade" mode="out-in">
-            <component :is="Component" />
-          </Transition>
+          <KeepAlive include="MunicipalView">
+            <component :is="Component" v-if="!isPreparingDirectEntry" />
+          </KeepAlive>
         </router-view>
       </div>
+      <Transition name="page-entry">
+        <div v-if="entryPath" class="page-entry-panel"
+          :role="entryHasError ? 'alert' : 'status'" aria-live="polite"
+          :aria-label="entryHasError ? undefined : 'Carregando página'" :aria-busy="!entryHasError">
+          <div v-if="entryHasError" class="page-entry-content">
+            <i class="pi pi-exclamation-circle page-entry-error-icon" aria-hidden="true" />
+            <p>{{ analysisPageEntry.errorMessage }}</p>
+            <div class="page-entry-actions">
+              <button type="button" @click="retryEntry">Tentar novamente</button>
+              <button type="button" @click="dismissEntry">Voltar</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </main>
   </div>
 </template>
@@ -83,14 +140,14 @@ onMounted(() => {});
 :deep(.sidebar-footer) {
   opacity: 1;
   pointer-events: auto;
-  transition: opacity 0.2s 0.25s ease;
+  transition: opacity var(--sidebar-motion-duration) ease;
 }
 
 .admin-layout.collapsed :deep(.sidebar-content),
 .admin-layout.collapsed :deep(.sidebar-footer) {
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--sidebar-motion-duration) ease;
 }
 
 /* Remove borda direita quando colapsada */
@@ -106,8 +163,18 @@ onMounted(() => {});
   scrollbar-gutter: stable;
   margin-left: var(--sidebar-width);
   padding-top: 56px;
-  transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: margin-left var(--sidebar-motion-duration) cubic-bezier(0.4, 0, 0.2, 1);
   background: transparent !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main-container,
+  :deep(.sidebar-content),
+  :deep(.sidebar-footer),
+  .page-entry-enter-active,
+  .page-entry-leave-active {
+    transition-duration: 0ms;
+  }
 }
 
 .page-content {
@@ -120,13 +187,67 @@ onMounted(() => {});
   padding-bottom: 0;
 }
 
-/* PAGE TRANSITIONS */
-.page-fade-enter-active,
-.page-fade-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
+.page-entry-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: var(--sidebar-width);
+  background: var(--bg-color);
+  color: var(--text-color-85);
 }
-.page-fade-enter-from { opacity: 0; transform: translateY(8px); }
-.page-fade-leave-to   { opacity: 0; transform: translateY(-8px); }
+
+.page-entry-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  text-align: center;
+  font-size: .9rem;
+}
+
+.page-entry-content p {
+  margin: 0;
+}
+
+.page-entry-error-icon {
+  color: var(--risk-high);
+}
+
+.page-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.page-entry-actions button {
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  padding: .55rem .8rem;
+  background: var(--card-bg);
+  color: var(--primary-color);
+  cursor: pointer;
+  font: inherit;
+}
+
+.page-entry-actions button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.page-entry-enter-active,
+.page-entry-leave-active {
+  transition: opacity var(--page-reveal-duration) ease;
+}
+
+.page-entry-enter-from,
+.page-entry-leave-to {
+  opacity: 0;
+}
 
 /* OVERRIDES GLOBAIS DE COMPONENTES PRIMEVUE */
 :deep(.p-dialog) {
