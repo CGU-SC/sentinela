@@ -10,6 +10,7 @@ from cache_files import (
     CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_CACHE_VERSION,
     CRM_MEDICO_ESTABELECIMENTO_MES_CACHE_VERSION,
     CRM_MEDICO_BRASIL_MES_CACHE_VERSION,
+    CRM_MEDICO_ANO_CACHE_VERSION,
     CRM_MEDICO_TERRITORIO_MES_CACHE_VERSION,
     CRM_PRESCRITORES_CACHE_VERSION,
     CRM_RAIOX_TX_CACHE_VERSION,
@@ -66,6 +67,11 @@ _DISABLED_BOOT_MODULES: frozenset[str] = frozenset({
     "crm_medico_estabelecimento_mes",
     "crm_medico_brasil_mes",
     "crm_medico_territorio_mes",
+    "crm_medico_brasil_ano",
+    "crm_medico_territorio_ano",
+    "crm_medico_dim",
+    "crm_farmacia_medico_ano",
+    "crm_indice_bitmaps",
     "crm_mapa_municipio_regiao_periodo",
     "crm_mapa_uf_periodo",
     "crm_limiar_p95_mes",
@@ -385,6 +391,27 @@ _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
         "nu_prescricoes_mes",
         "qtd_dias_com_prescricao_mes",
     },
+    "crm_medico_brasil_ano": {
+        "id_medico",
+        "ano",
+        "nu_prescricoes",
+        "qtd_dias_com_prescricao",
+        "qtd_meses_ativos",
+        "qtd_meses_alta_intensidade",
+    },
+    "crm_medico_dim": {"id_medico_num", "id_medico"},
+    "crm_farmacia_medico_ano": {"ano", "id_medico_num", "id_cnpj", "nu_prescricoes"},
+    "crm_indice_bitmaps": {"tipo", "granularidade", "periodo", "chave", "bitmap"},
+    "crm_medico_territorio_ano": {
+        "nivel",
+        "id_geografico",
+        "id_medico",
+        "ano",
+        "nu_prescricoes",
+        "qtd_dias_com_prescricao",
+        "qtd_meses_ativos",
+        "qtd_meses_alta_intensidade",
+    },
     "crm_mapa_municipio_regiao_periodo": {
         "nivel",
         "id_geografico",
@@ -418,6 +445,12 @@ _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
 
 def _global_cache_path(key: str) -> str:
     return os.path.join(_CACHE_DIR, _GLOBAL_PARQUETS[key])
+
+
+def get_global_cache_signature(name: str) -> tuple[str, int, int]:
+    """Identifica a versao em disco de um modulo global (nome, mtime, tamanho)."""
+    stat = os.stat(_global_cache_path(name))
+    return (name, stat.st_mtime_ns, stat.st_size)
 
 
 def _validate_parquet_schema(name: str, path: str, required: set[str] | None = None) -> None:
@@ -472,6 +505,11 @@ _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH = _global_cache_path("crm_prescricoes_bras
 _CRM_MEDICO_ESTABELECIMENTO_MES_PATH = _global_cache_path("crm_medico_estabelecimento_mes")
 _CRM_MEDICO_TERRITORIO_MES_PATH = _global_cache_path("crm_medico_territorio_mes")
 _CRM_MEDICO_BRASIL_MES_PATH = _global_cache_path("crm_medico_brasil_mes")
+_CRM_MEDICO_BRASIL_ANO_PATH = _global_cache_path("crm_medico_brasil_ano")
+_CRM_MEDICO_TERRITORIO_ANO_PATH = _global_cache_path("crm_medico_territorio_ano")
+_CRM_MEDICO_DIM_PATH = _global_cache_path("crm_medico_dim")
+_CRM_FARMACIA_MEDICO_ANO_PATH = _global_cache_path("crm_farmacia_medico_ano")
+_CRM_INDICE_BITMAPS_PATH = _global_cache_path("crm_indice_bitmaps")
 _CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_PATH = _global_cache_path("crm_mapa_municipio_regiao_periodo")
 _CRM_MAPA_UF_PERIODO_PATH = _global_cache_path("crm_mapa_uf_periodo")
 _CRM_LIMIAR_P95_MES_PATH = _global_cache_path("crm_limiar_p95_mes")
@@ -4320,6 +4358,193 @@ def _sync_crm_medico_territorio_mes(engine, progress_callback=None):
         progress_callback(100)
 
 
+def _sync_crm_medico_ano(
+    engine,
+    *,
+    cache_key: str,
+    source_table: str,
+    final_path: str,
+    casts: dict[str, Any],
+    order_by: str,
+    progress_callback=None,
+) -> None:
+    """Sincroniza uma tabela anual do ranking (medico x ano), uma parte por ano.
+
+    As anuais sao somas das mensais gravadas pela etapa 1 (prescricoes, dias com
+    prescricao, meses ativos e meses de alta intensidade); o ranking le delas os
+    anos inteiros do periodo e os meses soltos das mensais.
+    """
+    schema = _GLOBAL_PARQUET_SCHEMAS[cache_key]
+    parts_dir = Path(_CACHE_DIR) / ".parts" / cache_key
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = parts_dir / "manifest.json"
+
+    def part_path(ano: int) -> Path:
+        return parts_dir / f"{ano}.smod.part"
+
+    def read_manifest() -> dict[str, Any]:
+        if not manifest_path.exists():
+            return {}
+        with manifest_path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def write_manifest(data: dict[str, Any]) -> None:
+        tmp_path = manifest_path.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        os.replace(tmp_path, manifest_path)
+
+    with engine.connect() as conn:
+        total_rows = _assert_fp_source_table(engine, source_table, set(schema.keys()))
+        anos = [
+            int(row[0])
+            for row in conn.execute(text(f"""
+                SELECT DISTINCT ano
+                FROM [temp_CGUSC].[fp].[{source_table}]
+                WHERE ano IS NOT NULL
+                ORDER BY ano
+            """)).fetchall()
+        ]
+        if not anos:
+            raise RuntimeError(f"A fonte temp_CGUSC.fp.{source_table} nao possui anos para gerar o cache.")
+
+        manifest = read_manifest()
+        manifest_valid = (
+            manifest.get("cache_key") == cache_key
+            and manifest.get("version") == CRM_MEDICO_ANO_CACHE_VERSION
+            and manifest.get("anos") == anos
+            and manifest.get("status") != "done"
+        )
+        if not manifest_valid:
+            manifest = {
+                "cache_key": cache_key,
+                "version": CRM_MEDICO_ANO_CACHE_VERSION,
+                "anos": anos,
+                "parts": {},
+            }
+            write_manifest(manifest)
+        parts = manifest["parts"]
+        if not isinstance(parts, dict):
+            raise RuntimeError(f"manifesto de {cache_key} com campo parts invalido")
+
+        colunas = ", ".join(schema.keys())
+        query = text(f"""
+            SELECT {colunas}
+            FROM [temp_CGUSC].[fp].[{source_table}]
+            WHERE ano = :ano
+            ORDER BY {order_by}
+        """)
+        for index, ano in enumerate(anos, 1):
+            key = str(ano)
+            output_path = part_path(ano)
+            if parts.get(key, {}).get("status") == "done" and output_path.exists():
+                if progress_callback:
+                    progress_callback(int((index / len(anos)) * 90))
+                continue
+
+            print(f"   -> {cache_key} parte {index}/{len(anos)}: {ano}")
+            chunks = [
+                pl.from_pandas(chunk).with_columns([
+                    pl.col(coluna).cast(dtype) for coluna, dtype in casts.items()
+                ])
+                for chunk in pd.read_sql(query, conn, params={"ano": ano}, chunksize=200_000)
+            ]
+            if not chunks:
+                raise RuntimeError(f"Fonte {source_table} sem registros para o ano {ano}.")
+            df_part = pl.concat(chunks).select(list(schema.keys()))
+            tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+            df_part.write_parquet(tmp_path, compression="zstd", row_group_size=250_000)
+            os.replace(tmp_path, output_path)
+            parts[key] = {"status": "done", "rows": df_part.height, "file": output_path.name}
+            write_manifest(manifest)
+            if progress_callback:
+                progress_callback(int((index / len(anos)) * 90))
+
+    part_paths = [part_path(ano) for ano in anos]
+    missing_parts = [path.name for path in part_paths if not path.exists()]
+    if missing_parts:
+        raise RuntimeError(f"Partes pendentes para consolidar {cache_key}: " + ", ".join(missing_parts))
+
+    print(f"   -> Consolidando {cache_key}...")
+    tmp_final = final_path + ".tmp"
+    pl.scan_parquet([str(path) for path in part_paths]).select(list(schema.keys())).sink_parquet(
+        tmp_final, compression="zstd", row_group_size=250_000,
+    )
+    os.replace(tmp_final, final_path)
+
+    manifest["status"] = "done"
+    manifest["source_rows"] = total_rows
+    manifest["final_rows"] = sum(int(info.get("rows", 0)) for info in parts.values())
+    manifest["final_file"] = os.path.basename(final_path)
+    write_manifest(manifest)
+    _mark_on_demand_global_cache_ready(cache_key, final_path)
+    if progress_callback:
+        progress_callback(100)
+
+
+def _sync_crm_medico_brasil_ano(engine, progress_callback=None):
+    """Sincroniza as somas anuais por medico (Brasil) para o ranking."""
+    print("Sincronizando somas anuais por medico (Brasil)...")
+    _sync_crm_medico_ano(
+        engine,
+        cache_key="crm_medico_brasil_ano",
+        source_table="app_crm_medico_brasil_ano",
+        final_path=_CRM_MEDICO_BRASIL_ANO_PATH,
+        casts=_GLOBAL_PARQUET_SCHEMAS["crm_medico_brasil_ano"],
+        order_by="id_medico",
+        progress_callback=progress_callback,
+    )
+
+
+def _sync_crm_medico_territorio_ano(engine, progress_callback=None):
+    """Sincroniza as somas anuais por medico e territorio (municipio, regiao, UF)."""
+    print("Sincronizando somas anuais por medico/territorio...")
+    _sync_crm_medico_ano(
+        engine,
+        cache_key="crm_medico_territorio_ano",
+        source_table="app_crm_medico_territorio_ano",
+        final_path=_CRM_MEDICO_TERRITORIO_ANO_PATH,
+        casts=_GLOBAL_PARQUET_SCHEMAS["crm_medico_territorio_ano"],
+        order_by="nivel, id_geografico, id_medico",
+        progress_callback=progress_callback,
+    )
+
+
+def _sync_crm_medico_dim(engine, progress_callback=None):
+    """Sincroniza a dimensao de medicos (id_medico -> id_medico_num)."""
+    print("Sincronizando dimensao de medicos (codigo inteiro)...")
+    schema = _GLOBAL_PARQUET_SCHEMAS["crm_medico_dim"]
+    _assert_fp_source_table(engine, "app_crm_medico_dim", set(schema.keys()))
+    query = text("""
+        SELECT id_medico_num, id_medico
+        FROM [temp_CGUSC].[fp].[app_crm_medico_dim]
+        ORDER BY id_medico_num
+    """)
+    _load_or_sync_global_cache_simple("crm_medico_dim", _CRM_MEDICO_DIM_PATH, query, engine, progress_callback)
+
+
+def _sync_crm_farmacia_medico_ano(engine, progress_callback=None):
+    """Sincroniza farmacia x medico x ano (base do indice de bitmaps)."""
+    print("Sincronizando farmacia x medico x ano...")
+    _sync_crm_medico_ano(
+        engine,
+        cache_key="crm_farmacia_medico_ano",
+        source_table="app_crm_farmacia_medico_ano",
+        final_path=_CRM_FARMACIA_MEDICO_ANO_PATH,
+        casts=_GLOBAL_PARQUET_SCHEMAS["crm_farmacia_medico_ano"],
+        order_by="id_medico_num, id_cnpj",
+        progress_callback=progress_callback,
+    )
+
+
+def _sync_crm_indice_bitmaps(engine=None, progress_callback=None):
+    """Monta o indice de bitmaps dos filtros de farmacia a partir dos .smod CRM
+    ja sincronizados (nao consulta o banco). Ver crm_indice_bitmaps.py."""
+    from crm_indice_bitmaps import construir_indice
+    construir_indice(_CRM_INDICE_BITMAPS_PATH, progress_callback=progress_callback)
+    _mark_on_demand_global_cache_ready("crm_indice_bitmaps", _CRM_INDICE_BITMAPS_PATH)
+
+
 def _sync_crm_mapa_municipio_regiao_periodo(engine, progress_callback=None):
     """Sincroniza contagens por municipio/regiao e intervalo de meses."""
     global _df_crm_mapa_municipio_regiao_periodo
@@ -5025,6 +5250,10 @@ def load_cache(engine, force_refresh: bool = False) -> None:
             _try_mark_on_demand("crm_medico_brasil_mes", _CRM_MEDICO_BRASIL_MES_PATH)
         if "crm_medico_territorio_mes" not in _DISABLED_BOOT_MODULES:
             _try_mark_on_demand("crm_medico_territorio_mes", _CRM_MEDICO_TERRITORIO_MES_PATH)
+        if "crm_medico_brasil_ano" not in _DISABLED_BOOT_MODULES:
+            _try_mark_on_demand("crm_medico_brasil_ano", _CRM_MEDICO_BRASIL_ANO_PATH)
+        if "crm_medico_territorio_ano" not in _DISABLED_BOOT_MODULES:
+            _try_mark_on_demand("crm_medico_territorio_ano", _CRM_MEDICO_TERRITORIO_ANO_PATH)
         if "crm_mapa_municipio_regiao_periodo" not in _DISABLED_BOOT_MODULES:
             _try_mark_on_demand(
                 "crm_mapa_municipio_regiao_periodo",
@@ -5104,9 +5333,14 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         {"name": "CRM Medico/Estabelecimento/Mes", "weight": 5, "func": lambda cb: _sync_crm_medico_estabelecimento_mes(engine, cb)},
         {"name": "CRM Medico/Brasil/Mes", "weight": 3, "func": lambda cb: _sync_crm_medico_brasil_mes(engine, cb)},
         {"name": "CRM Medico/Territorio/Mes", "weight": 3, "func": lambda cb: _sync_crm_medico_territorio_mes(engine, cb)},
+        {"name": "CRM Medico/Brasil/Ano", "weight": 1, "func": lambda cb: _sync_crm_medico_brasil_ano(engine, cb)},
+        {"name": "CRM Medico/Territorio/Ano", "weight": 2, "func": lambda cb: _sync_crm_medico_territorio_ano(engine, cb)},
+        {"name": "CRM Medico/Dimensao", "weight": 1, "func": lambda cb: _sync_crm_medico_dim(engine, cb)},
+        {"name": "CRM Farmacia/Medico/Ano", "weight": 3, "func": lambda cb: _sync_crm_farmacia_medico_ano(engine, cb)},
         {"name": "CRM Mapa Municipio-Regiao/Periodo", "weight": 2, "func": lambda cb: _sync_crm_mapa_municipio_regiao_periodo(engine, cb)},
         {"name": "CRM Mapa UF/Periodo", "weight": 1, "func": lambda cb: _sync_crm_mapa_uf_periodo(engine, cb)},
         {"name": "CRM Limiar P95/Mes", "weight": 1, "func": lambda cb: _sync_crm_limiar_p95_mes(engine, cb)},
+        {"name": "CRM Indice de bitmaps (local)", "weight": 3, "func": lambda cb: _sync_crm_indice_bitmaps(engine, cb)},
         {"name": "Dados Medico",            "weight": 1,  "func": lambda cb: _sync_dados_medico(engine, cb)},
         {"name": "Geografico Origem UF",  "weight": 2,  "func": lambda cb: _sync_geografico_origem_uf(engine, cb)},
         {"name": "Contexto eSocial",      "weight": 3,  "func": lambda cb: _sync_esocial(engine, cb)},
@@ -5252,6 +5486,32 @@ def scan_crm_medico_territorio_mes() -> pl.LazyFrame:
         "crm_medico_territorio_mes",
         _CRM_MEDICO_TERRITORIO_MES_PATH,
     )
+
+
+def scan_crm_medico_brasil_ano() -> pl.LazyFrame:
+    return _scan_on_demand_global_parquet(
+        "crm_medico_brasil_ano",
+        _CRM_MEDICO_BRASIL_ANO_PATH,
+    )
+
+
+def scan_crm_medico_territorio_ano() -> pl.LazyFrame:
+    return _scan_on_demand_global_parquet(
+        "crm_medico_territorio_ano",
+        _CRM_MEDICO_TERRITORIO_ANO_PATH,
+    )
+
+
+def scan_crm_medico_dim() -> pl.LazyFrame:
+    return _scan_on_demand_global_parquet("crm_medico_dim", _CRM_MEDICO_DIM_PATH)
+
+
+def scan_crm_farmacia_medico_ano() -> pl.LazyFrame:
+    return _scan_on_demand_global_parquet("crm_farmacia_medico_ano", _CRM_FARMACIA_MEDICO_ANO_PATH)
+
+
+def scan_crm_indice_bitmaps() -> pl.LazyFrame:
+    return _scan_on_demand_global_parquet("crm_indice_bitmaps", _CRM_INDICE_BITMAPS_PATH)
 
 
 def scan_crm_medico_brasil_mes() -> pl.LazyFrame:
@@ -5451,6 +5711,11 @@ def get_cache_status() -> dict:
         "crm_medico_estabelecimento_mes": {"label": "CRM Medico/Estabelecimento/Mes", "path": _CRM_MEDICO_ESTABELECIMENTO_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_medico_estabelecimento_mes", _CRM_MEDICO_ESTABELECIMENTO_MES_PATH)},
         "crm_medico_brasil_mes": {"label": "CRM Medico/Brasil/Mes", "path": _CRM_MEDICO_BRASIL_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_medico_brasil_mes", _CRM_MEDICO_BRASIL_MES_PATH)},
         "crm_medico_territorio_mes": {"label": "CRM Medico/Territorio/Mes", "path": _CRM_MEDICO_TERRITORIO_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_medico_territorio_mes", _CRM_MEDICO_TERRITORIO_MES_PATH)},
+        "crm_medico_brasil_ano": {"label": "CRM Medico/Brasil/Ano", "path": _CRM_MEDICO_BRASIL_ANO_PATH, "loaded": _is_on_demand_global_cache_ready("crm_medico_brasil_ano", _CRM_MEDICO_BRASIL_ANO_PATH)},
+        "crm_medico_territorio_ano": {"label": "CRM Medico/Territorio/Ano", "path": _CRM_MEDICO_TERRITORIO_ANO_PATH, "loaded": _is_on_demand_global_cache_ready("crm_medico_territorio_ano", _CRM_MEDICO_TERRITORIO_ANO_PATH)},
+        "crm_medico_dim": {"label": "CRM Medico/Dimensao", "path": _CRM_MEDICO_DIM_PATH, "loaded": _is_on_demand_global_cache_ready("crm_medico_dim", _CRM_MEDICO_DIM_PATH)},
+        "crm_farmacia_medico_ano": {"label": "CRM Farmacia/Medico/Ano", "path": _CRM_FARMACIA_MEDICO_ANO_PATH, "loaded": _is_on_demand_global_cache_ready("crm_farmacia_medico_ano", _CRM_FARMACIA_MEDICO_ANO_PATH)},
+        "crm_indice_bitmaps": {"label": "CRM Indice de bitmaps (filtros de farmacia)", "path": _CRM_INDICE_BITMAPS_PATH, "loaded": _is_on_demand_global_cache_ready("crm_indice_bitmaps", _CRM_INDICE_BITMAPS_PATH)},
         "crm_mapa_municipio_regiao_periodo": {"label": "CRM Mapa Municipio-Regiao/Periodo", "path": _CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_PATH, "loaded": _is_on_demand_global_cache_ready("crm_mapa_municipio_regiao_periodo", _CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_PATH)},
         "crm_mapa_uf_periodo": {"label": "CRM Mapa UF/Periodo", "path": _CRM_MAPA_UF_PERIODO_PATH, "loaded": _is_on_demand_global_cache_ready("crm_mapa_uf_periodo", _CRM_MAPA_UF_PERIODO_PATH)},
         "crm_limiar_p95_mes": {"label": "CRM Limiar P95/Mes", "path": _CRM_LIMIAR_P95_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_limiar_p95_mes", _CRM_LIMIAR_P95_MES_PATH)},
