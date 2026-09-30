@@ -23,6 +23,9 @@ export const AUDIT_THRESHOLDS = {
 /** Destaque visual da taxa diária no ranking de médicos em Análises. */
 export const CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD = 20;
 
+/** Alerta diário no perfil do estabelecimento: taxa estritamente maior que o limite. */
+export const CRM_DAILY_RATE_ALERT_THRESHOLD = CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD;
+
 /** Paleta de cores hex associada a cada nível (para uso em ECharts e CSS via v-bind). */
 export { RISK_COLORS } from './colors.js';
 

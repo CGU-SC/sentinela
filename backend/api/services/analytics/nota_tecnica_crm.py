@@ -9,6 +9,7 @@ from docx.shared import Inches, Pt
 
 from cache_files import CRM_RAIOX_TX_PARQUET
 from ._cache import _get_cnpj_cache_dir
+from .crm_config import CRM_DAILY_RATE_ALERT_THRESHOLD
 from .crm import (
     _build_alertas_crm_multiplos_por_medico,
     _build_crm_unico_alertas_por_medico,
@@ -553,13 +554,13 @@ def _crm_alertas_contexto_labels(row: dict[str, Any]) -> list[str]:
 
     prescricoes_dia_local = _as_float(row.get("nu_prescricoes_dia"))
     prescricoes_dia_brasil = _as_float(row.get("prescricoes_dia_total_brasil"))
-    alerta_30_local = _as_int(row.get("flag_robo")) > 0 or prescricoes_dia_local > 30
-    alerta_30_brasil = _as_int(row.get("flag_robo_oculto")) > 0 or prescricoes_dia_brasil > 30
-    if alerta_30_local and alerta_30_brasil:
+    alerta_diario_local = _as_int(row.get("flag_robo")) > 0 or prescricoes_dia_local > CRM_DAILY_RATE_ALERT_THRESHOLD
+    alerta_diario_brasil = _as_int(row.get("flag_robo_oculto")) > 0 or prescricoes_dia_brasil > CRM_DAILY_RATE_ALERT_THRESHOLD
+    if alerta_diario_local and alerta_diario_brasil:
         labels.append("Volume diário atípico local/Brasil")
-    elif alerta_30_local:
+    elif alerta_diario_local:
         labels.append("Volume diário atípico local")
-    elif alerta_30_brasil:
+    elif alerta_diario_brasil:
         labels.append("Volume diário atípico Brasil")
 
     return labels
@@ -983,8 +984,8 @@ def _build_crm_evidencias_complementares_context(
 
         prescricoes_dia_local = _as_float(row.get("nu_prescricoes_dia"))
         prescricoes_dia_brasil = _as_float(row.get("prescricoes_dia_total_brasil"))
-        flag_intensiva_local = _as_int(row.get("flag_robo")) > 0 or prescricoes_dia_local > 30
-        flag_intensiva_brasil = _as_int(row.get("flag_robo_oculto")) > 0 or prescricoes_dia_brasil > 30
+        flag_intensiva_local = _as_int(row.get("flag_robo")) > 0 or prescricoes_dia_local > CRM_DAILY_RATE_ALERT_THRESHOLD
+        flag_intensiva_brasil = _as_int(row.get("flag_robo_oculto")) > 0 or prescricoes_dia_brasil > CRM_DAILY_RATE_ALERT_THRESHOLD
         if flag_intensiva_local or flag_intensiva_brasil:
             if id_medico:
                 intensiva_medicos.add(id_medico)
@@ -1072,11 +1073,11 @@ def _build_crm_evidencias_complementares_context(
     qtd_principais_contexto_alertas = sum(
         1 for row in principais_crms_contexto if row.get("alertas_contexto")
     )
-    qtd_intensiva_local = sum(1 for row in intensiva_rows if row["nu_prescricoes_dia"] > 30)
-    qtd_intensiva_brasil = sum(1 for row in intensiva_rows if row["prescricoes_dia_total_brasil"] > 30)
+    qtd_intensiva_local = sum(1 for row in intensiva_rows if row["nu_prescricoes_dia"] > CRM_DAILY_RATE_ALERT_THRESHOLD)
+    qtd_intensiva_brasil = sum(1 for row in intensiva_rows if row["prescricoes_dia_total_brasil"] > CRM_DAILY_RATE_ALERT_THRESHOLD)
     qtd_crm_unico = len(crm_unico_medicos)
     qtd_crms_multiplos = len(crms_multiplos_medicos)
-    intensiva_local_rows = [row for row in intensiva_rows if row["nu_prescricoes_dia"] > 30]
+    intensiva_local_rows = [row for row in intensiva_rows if row["nu_prescricoes_dia"] > CRM_DAILY_RATE_ALERT_THRESHOLD]
     volume_horario_rows = [
         {
             "dt": alerta.get("dt"),
@@ -1266,7 +1267,7 @@ def _add_crm_intensiva_complementar_text(
     intensiva_comp: dict[str, Any],
     tabela_num: int,
 ):
-    """Adiciona o bloco de prescritores com mais de 30 prescricoes por dia."""
+    """Adiciona o bloco de prescritores acima do limite diário configurado."""
     qtd_medicos = _as_int(intensiva_comp.get("qtd_medicos"))
     qtd_local = _as_int(intensiva_comp.get("qtd_local"))
     qtd_brasil = _as_int(intensiva_comp.get("qtd_brasil"))
@@ -1274,7 +1275,7 @@ def _add_crm_intensiva_complementar_text(
     maior_media_brasil = _as_float(intensiva_comp.get("maior_media_brasil"))
     rows = list(intensiva_comp.get("rows") or [])
 
-    _add_crm_subheading(doc, f"{letra}) Médicos com mais de 30 prescrições por dia")
+    _add_crm_subheading(doc, f"{letra}) Médicos com mais de {CRM_DAILY_RATE_ALERT_THRESHOLD} prescrições por dia")
 
     p = doc.add_paragraph()
     _run(
@@ -1285,10 +1286,10 @@ def _add_crm_intensiva_complementar_text(
     )
     _run(p, f"{qtd_medicos}", color="334155", size=12, bold=True)
     _run(p, f" {_plural(qtd_medicos, 'CRM com média', 'CRMs com média')} superior a ", color="0F172A", size=12)
-    _run(p, "30 prescrições por dia", color="334155", size=12, bold=True)
+    _run(p, f"{CRM_DAILY_RATE_ALERT_THRESHOLD} prescrições por dia", color="334155", size=12, bold=True)
     _run(
         p,
-        " no próprio estabelecimento, indicando uso intensivo do mesmo registro médico nas autorizações do SAV. ",
+        " no próprio estabelecimento, considerando somente os dias com prescrição e indicando uso intensivo do mesmo registro médico nas autorizações do SAV. ",
         color="0F172A",
         size=12,
     )
@@ -1298,7 +1299,7 @@ def _add_crm_intensiva_complementar_text(
         if qtd_brasil > 0 and maior_media_brasil > 0:
             _run(
                 p,
-                f"; considerando todas as autorizações associadas {_plural(qtd_medicos, 'a esse CRM', 'a esses CRMs')} no Brasil, a maior média chegou a ",
+                f"; considerando todas as autorizações associadas {_plural(qtd_medicos, 'a esse CRM', 'a esses CRMs')} no Brasil, nos mesmos meses de atuação local, a maior média chegou a ",
                 color="0F172A",
                 size=12,
             )
@@ -1310,7 +1311,7 @@ def _add_crm_intensiva_complementar_text(
 
     title = doc.add_paragraph()
     _format_crm_table_title(title)
-    _run(title, f"Tabela {tabela_num} - Principais médicos com volume médio diário superior a 30 prescrições.", color="334155", size=10, bold=True)
+    _run(title, f"Tabela {tabela_num} - Principais médicos com volume médio diário superior a {CRM_DAILY_RATE_ALERT_THRESHOLD} prescrições.", color="334155", size=10, bold=True)
 
     headers = ["CRM/UF", "Nome", "Tipo", "Presc./dia local", "Presc./dia Brasil", "Autorizações", "Valor"]
     table = doc.add_table(rows=1, cols=len(headers))

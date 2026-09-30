@@ -25,6 +25,7 @@ from ..schemas.analytics import (
     CrmPrescricoesMensalResponse,
     CrmPrescricoesSerieMensalResponse,
     CrmMedicoHistoricoResponse,
+    CrmRankingAlertasResponse,
     NotaTecnicaReadinessResponse,
     NotaTecnicaPrepareResponse,
 )
@@ -213,6 +214,16 @@ def get_crm_prescricoes_serie_mensal(
         regiao_id=regiao_id,
         id_ibge7=id_ibge7,
     )
+
+
+@router.get("/crm-prescricoes-alertas", response_model=CrmRankingAlertasResponse)
+def get_crm_prescricoes_alertas(
+    ids: str = Query(..., max_length=4000, description="id_medico separados por virgula (ex.: 26188/SC,1234/PR)."),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+):
+    """Pontos de atencao dos medicos de uma pagina do ranking (icone de alertas)."""
+    return AnalyticsService.get_crm_medicos_alertas(ids=ids, data_inicio=data_inicio, data_fim=data_fim)
 
 
 @router.get("/crm-medico-historico", response_model=CrmMedicoHistoricoResponse)

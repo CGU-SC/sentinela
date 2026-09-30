@@ -60,6 +60,9 @@ const {
   serieResponse,
   serieLoading,
   serieError,
+  alertas,
+  alertasPeriodo,
+  alertasErro,
 } = storeToRefs(mensalStore);
 
 // "Por mês": acompanha filtros (mesma chave do ranking), busca e versão do cache.
@@ -81,6 +84,28 @@ watch(
   },
   { immediate: true },
 );
+// Ícone de alertas: pontos de atenção dos médicos exibidos na aba ativa.
+watch(
+  () => [rankingTab.value, rankingResponse.value, rankingResponseKey.value, mensalResponse.value, analysisStore.cacheVersion],
+  ([tab, response, responseKey, mensal, version]) => {
+    if (version === null) return;
+    if (tab === 'mes') {
+      if (mensal?.linhas?.length && analysisStore.activeParams) {
+        mensalStore.loadAlertas(analysisStore.activeParams, mensal.linhas.map((l) => l.id_medico), version);
+      }
+      return;
+    }
+    if (response?.ranking?.length && responseKey) {
+      mensalStore.loadAlertas(JSON.parse(responseKey), response.ranking.map((r) => r.id_medico), version);
+    }
+  },
+  { immediate: true },
+);
+const alertasProps = computed(() => ({
+  porMedico: alertas.value,
+  periodo: alertasPeriodo.value,
+  erro: alertasErro.value,
+}));
 const mensalProps = computed(() => ({
   response: mensalResponse.value,
   loading: mensalLoading.value,
@@ -265,6 +290,7 @@ function onRankingSort(event) {
             :tab="rankingTab"
             :mensal="mensalProps"
             :serie="serieProps"
+            :alertas="alertasProps"
             @update:tab="mensalStore.setTab"
             @mensal-page="onMensalPage"
             @mensal-sort="onMensalSort"

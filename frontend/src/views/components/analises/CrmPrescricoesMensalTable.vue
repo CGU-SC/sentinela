@@ -7,7 +7,9 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { useFormatting } from '@/composables/useFormatting';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
+import { analysisTooltip } from '@/config/analysisTooltipConfig';
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
+import CrmAlertasBadge from './CrmAlertasBadge.vue';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -18,10 +20,15 @@ const props = defineProps({
   sortOrder: { type: String, default: 'desc' },
   isLoading: { type: Boolean, default: false },
   appliedQuery: { type: String, default: '' },
+  /** Pontos de atenção por id_medico (ícone de alertas). */
+  alertas: { type: Object, required: true },
+  alertasPeriodo: { type: String, required: true },
+  alertasErro: { type: String, default: null },
 });
 const emit = defineEmits(['page', 'sort', 'select-medico']);
 
 const { formatNumberFull, formatTitleCase } = useFormatting();
+const alertasTooltip = analysisTooltip('crmRankingAlertas');
 // Mesmo destaque da coluna TAXA / DIA da aba Resumo, aplicado à taxa do mês.
 const highRateTooltip = `Taxa de pelo menos ${CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD} prescrições por dia no mês. Destaque visual, sem classificação de irregularidade.`;
 function isHighDailyRate(row) {
@@ -75,8 +82,24 @@ function onPage(event) {
     @sort="onSort"
     @page="onPage"
   >
-    <Column header="POS." header-class="col-rank" body-class="col-rank">
-      <template #body="{ data }">{{ data.rank }}</template>
+    <Column header-class="col-alertas" body-class="col-alertas">
+      <template #header>
+        <span class="alertas-cabecalho">
+          ALERTAS
+          <i class="pi pi-info-circle info-icon" v-tooltip.top="alertasTooltip" tabindex="0" aria-label="Como ler a coluna de alertas" />
+        </span>
+      </template>
+      <template #body="{ data }">
+        <CrmAlertasBadge
+          v-if="alertas[data.id_medico]?.length"
+          :pontos="alertas[data.id_medico]"
+          :periodo="alertasPeriodo"
+          :competencia="data.competencia"
+          :nome-medico="doctorLabel(data)"
+          @abrir="!isLoading && emit('select-medico', data)"
+        />
+        <span v-else-if="!(data.id_medico in alertas) && !alertasErro" class="alertas-carregando" role="status" aria-label="Carregando alertas" />
+      </template>
     </Column>
     <Column header="MÉDICO / CRM" header-class="col-doctor" body-class="col-doctor">
       <template #body="{ data }">

@@ -7,6 +7,8 @@ import { API_ENDPOINTS } from '@/config/api';
  * - "Por mês": uma linha por médico e mês (GET /crm-prescricoes-mensal);
  * - "Linha do tempo": série mensal dos médicos da página do ranking
  *   (GET /crm-prescricoes-serie-mensal).
+ * - Ícone de alertas das três abas: pontos de atenção dos médicos exibidos
+ *   (GET /crm-prescricoes-alertas), acumulados por período.
  */
 export const CRM_RANKING_TABS = Object.freeze(['resumo', 'linha', 'mes']);
 const DEFAULT_PAGE_SIZE = 25;
@@ -17,6 +19,7 @@ const SERIE_PARAM_KEYS = ['data_inicio', 'data_fim', 'uf', 'regiao_id', 'id_ibge
 const MAX_CACHED = 24;
 const pageCache = new Map();
 const serieCache = new Map();
+const alertasPendentes = new Set(); // `${chave}|${id_medico}` em consulta
 
 class ContractError extends Error {}
 
@@ -84,6 +87,11 @@ export const useCrmPrescricoesMensalStore = defineStore('crmPrescricoesMensal', 
     serieLoading: false,
     serieError: null,
     serieRequestId: 0,
+    // Ícone de alertas: pontos de atenção por id_medico no período atual.
+    alertasChave: null,
+    alertasPeriodo: null, // { inicio, fim } (datas ISO da resposta)
+    alertas: {},
+    alertasErro: null,
   }),
   actions: {
     setTab(tab) {
@@ -147,6 +155,45 @@ export const useCrmPrescricoesMensalStore = defineStore('crmPrescricoesMensal', 
         this.mensalError = responseError(err, 'Não foi possível carregar a visão mensal do ranking.');
       } finally {
         if (requestId === this.mensalRequestId) this.mensalLoading = false;
+      }
+    },
+
+    async loadAlertas(params, ids, version) {
+      const periodo = Object.fromEntries(
+        ['data_inicio', 'data_fim'].filter((k) => params[k] != null).map((k) => [k, params[k]]),
+      );
+      const chave = JSON.stringify([version, periodo]);
+      if (chave !== this.alertasChave) {
+        this.alertasChave = chave;
+        this.alertasPeriodo = null;
+        this.alertas = {};
+        this.alertasErro = null;
+      }
+      const faltam = [...new Set(ids)].filter(
+        (id) => !(id in this.alertas) && !alertasPendentes.has(`${chave}|${id}`),
+      );
+      if (!faltam.length) return;
+      faltam.forEach((id) => alertasPendentes.add(`${chave}|${id}`));
+      try {
+        const { data } = await axios.get(API_ENDPOINTS.analyticsCrmPrescricoesAlertas, {
+          params: { ...periodo, ids: faltam.join(',') },
+        });
+        const recebidos = data?.medicos?.map((m) => m.id_medico) ?? [];
+        if (recebidos.length !== faltam.length || recebidos.some((id, i) => id !== faltam[i])
+          || data.medicos.some((m) => !Array.isArray(m.pontos_atencao))) {
+          throw new ContractError('Resposta de alertas com médicos diferentes dos solicitados.');
+        }
+        if (chave !== this.alertasChave) return;
+        this.alertasPeriodo = { inicio: data.periodo_inicio, fim: data.periodo_fim };
+        this.alertas = {
+          ...this.alertas,
+          ...Object.fromEntries(data.medicos.map((m) => [m.id_medico, m.pontos_atencao])),
+        };
+      } catch (err) {
+        if (chave !== this.alertasChave) return;
+        this.alertasErro = responseError(err, 'Não foi possível carregar os alertas dos médicos.');
+      } finally {
+        faltam.forEach((id) => alertasPendentes.delete(`${chave}|${id}`));
       }
     },
 

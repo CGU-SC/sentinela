@@ -18,7 +18,7 @@ from .crm import (
 from .crm_export import export_crm_raiox_csv, export_crm_raiox_xlsx
 from .crm_analysis import get_crm_prescricoes_analise
 from .crm_analysis_mensal import get_crm_prescricoes_mensal, get_crm_prescricoes_serie_mensal
-from .crm_medico_historico import get_crm_medico_historico
+from .crm_medico_historico import get_crm_medico_historico, get_crm_medicos_alertas
 from .dashboard import (
     get_dashboard_data,
     get_producao_semestral_data,
@@ -105,6 +105,7 @@ class AnalyticsService:
     get_crm_prescricoes_mensal = staticmethod(get_crm_prescricoes_mensal)
     get_crm_prescricoes_serie_mensal = staticmethod(get_crm_prescricoes_serie_mensal)
     get_crm_medico_historico = staticmethod(get_crm_medico_historico)
+    get_crm_medicos_alertas = staticmethod(get_crm_medicos_alertas)
     get_crm_medico_alertas = staticmethod(get_crm_medico_alertas)
     get_crm_medico_atuacao = staticmethod(get_crm_medico_atuacao)
     get_crm_timeline_dataset = staticmethod(get_crm_timeline_dataset)

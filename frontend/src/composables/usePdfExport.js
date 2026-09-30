@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { INDICATOR_GROUPS, RISK_COLORS_RGB } from '@/config/riskConfig';
+import { INDICATOR_GROUPS, RISK_COLORS_RGB, CRM_DAILY_RATE_ALERT_THRESHOLD } from '@/config/riskConfig';
 import { MAP_VISUAL_SCALE } from '@/config/colors.js';
 import { saveBlobOrDownload } from '@/utils/download';
 
@@ -1087,8 +1087,8 @@ export function usePdfExport() {
             { label: 'TOP 1 CRM - VOLUME R$',         val: fmtVal(kpis.concentracaoTop1, 'pct', formatCurrencyFull),  color: kpis.concentracaoTop1        > 40 ? red : kpis.concentracaoTop1 > 20 ? red : green,    subtitle: `CRM: ${summary2.id_top1_prescritor || 'ND'} · ${formatCurrencyFull(kpis.valorTop1 || 0)}` },
             { label: 'TOP 5 CRMs - VOLUME R$',         val: fmtVal(kpis.concentracaoTop5, 'pct', formatCurrencyFull),  color: kpis.concentracaoTop5        > 70 ? red : kpis.concentracaoTop5 > 50 ? red : green,    subtitle: formatCurrencyFull(kpis.valorTop5 || 0) },
             { label: 'LANÇAMENTOS EM SEQUÊNCIA',        val: String(kpis.qtdLancamentosAgrupados  || 0),               color: kpis.qtdLancamentosAgrupados  > 0  ? red    : green, subtitle: 'Muitas autorizações em intervalo curto' },
-            { label: '>30 PRESCRIÇÕES/DIA NESTE CNPJ', val: String(kpis.qtdPrescrIntensivaLocal   || 0),               color: kpis.qtdPrescrIntensivaLocal  > 0  ? red    : green, subtitle: 'Na unidade local' },
-            { label: '>30 PRESCRIÇÕES/DIA NO BRASIL',  val: String(kpis.qtdPrescrIntensivaOcultos || 0),               color: kpis.qtdPrescrIntensivaOcultos > 0 ? red    : green, subtitle: 'Soma de todo o Brasil' },
+            { label: `>${CRM_DAILY_RATE_ALERT_THRESHOLD} PRESCRIÇÕES/DIA NESTE CNPJ`, val: String(kpis.qtdPrescrIntensivaLocal   || 0), color: kpis.qtdPrescrIntensivaLocal  > 0  ? red    : green, subtitle: 'Dias com prescrição na unidade' },
+            { label: `>${CRM_DAILY_RATE_ALERT_THRESHOLD} PRESCRIÇÕES/DIA NO BRASIL`,  val: String(kpis.qtdPrescrIntensivaOcultos || 0), color: kpis.qtdPrescrIntensivaOcultos > 0 ? red    : green, subtitle: 'Alerta apenas no Brasil' },
             { label: 'MULTI-FARMÁCIA',                  val: String(kpis.qtdMultiFarmacia          || 0),               color: kpis.qtdMultiFarmacia         > 0  ? red    : green, subtitle: 'CRMs com registro em > 70 farmácias distintas' },
             { label: 'CRMs NO DETALHAMENTO',            val: String(kpis.totalIrregularesCfm       || 0),               color: crmIndicator.valor_financeiro > 0 ? red : green, subtitle: `${formatCurrencyFull(crmIndicator.valor_financeiro)} (${Number(crmIndicator.valor).toFixed(2).replace('.', ',')}%) no indicador` },
             { label: 'DISTÂNCIA (>400KM)',              val: String(kpis.qtdAcima400km             || 0),               color: kpis.qtdAcima400km            > 0  ? orange : green, subtitle: 'Prescrições em locais distantes' },
@@ -1122,8 +1122,8 @@ export function usePdfExport() {
 
           const crmRows = top20.map(m => {
             const issues = [];
-            if (m.flag_robo > 0) issues.push('>30 presc/dia local');
-            if (m.flag_robo_oculto > 0 && !m.flag_robo) issues.push('>30 presc/dia Brasil');
+            if (m.flag_robo > 0) issues.push(`>${CRM_DAILY_RATE_ALERT_THRESHOLD} presc/dia local`);
+            if (m.flag_robo_oculto > 0 && !m.flag_robo) issues.push(`>${CRM_DAILY_RATE_ALERT_THRESHOLD} presc/dia Brasil`);
             if (m.alerta_concentracao_unico_crm) issues.push('Muitas autorizações em sequência pelo mesmo CRM');
             if (m.alerta_concentracao_multiplos_crms) issues.push('Muitas autorizações em sequência por alguns CRMs');
             if (m.flag_crm_invalido > 0) issues.push('CRM não localizado');
@@ -1139,13 +1139,13 @@ export function usePdfExport() {
               `${formatNumberFull(m.nu_estabelecimentos)}\n${formatCompetenciaMes(m.competencia_nu_estabelecimentos, `CRM ${m.id_medico}`)}`,
               formatCurrencyFull(m.vl_total_prescricoes),
               fmtVal(m.pct_participacao, 'pct', formatCurrencyFull),
-              formatNumberFull(m.nu_prescricoes_dia)
+              m.nu_prescricoes_dia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
             ];
           });
 
           autoTable(pdf, {
             startY: y4 + 2,
-            head: [['Médico/CRM', 'Alertas', 'Nº Aut.', 'Nº Estab.', 'Valor autorizado', 'Part.', 'Presc./dia']],
+            head: [['Médico/CRM', 'Alertas', 'Nº Aut.', 'Nº Estab.', 'Valor autorizado', 'Part.', 'Presc./dia local']],
             body: crmRows,
             margin: { left: margin, right: margin },
             styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak', font: F, fontStyle: 'normal' },
@@ -1184,6 +1184,10 @@ export function usePdfExport() {
           });
 
           const crmLegendItems = [];
+          crmLegendItems.push({
+            label: 'Prescrições por dia',
+            description: `A coluna mostra o total de prescrições no estabelecimento dividido pelos dias em que o médico prescreveu nessa unidade. O comparativo Brasil divide as prescrições nacionais pelos dias distintos com prescrição no país, considerando somente os mesmos meses de atuação neste estabelecimento. O alerta exige taxa superior a ${CRM_DAILY_RATE_ALERT_THRESHOLD}; a taxa igual ao limite não gera alerta. O card Brasil conta apenas os médicos acima do limite nacional que não ultrapassam o limite local.`,
+          });
           if (top20.some(m => m.alerta_concentracao_unico_crm)) {
             crmLegendItems.push({
               label: 'Muitas autorizações em sequência pelo mesmo CRM',

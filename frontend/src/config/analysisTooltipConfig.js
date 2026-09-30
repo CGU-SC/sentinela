@@ -27,7 +27,7 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
   },
   crmRanking: {
     title: 'Ranking de médicos por taxa diária',
-    body: 'Médicos com prescrição no escopo e no período selecionados. A posição segue a coluna e a direção de ordenação escolhidas; inicialmente, a tabela mostra as maiores taxas diárias.',
+    body: 'Médicos com prescrição no escopo e no período selecionados. A ordem segue a coluna e a direção de ordenação escolhidas; inicialmente, a tabela mostra as maiores taxas diárias.',
     icon: 'pi-sort-amount-down',
     sections: [
       {
@@ -116,6 +116,21 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
       },
     ],
   },
+  crmRankingAlertas: {
+    title: 'Alertas',
+    body: 'Número de pontos de atenção do médico no período da análise: os mesmos do modal do histórico, calculados com todas as farmácias. Passe o mouse no ícone para ver cada um e clique para abrir o histórico.',
+    icon: 'pi-exclamation-triangle',
+    sections: [
+      {
+        label: 'Sem ícone',
+        text: 'O médico não tem pontos de atenção no período. Um marcador cinza indica que os alertas ainda estão sendo carregados.',
+      },
+      {
+        label: 'Ordenação',
+        text: 'Os alertas são calculados para os médicos da página exibida, por isso a coluna não é ordenável.',
+      },
+    ],
+  },
   crmHistoricoFiltros: {
     title: 'Filtros do histórico',
     body: 'Valem só para este modal; os filtros da página de análises não mudam. Ao fechar, o modal volta ao período da análise e a todas as farmácias.',
@@ -140,7 +155,10 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
     body: 'Fatos calculados sobre o período filtrado, sem juízo de valor. Servem para orientar a análise do auditor.',
     icon: 'pi-exclamation-circle',
     sections: [
+      { label: 'CRM não localizado no CFM', text: 'O CRM não consta no cadastro do CFM. Sem a data de 1ª inscrição, o ponto "antes da inscrição" não pode ser avaliado.' },
       { label: 'Antes da inscrição no CFM', text: 'Meses com prescrição anteriores à data da 1ª inscrição do médico no CFM.' },
+      { label: 'Rajadas de prescrição do mesmo CRM', text: 'Dias em que o CRM teve muitas prescrições em poucos minutos numa farmácia (mesmos alertas da aba Autorizações do estabelecimento). Mostra quantos dias, em quantas farmácias e a pior severidade.' },
+      { label: 'Farmácias distantes no mesmo mês', text: 'Meses em que o CRM prescreveu, no mesmo mês, em farmácias muito distantes entre si. Mostra a maior distância encontrada. Com farmácia filtrada, não é avaliado.' },
       { label: 'Mais de uma UF no mesmo mês', text: 'Meses em que o CRM aparece em farmácias de UFs diferentes.' },
       { label: 'Meses consecutivos com taxa elevada', text: 'A maior sequência de meses seguidos com taxa elevada (a partir de 2 meses).' },
       { label: 'Concentração em uma farmácia', text: 'A farmácia principal concentra ao menos o limite definido (50%) das prescrições do período.' },
@@ -235,5 +253,60 @@ export function crmMesTooltip(ponto, p95) {
     class: 'analysis-info-tooltip',
     showDelay: 0,
     hideDelay: 0,
+  };
+}
+
+/** Ícone de cada ponto de atenção do CRM (modal do histórico e ranking). */
+export const CRM_ALERTA_ICONES = Object.freeze({
+  nao_localizado_cfm: 'pi-id-card',
+  antes_inscricao: 'pi-calendar-times',
+  rajadas_unico: 'pi-bolt',
+  distancia: 'pi-directions',
+  multiplas_ufs: 'pi-map-marker',
+  sequencia_alta: 'pi-chart-line',
+  concentracao: 'pi-building',
+});
+
+/**
+ * Tooltip do ícone de alertas do ranking de CRMs: todos os pontos de atenção
+ * do médico no período. Com `competencia` (aba "Por mês"), marca os pontos que
+ * envolvem aquele mês.
+ * @param {Array<{codigo:string, titulo:string, detalhe:string, competencias:number[]}>} pontos
+ * @param {{ periodo: string, competencia?: number|null }} opcoes
+ */
+export function crmAlertasTooltip(pontos, { periodo, competencia = null }) {
+  if (!pontos?.length) throw new Error('Tooltip de alertas de CRM sem pontos de atenção.');
+  const itens = pontos.map((ponto) => {
+    const icone = CRM_ALERTA_ICONES[ponto.codigo];
+    if (!icone) throw new Error(`Ponto de atenção sem ícone: ${ponto.codigo}`);
+    const incluiMes = competencia != null && (ponto.competencias ?? []).includes(competencia);
+    return `
+      <li class="analysis-tooltip-alerta${incluiMes ? ' is-mes' : ''}">
+        <i class="pi ${icone}" aria-hidden="true"></i>
+        <div>
+          <strong>${escapeTooltipHtml(ponto.titulo)}</strong>
+          ${incluiMes ? '<span class="analysis-tooltip-flag">Inclui este mês</span>' : ''}
+          <p>${escapeTooltipHtml(ponto.detalhe)}</p>
+        </div>
+      </li>
+    `;
+  }).join('');
+  const total = pontos.length;
+  return {
+    value: `
+      <div class="analysis-tooltip-content analysis-tooltip-content--alertas">
+        <div class="analysis-tooltip-heading">
+          <i class="pi pi-exclamation-triangle analysis-tooltip-alerta-icone" aria-hidden="true"></i>
+          <span>${total} ${total === 1 ? 'ponto de atenção' : 'pontos de atenção'}</span>
+          <span class="analysis-tooltip-periodo">${escapeTooltipHtml(periodo)}</span>
+        </div>
+        <ul class="analysis-tooltip-alertas">${itens}</ul>
+        <p class="analysis-tooltip-rodape">Clique para abrir o histórico completo do CRM.</p>
+      </div>
+    `,
+    escape: false,
+    class: 'analysis-info-tooltip',
+    showDelay: 120,
+    hideDelay: 80,
   };
 }

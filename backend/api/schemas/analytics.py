@@ -541,7 +541,6 @@ class CrmPrescricoesMapaItemSchema(BaseModel):
 
 
 class CrmPrescricoesRankingItemSchema(BaseModel):
-    rank: int
     id_medico: str
     nu_crm: Optional[int] = None
     sg_uf: Optional[str] = None
@@ -582,7 +581,6 @@ class CrmPrescricoesAnaliseResponse(BaseModel):
 
 class CrmPrescricoesMensalItemSchema(BaseModel):
     """Um medico em um mes (aba "Por mes" do ranking de /analises)."""
-    rank: int
     id_medico: str
     nu_crm: Optional[int] = None
     sg_uf: Optional[str] = None
@@ -704,10 +702,26 @@ class CrmHistoricoKpisSchema(BaseModel):
 
 class CrmHistoricoAtencaoSchema(BaseModel):
     """Fato calculado que merece atencao do auditor (sem juizo de valor)."""
-    codigo: Literal["antes_inscricao", "multiplas_ufs", "sequencia_alta", "concentracao"]
+    codigo: Literal[
+        "nao_localizado_cfm", "antes_inscricao", "rajadas_unico", "distancia",
+        "multiplas_ufs", "sequencia_alta", "concentracao",
+    ]
     titulo: str
     detalhe: str
     competencias: List[int] = []
+
+
+class CrmRankingAlertasMedicoSchema(BaseModel):
+    id_medico: str
+    # Mesmos pontos de atencao do modal do historico (periodo, sem filtro de farmacia).
+    pontos_atencao: List[CrmHistoricoAtencaoSchema]
+
+
+class CrmRankingAlertasResponse(BaseModel):
+    """Pontos de atencao dos CRMs de uma pagina do ranking de /analises."""
+    periodo_inicio: date
+    periodo_fim: date
+    medicos: List[CrmRankingAlertasMedicoSchema]
 
 
 class CrmMedicoHistoricoResponse(BaseModel):

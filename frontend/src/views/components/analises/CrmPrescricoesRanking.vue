@@ -10,6 +10,7 @@ import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
 import { useThemeStore } from '@/stores/theme';
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
 import CrmPrescricoesMensalTable from './CrmPrescricoesMensalTable.vue';
+import CrmAlertasBadge from './CrmAlertasBadge.vue';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -34,6 +35,8 @@ const props = defineProps({
   mensal: { type: Object, required: true },
   /** Aba "Linha do tempo": { response, loading, error } da série mensal da página */
   serie: { type: Object, required: true },
+  /** Ícone de alertas: { porMedico: { id_medico: pontos[] }, periodo: { inicio, fim } | null, erro } */
+  alertas: { type: Object, required: true },
 });
 
 const emit = defineEmits(['page', 'sort', 'search', 'select-medico', 'update:tab', 'mensal-page', 'mensal-sort']);
@@ -70,6 +73,7 @@ const rankingInfoTooltip = computed(() => analysisTooltip('crmRanking', {
     : [],
 }));
 const mensalInfoTooltip = analysisTooltip('crmRankingMensal');
+const alertasTooltip = analysisTooltip('crmRankingAlertas');
 const linhaTempoTooltip = analysisTooltip('crmRankingLinhaTempo');
 const headerInfoTooltip = computed(() => (props.tab === 'mes' ? mensalInfoTooltip : rankingInfoTooltip.value));
 const { formatNumberFull, formatTitleCase } = useFormatting();
@@ -148,6 +152,18 @@ function onSort(event) {
 
 function onPage(event) {
   if (!props.isRefreshing && !props.isStale) emit('page', event);
+}
+
+// Período dos alertas (resposta do backend), ex.: "01/2020 a 12/2024".
+function mesAnoIso(iso) {
+  const [ano, mes] = String(iso).split('-');
+  return `${mes}/${ano}`;
+}
+const alertasPeriodoTexto = computed(() => (
+  props.alertas.periodo ? `${mesAnoIso(props.alertas.periodo.inicio)} a ${mesAnoIso(props.alertas.periodo.fim)}` : ''
+));
+function abrirPorAlerta(row) {
+  if (!props.isRefreshing && !props.isStale) emit('select-medico', row);
 }
 
 const subtitulo = computed(() => {
@@ -249,6 +265,9 @@ const subtitulo = computed(() => {
           :sort-order="mensal.sortOrder"
           :is-loading="mensal.loading"
           :applied-query="mensal.appliedQuery"
+          :alertas="alertas.porMedico"
+          :alertas-periodo="alertasPeriodoTexto"
+          :alertas-erro="alertas.erro"
           @page="emit('mensal-page', $event)"
           @sort="emit('mensal-sort', $event)"
           @select-medico="emit('select-medico', $event)"
@@ -300,11 +319,22 @@ const subtitulo = computed(() => {
         @sort="onSort"
         @page="onPage"
       >
-        <Column header="POS." header-class="col-rank" body-class="col-rank">
+        <Column header-class="col-alertas" body-class="col-alertas">
+          <template #header>
+            <span class="alertas-cabecalho">
+              ALERTAS
+              <i class="pi pi-info-circle info-icon" v-tooltip.top="alertasTooltip" tabindex="0" aria-label="Como ler a coluna de alertas" />
+            </span>
+          </template>
           <template #body="{ data }">
-            <button type="button" class="rank-button" :aria-label="`Abrir histórico de ${doctorLabel(data)}`" :disabled="isRefreshing || isStale" @click.stop="emit('select-medico', data)">
-              {{ data.rank }}
-            </button>
+            <CrmAlertasBadge
+              v-if="alertas.porMedico[data.id_medico]?.length"
+              :pontos="alertas.porMedico[data.id_medico]"
+              :periodo="alertasPeriodoTexto"
+              :nome-medico="doctorLabel(data)"
+              @abrir="abrirPorAlerta(data)"
+            />
+            <span v-else-if="!(data.id_medico in alertas.porMedico) && !alertas.erro" class="alertas-carregando" role="status" aria-label="Carregando alertas" />
           </template>
         </Column>
         <Column field="no_medico" header="MÉDICO / CRM" sortable header-class="col-doctor" body-class="col-doctor">
@@ -391,6 +421,10 @@ const subtitulo = computed(() => {
       <i class="pi pi-exclamation-circle" />
       <span>{{ serie.error }}</span>
     </div>
+    <div v-if="alertas.erro" class="ranking-page-error" role="alert">
+      <i class="pi pi-exclamation-circle" />
+      <span>Alertas dos médicos indisponíveis: {{ alertas.erro }}</span>
+    </div>
   </section>
 </template>
 
@@ -415,8 +449,9 @@ const subtitulo = computed(() => {
 .ranking-search button .pi { font-size: .75rem; }
 .ranking-search button:hover, .ranking-search button:focus-visible { opacity: 1; }
 .ranking-search button:focus-visible { outline: 2px solid var(--color-error); outline-offset: 2px; border-radius: 3px; }
-.info-icon { color: var(--text-muted); font-size: .8rem; opacity: .7; }
-.info-icon:hover { opacity: 1; }
+/* :deep: também no cabeçalho da tabela da aba "Por mês". */
+.crm-ranking-panel :deep(.info-icon) { color: var(--text-muted); font-size: .8rem; opacity: .7; }
+.crm-ranking-panel :deep(.info-icon:hover) { opacity: 1; }
 .ranking-state { min-height: calc(var(--ranking-column-header-height) + var(--ranking-page-size) * var(--ranking-row-height) + var(--ranking-paginator-height)); display: flex; align-items: center; justify-content: center; gap: .6rem; color: var(--text-muted); font-size: .8rem; }
 /* Sem resultados: card baixo, para a mensagem ficar à vista sem rolar a página. */
 .ranking-state--vazio { min-height: 12rem; }
@@ -429,8 +464,8 @@ const subtitulo = computed(() => {
 .crm-ranking-table { font-family: inherit; }
 .crm-ranking-table.is-stale { pointer-events: none; }
 .crm-ranking-table :deep(.p-datatable-wrapper) { min-height: calc(var(--ranking-column-header-height) + var(--ranking-page-size) * var(--ranking-row-height)); }
-.crm-ranking-table :deep(.p-datatable-table) { width: max(100%, 44rem); table-layout: fixed; }
-.crm-ranking-table:has(.col-filtered) :deep(.p-datatable-table) { width: calc(max(100%, 44rem) + 11.25rem); }
+.crm-ranking-table :deep(.p-datatable-table) { width: max(100%, 45.75rem); table-layout: fixed; }
+.crm-ranking-table:has(.col-filtered) :deep(.p-datatable-table) { width: calc(max(100%, 45.75rem) + 11.25rem); }
 .crm-ranking-table :deep(.p-datatable-tbody > tr) { height: var(--ranking-row-height); }
 .crm-ranking-table :deep(.p-datatable-thead > tr > th) { white-space: normal; vertical-align: bottom; line-height: 1.25; }
 /* Mesma altura de cabeçalho nas três abas (duas linhas de título). */
@@ -440,7 +475,6 @@ const subtitulo = computed(() => {
 .crm-ranking-table :deep(.p-datatable-tbody > tr > td) { padding: .65rem .8rem; vertical-align: middle; overflow: hidden; }
 .crm-ranking-panel:not(.is-refreshing) .crm-ranking-table:not(.is-stale) :deep(.p-datatable-tbody > tr) { cursor: pointer; }
 .crm-ranking-table :deep(.col-number) { text-align: right; }
-.crm-ranking-table :deep(.col-rank) { width: 3rem; color: var(--text-muted); }
 .crm-ranking-table :deep(.col-rate) { width: 6.5rem; }
 .crm-ranking-table :deep(.col-production) { width: 10.5rem; }
 .crm-ranking-table :deep(.col-months) { width: 10rem; }
@@ -455,6 +489,13 @@ const subtitulo = computed(() => {
 .crm-ranking-panel :deep(.doctor-name) { color: var(--text-color-85); font-weight: 500; }
 .crm-ranking-panel :deep(.doctor-crm) { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
 
+/* Coluna de alertas (também na aba "Por mês"). */
+.crm-ranking-panel :deep(.col-alertas) { width: 4.75rem; text-align: center; }
+.crm-ranking-panel :deep(th.col-alertas .p-column-header-content) { justify-content: center; }
+.crm-ranking-panel :deep(.alertas-cabecalho) { display: inline-flex; align-items: center; gap: .3rem; }
+.crm-ranking-panel :deep(.alertas-carregando) { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); opacity: .35; animation: alertas-pulso 1s ease-in-out infinite alternate; }
+@keyframes alertas-pulso { from { opacity: .15; } to { opacity: .5; } }
+
 /* Abas */
 .ranking-tabs { display: inline-flex; flex-shrink: 0; gap: 2px; padding: 3px; border: 1px solid var(--card-border); border-radius: 9px; background: color-mix(in srgb, var(--text-color) 4%, transparent); }
 .ranking-tab { min-height: 28px; padding: 0 .75rem; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
@@ -463,7 +504,7 @@ const subtitulo = computed(() => {
 .ranking-tab.is-active { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 45%, transparent); }
 
 /* Linha do tempo */
-.crm-ranking-table.is-linha :deep(.p-datatable-table) { width: max(100%, 56rem); }
+.crm-ranking-table.is-linha :deep(.p-datatable-table) { width: max(100%, 57.75rem); }
 .crm-ranking-table.is-linha :deep(.col-doctor) { width: 15rem; }
 .crm-ranking-table :deep(.col-linha) { width: auto; }
 .crm-ranking-table :deep(th.col-linha .p-column-header-content) { display: block; }
@@ -483,9 +524,6 @@ const subtitulo = computed(() => {
 /* :deep: também vale para a aba "Por mês" (componente filho). */
 .crm-ranking-panel :deep(.rate-value) { display: inline-block; color: var(--text-color-85); font-weight: 500; }
 .crm-ranking-panel :deep(.rate-value--high) { padding: .18rem .38rem; margin: -.18rem -.38rem; border-radius: 5px; background: color-mix(in srgb, var(--risk-high) 12%, var(--card-bg)); color: var(--risk-high); font-weight: 600; }
-.rank-button { padding: .12rem .25rem; margin: -.12rem -.25rem; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.rank-button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-.rank-button:disabled { cursor: default; }
 .ranking-table-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--card-bg) 72%, transparent); color: var(--text-muted); font-size: .9rem; pointer-events: none; }
 .ranking-page-error { display: flex; align-items: center; gap: .45rem; padding: .55rem 1rem; border-top: 1px solid color-mix(in srgb, var(--risk-high) 25%, var(--tabs-border)); color: var(--risk-high); font-size: .7rem; }
 </style>

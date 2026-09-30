@@ -26,7 +26,7 @@ import {
 } from 'echarts/components';
 import VChart from 'vue-echarts';
 import { API_ENDPOINTS } from '@/config/api';
-import { analysisTooltip } from '@/config/analysisTooltipConfig';
+import { CRM_ALERTA_ICONES, analysisTooltip } from '@/config/analysisTooltipConfig';
 import { CRM_FARMACIA_SERIES, CRM_HEATMAP_TAXA_RAMP, DATA_NEUTRAL } from '@/config/colors';
 import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
@@ -803,14 +803,6 @@ const calorOption = computed(() => {
     ],
   };
 });
-
-// ── Pontos de atenção ─────────────────────────────────────────────────────────
-const ICONE_ATENCAO = {
-  antes_inscricao: 'pi-calendar-times',
-  multiplas_ufs: 'pi-map-marker',
-  sequencia_alta: 'pi-chart-line',
-  concentracao: 'pi-building',
-};
 </script>
 
 <template>
@@ -901,7 +893,7 @@ const ICONE_ATENCAO = {
         </header>
         <ul v-if="dados.pontos_atencao.length" class="hist-atencao">
           <li v-for="p in dados.pontos_atencao" :key="p.codigo">
-            <i class="pi" :class="ICONE_ATENCAO[p.codigo]" aria-hidden="true" />
+            <i class="pi" :class="CRM_ALERTA_ICONES[p.codigo]" aria-hidden="true" />
             <div>
               <strong>{{ p.titulo }}</strong>
               <span>{{ p.detalhe }}</span>

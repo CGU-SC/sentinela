@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { useFormatting } from "@/composables/useFormatting";
-import { CRM_KPI_THRESHOLDS } from "@/config/riskConfig";
+import { CRM_KPI_THRESHOLDS, CRM_DAILY_RATE_ALERT_THRESHOLD } from "@/config/riskConfig";
 
 const props = defineProps({
   kpiData: { type: Object, required: true },
@@ -151,14 +151,14 @@ const grupos = computed(() => {
         },
         {
           key: 'intensiva',
-          label: 'Mais de 30 presc./dia',
+          label: `Mais de ${CRM_DAILY_RATE_ALERT_THRESHOLD} presc./dia`,
           value: formatNumberFull(k.qtdPrescrIntensivaTotal),
           hint: `${formatNumberFull(k.qtdPrescrIntensivaLocal)} local · ${formatNumberFull(k.qtdPrescrIntensivaOcultos)} Brasil`,
           tone: k.qtdPrescrIntensivaTotal > 0 ? 'critico' : null,
           enabled: k.qtdPrescrIntensivaTotal > 0,
           tooltip: createCrmKpiTooltip(
-            'Mais de 30 prescrições por dia',
-            'Quantidade de médicos cuja média diária de prescrições ultrapassou 30 autorizações, nesta farmácia (local) ou considerando todo o Brasil no Farmácia Popular.',
+            `Mais de ${CRM_DAILY_RATE_ALERT_THRESHOLD} prescrições por dia`,
+            `Quantidade de médicos cuja taxa ultrapassou ${CRM_DAILY_RATE_ALERT_THRESHOLD} prescrições por dia com prescrição nesta farmácia (local) ou no Brasil, nos mesmos meses de atuação local dentro do período filtrado.`,
             'A linha de apoio separa as ocorrências nesta unidade das encontradas apenas no Brasil.'
           ),
         },

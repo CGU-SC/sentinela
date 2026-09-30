@@ -233,17 +233,13 @@ def get_crm_prescricoes_mensal(
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Cache de dados dos medicos indisponivel: {exc}") from exc
     base._require_columns(medicos, base.CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos medicos")
-    pagina = (
-        pagina.with_row_index("rank")
-        .join(
-            medicos.select(["id_medico", "nu_crm", "sg_uf", "no_medico"]).unique(subset=["id_medico"], keep="first"),
-            on="id_medico", how="left",
-        )
-        .sort("rank")
+    # maintain_order="left": a pagina ja vem na ordem escolhida.
+    pagina = pagina.join(
+        medicos.select(["id_medico", "nu_crm", "sg_uf", "no_medico"]).unique(subset=["id_medico"], keep="first"),
+        on="id_medico", how="left", maintain_order="left",
     )
     return resposta([
         CrmPrescricoesMensalItemSchema(
-            rank=offset + int(row["rank"]) + 1,
             id_medico=str(row["id_medico"]),
             nu_crm=int(row["nu_crm"]) if row["nu_crm"] is not None else None,
             sg_uf=str(row["sg_uf"]) if row["sg_uf"] is not None else None,

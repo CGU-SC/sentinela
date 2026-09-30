@@ -6,7 +6,7 @@ import { useFilterParameters } from "@/composables/useFilterParameters";
 import CrmAtuacaoDialog from './CrmAtuacaoDialog.vue';
 import { useThemeStore } from '@/stores/theme';
 import { DATA_NEUTRAL } from '@/config/colors';
-import { CRM_EXCLUSIVIDADE_THRESHOLDS } from '@/config/riskConfig';
+import { CRM_EXCLUSIVIDADE_THRESHOLDS, CRM_DAILY_RATE_ALERT_THRESHOLD } from '@/config/riskConfig';
 
 const cnpjDetailStore = useCnpjDetailStore();
 const { getApiParams } = useFilterParameters();
@@ -25,6 +25,7 @@ const emit = defineEmits(['clear-filters']);
 
 
 const { formatCurrencyFull, formatNumberFull, formatarData, formatTitleCase } = useFormatting();
+const formatDailyRate = (value) => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatPct = (val) => val != null ? `${Number(val).toFixed(2).replace('.', ',')}%` : "0,00%";
 
 // Limite do "núcleo" de concentração (Pareto): CRMs que, somados do maior para o
@@ -112,7 +113,7 @@ const crmTableTooltips = Object.freeze({
     ),
     status: createCrmTableTooltip(
       'Status / Alertas',
-      'Lista os sinais do CRM, um por linha, em ordem de gravidade: CRM não localizado ou irregular no CFM (vermelho); mais de 30 prescrições por dia, local (vermelho) ou no Brasil (laranja-escuro); Autorizações em Sequência com Único CRM (laranja) e com Múltiplos CRMs (roxo); distância superior a 400 km (verde-azulado); e CRM exclusivo deste estabelecimento (azul).',
+      `Lista os sinais do CRM, um por linha, em ordem de gravidade: CRM não localizado ou irregular no CFM (vermelho); mais de ${CRM_DAILY_RATE_ALERT_THRESHOLD} prescrições por dia com prescrição, local (vermelho) ou no Brasil (laranja-escuro); Autorizações em Sequência com Único CRM (laranja) e com Múltiplos CRMs (roxo); distância superior a 400 km (verde-azulado); e CRM exclusivo deste estabelecimento (azul).`,
       'O número à direita é a quantidade de episódios detalhados. Clique na seta ou na linha para abrir as evidências.',
       'pi-shield'
     ),
@@ -130,8 +131,8 @@ const crmTableTooltips = Object.freeze({
     ),
     prescriptions: createCrmTableTooltip(
       'Prescrições por dia',
-      'Exibe a média diária de prescrições em duas perspectivas: local, considerando apenas esta farmácia; e Brasil, considerando as farmácias do Farmácia Popular associadas ao CRM.',
-      'Médias acima de 30 prescrições por dia são sinalizadas como emissão atípica.',
+      'Prescrições divididas pelos dias com prescrição: local usa somente esta farmácia; Brasil usa todas as farmácias do programa, nos mesmos meses em que o CRM atuou nesta unidade dentro do período filtrado. No Brasil, um dia com prescrição em várias farmácias conta uma vez.',
+      `Taxas acima de ${CRM_DAILY_RATE_ALERT_THRESHOLD} prescrições por dia com prescrição são sinalizadas como emissão atípica. O limite é aplicado antes do arredondamento.`,
       'pi-calendar-clock'
     ),
     atuacao: createCrmTableTooltip(
@@ -229,8 +230,8 @@ function getStatusItems(m) {
   const items = [];
   if (m.flag_crm_invalido) items.push({ key: 'crm-invalido', label: 'CRM não localizado', tone: 'critico' });
   if (m.flag_prescricao_antes_registro) items.push({ key: 'crm-irregular', label: 'CRM irregular', tone: 'critico' });
-  if (m.flag_robo) items.push({ key: 'robo-local', label: 'Mais de 30 presc./dia (local)', tone: 'critico' });
-  if (m.flag_robo_oculto && !m.flag_robo) items.push({ key: 'robo-brasil', label: 'Mais de 30 presc./dia (Brasil)', tone: 'medio' });
+  if (m.flag_robo) items.push({ key: 'robo-local', label: `Mais de ${CRM_DAILY_RATE_ALERT_THRESHOLD} presc./dia (local)`, tone: 'critico' });
+  if (m.flag_robo_oculto && !m.flag_robo) items.push({ key: 'robo-brasil', label: `Mais de ${CRM_DAILY_RATE_ALERT_THRESHOLD} presc./dia (Brasil)`, tone: 'medio' });
   if (m.alerta_concentracao_unico_crm) items.push({ key: 'seq-unico', label: 'Sequência · Único CRM', tone: 'unico', count: qtdAlertasUnico(m) });
   if (m.alerta_concentracao_multiplos_crms) items.push({ key: 'seq-multi', label: 'Sequência · Múltiplos CRMs', tone: 'multi', count: qtdAlertasMultiplos(m) });
   if (m.alerta5_geografico) items.push({ key: 'distancia', label: 'Distância > 400 km', tone: 'geo', count: qtdAlertasGeo(m) });
@@ -628,11 +629,11 @@ const maxPDOverall = computed(() => {
               </td>
               <td class="col-center">
                 <div class="cell-stacked" style="align-items: center; gap: 0.1rem;">
-                  <div :class="{ 'text-red': m.nu_prescricoes_dia > 30 }" style="font-weight: 600; font-size: 0.85rem;">
-                    {{ formatNumberFull(m.nu_prescricoes_dia) }} <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 400">local</span>
+                  <div :class="{ 'text-red': m.nu_prescricoes_dia > CRM_DAILY_RATE_ALERT_THRESHOLD }" style="font-weight: 600; font-size: 0.85rem;">
+                    {{ formatDailyRate(m.nu_prescricoes_dia) }} <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 400">local</span>
                   </div>
-                  <div :class="{ 'text-red': m.prescricoes_dia_total_brasil > 30 }" style="font-size: 0.75rem; color: var(--text-secondary);">
-                    {{ formatNumberFull(m.prescricoes_dia_total_brasil) }} <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 400">brasil</span>
+                  <div :class="{ 'text-red': m.prescricoes_dia_total_brasil > CRM_DAILY_RATE_ALERT_THRESHOLD }" style="font-size: 0.75rem; color: var(--text-secondary);">
+                    {{ formatDailyRate(m.prescricoes_dia_total_brasil) }} <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 400">brasil</span>
                   </div>
                 </div>
               </td>

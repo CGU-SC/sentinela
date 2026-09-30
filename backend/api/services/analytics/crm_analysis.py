@@ -858,8 +858,6 @@ def _montar_resposta_ranking(
             nulls_last=True,
         )
         .slice(ranking_offset, page_size)
-        .with_row_index("rank")
-        .with_columns((pl.col("rank") + ranking_offset + 1).cast(pl.Int64))
     )
     if ranking_scope.is_empty():
         return CrmPrescricoesAnaliseResponse(
@@ -886,10 +884,11 @@ def _montar_resposta_ranking(
     medico_df = medico_df.unique(subset=["id_medico"], keep="first")
     if sort_field == "no_medico":
         ranking_scope = ranking_scope.drop("no_medico")
-    ranking_scope = ranking_scope.join(medico_df, on="id_medico", how="left")
+    # maintain_order="left": a pagina ja vem na ordem do ranking.
+    ranking_scope = ranking_scope.join(medico_df, on="id_medico", how="left", maintain_order="left")
     if prescricoes_filtradas is not None and sort_field not in RANKING_FILTERED_SORT_FIELDS:
         filtradas = prescricoes_filtradas(ranking_scope.get_column("id_medico").to_list())
-        ranking_scope = ranking_scope.join(filtradas, on="id_medico", how="left")
+        ranking_scope = ranking_scope.join(filtradas, on="id_medico", how="left", maintain_order="left")
         if ranking_scope.get_column("nu_prescricoes_farmacias_filtradas").null_count():
             raise HTTPException(
                 status_code=503,
@@ -901,7 +900,6 @@ def _montar_resposta_ranking(
         )
     ranking = [
         CrmPrescricoesRankingItemSchema(
-            rank=int(row["rank"]),
             id_medico=str(row["id_medico"]),
             nu_crm=int(row["nu_crm"]) if row["nu_crm"] is not None else None,
             sg_uf=str(row["sg_uf"]) if row["sg_uf"] is not None else None,

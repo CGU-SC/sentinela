@@ -19,6 +19,8 @@ from data_cache import (
     get_localidades_df,
     get_df_perfil_estabelecimento,
     get_cache_dir,
+    scan_crm_medico_estabelecimento_mes,
+    scan_crm_medico_brasil_mes,
 )
 from ...schemas.analytics import (
     AnalyticsKPISchema,
@@ -68,6 +70,7 @@ from ...schemas.analytics import (
 )
 
 from ._cache import _get_cnpj_cache_dir
+from .crm_config import CRM_DAILY_RATE_ALERT_THRESHOLD
 from cache_producers.crm import (
     load_or_sync_crm_data,
     load_or_sync_crm_multi_alertas,
@@ -449,6 +452,90 @@ def _build_alertas_crm_multiplos_por_medico(
 
     return alertas_crm_multiplos_por_medico
 
+def _load_crm_prescription_days(cnpj: str, df: pl.DataFrame) -> pl.DataFrame:
+    """Usa as bases mensais da análise, com Brasil nos meses do perfil local."""
+    perfil = get_df_perfil_estabelecimento()
+    if not {"cnpj", "id_cnpj"}.issubset(perfil.columns):
+        raise HTTPException(status_code=503, detail="Perfil de estabelecimentos sem cnpj/id_cnpj para calcular taxa diária CRM.")
+    ids = perfil.filter(pl.col("cnpj") == cnpj).select("id_cnpj").unique()
+    if ids.height != 1 or ids.item(0, "id_cnpj") is None:
+        raise HTTPException(status_code=503, detail=f"CNPJ {cnpj} sem id_cnpj único para calcular taxa diária CRM.")
+    id_cnpj = int(ids.item(0, "id_cnpj"))
+    keys = ["id_medico", "competencia"]
+    if df.select(keys).is_duplicated().any():
+        raise HTTPException(status_code=503, detail=f"Perfil CRM de {cnpj} com registros mensais duplicados.")
+    required = {*keys, "nu_prescricoes_mes", "qtd_dias_com_prescricao_mes"}
+    try:
+        local_scan = scan_crm_medico_estabelecimento_mes()
+        brasil_scan = scan_crm_medico_brasil_mes()
+        for label, scan, columns in (
+            ("estabelecimento", local_scan, required | {"id_cnpj"}),
+            ("Brasil", brasil_scan, required),
+        ):
+            missing = columns - set(scan.collect_schema().names())
+            if missing:
+                raise RuntimeError(f"Base CRM {label} sem colunas obrigatórias: {', '.join(sorted(missing))}.")
+        period = pl.col("competencia").is_between(df["competencia"].min(), df["competencia"].max())
+        local = (
+            local_scan.filter((pl.col("id_cnpj") == id_cnpj) & period)
+            .select([
+                pl.col("id_medico"), pl.col("competencia"),
+                pl.col("nu_prescricoes_mes").cast(pl.Int64).alias("_prescricoes_local_fonte"),
+                pl.col("qtd_dias_com_prescricao_mes").cast(pl.Int64).alias("_dias_ativos"),
+            ]).collect()
+        )
+        brasil = (
+            brasil_scan.filter(period & pl.col("id_medico").is_in(df["id_medico"].unique().to_list()))
+            .select([
+                pl.col("id_medico"), pl.col("competencia"),
+                pl.col("nu_prescricoes_mes").cast(pl.Int64).alias("_prescricoes_brasil_fonte"),
+                pl.col("qtd_dias_com_prescricao_mes").cast(pl.Int64).alias("_dias_ativos_brasil"),
+            ]).collect()
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Base de dias com prescrição CRM indisponível: {exc}") from exc
+    for label, monthly in (("local", local), ("Brasil", brasil)):
+        if monthly.select(keys).is_duplicated().any():
+            raise HTTPException(status_code=503, detail=f"Base CRM {label} com registros mensais duplicados para {cnpj}.")
+    joined = df.join(local, on=keys, how="left", validate="1:1").join(
+        brasil, on=keys, how="left", validate="1:1",
+    )
+    calendar_days = pl.date(
+        pl.col("competencia") // 100, pl.col("competencia") % 100, 1,
+    ).dt.month_end().dt.day()
+    for label, count, days, old_count in (
+        ("local", "_prescricoes_local_fonte", "_dias_ativos", "nu_prescricoes_mes"),
+        ("Brasil", "_prescricoes_brasil_fonte", "_dias_ativos_brasil", "nu_prescricoes_total_brasil"),
+    ):
+        invalid = joined.filter(
+            pl.col(count).is_null() | pl.col(days).is_null() | pl.col(old_count).is_null()
+            | (pl.col(count) <= 0) | ~pl.col(days).is_between(1, calendar_days)
+            | (pl.col(days) > pl.col(count)) | (pl.col(count) != pl.col(old_count))
+        )
+        if not invalid.is_empty():
+            sample = invalid.select(keys).head(5).to_dicts()
+            raise HTTPException(
+                status_code=503,
+                detail=f"Bases CRM {label} incompatíveis para {cnpj}: prescrições/dias ausentes ou divergentes em {sample}.",
+            )
+    inconsistent_scope = joined.filter(
+        (pl.col("_dias_ativos_brasil") < pl.col("_dias_ativos"))
+        | (pl.col("_prescricoes_brasil_fonte") < pl.col("_prescricoes_local_fonte"))
+    )
+    if not inconsistent_scope.is_empty():
+        sample = inconsistent_scope.select(keys).head(5).to_dicts()
+        raise HTTPException(
+            status_code=503,
+            detail=f"Base CRM Brasil com prescrições/dias inferiores aos da farmácia {cnpj} em {sample}.",
+        )
+    return joined.with_columns([
+        pl.col("_prescricoes_local_fonte").alias("nu_prescricoes_mes"),
+        pl.col("_prescricoes_brasil_fonte").alias("nu_prescricoes_total_brasil"),
+    ]).drop("_prescricoes_local_fonte", "_prescricoes_brasil_fonte")
+
+
 def get_crm_data(
     cnpj: str,
     data_inicio: str | None = None,
@@ -510,17 +597,8 @@ def get_crm_data(
     total_valor = _to_float(df["vl_total_prescricoes"].sum())
 
     # â”€â”€ Dias ativos por mÃ©dico (vetorizado, sem Python callback) â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Calcula quantos dias tem cada competÃªncia (YYYYMM) criando o 1Âº dia do
-    # prÃ³ximo mÃªs e subtraindo 1 dia. Trata a virada de ano (dez â†’ jan).
-    _ano  = pl.col("competencia") // 100
-    _mes  = pl.col("competencia") % 100
-    _prox_ano = pl.when(_mes == 12).then(_ano + 1).otherwise(_ano)
-    _prox_mes = pl.when(_mes == 12).then(pl.lit(1)).otherwise(_mes + 1)
-    df = df.with_columns([
-        (
-            pl.date(_prox_ano, _prox_mes, pl.lit(1)) - pl.duration(days=1)
-        ).dt.day().alias("dias_competencia")
-    ])
+    df = _load_crm_prescription_days(cnpj, df)
+    timing.mark("dias com prescrição local/Brasil")
 
     df_med_mes = (
         df.group_by(["id_medico", "competencia"])
@@ -528,7 +606,8 @@ def get_crm_data(
             pl.sum("vl_total_prescricoes").alias("vl_total_prescricoes"),
             pl.sum("nu_prescricoes_mes").alias("nu_prescricoes"),
             pl.max("nu_prescricoes_total_brasil").alias("nu_prescricoes_total_brasil"),
-            pl.sum("dias_competencia").alias("_dias_ativos"),  # dias reais do mÃ©dico
+            pl.sum("_dias_ativos").alias("_dias_ativos"),
+            pl.sum("_dias_ativos_brasil").alias("_dias_ativos_brasil"),
             pl.col("no_medico").drop_nulls().first().alias("no_medico"),
             pl.max("flag_crm_invalido").alias("flag_crm_invalido"),
             pl.max("flag_prescricao_antes_registro").alias("flag_prescricao_antes_registro"),
@@ -540,7 +619,7 @@ def get_crm_data(
             pl.max("nu_estabelecimentos").alias("nu_estabelecimentos"),
         ])
         .with_columns([
-            # Divide pelo total de dias dos meses em que o mÃ©dico de fato prescreveu
+            # Taxa mensal nos dias com prescrição nesta farmácia.
             (pl.col("nu_prescricoes").cast(pl.Float64) / pl.col("_dias_ativos")).round(2).alias("nu_prescricoes_dia"),
         ])
     )
@@ -575,6 +654,7 @@ def get_crm_data(
             pl.sum("nu_prescricoes").alias("nu_prescricoes"),
             pl.sum("nu_prescricoes_total_brasil").alias("nu_prescricoes_total_brasil"),
             pl.sum("_dias_ativos").alias("_dias_ativos"),
+            pl.sum("_dias_ativos_brasil").alias("_dias_ativos_brasil"),
             pl.col("no_medico").drop_nulls().first().alias("no_medico"),
             pl.max("flag_crm_invalido").alias("flag_crm_invalido"),
             pl.max("flag_prescricao_antes_registro").alias("flag_prescricao_antes_registro"),
@@ -586,8 +666,8 @@ def get_crm_data(
             pl.max("nu_estabelecimentos").alias("nu_estabelecimentos"),
         ])
         .with_columns([
-            (pl.col("nu_prescricoes").cast(pl.Float64) / pl.col("_dias_ativos")).round(2).alias("nu_prescricoes_dia"),
-            (pl.col("nu_prescricoes_total_brasil").cast(pl.Float64) / pl.col("_dias_ativos")).round(2).alias("prescricoes_dia_total_brasil"),
+            (pl.col("nu_prescricoes").cast(pl.Float64) / pl.col("_dias_ativos")).alias("nu_prescricoes_dia"),
+            (pl.col("nu_prescricoes_total_brasil").cast(pl.Float64) / pl.col("_dias_ativos_brasil")).alias("prescricoes_dia_total_brasil"),
         ])
     )
 
@@ -621,9 +701,10 @@ def get_crm_data(
     df_med = (
         df_med
         .with_columns([
-            (pl.col("nu_prescricoes_dia") > 30).cast(pl.Int8).alias("flag_robo"),
+            (pl.col("nu_prescricoes_dia") > CRM_DAILY_RATE_ALERT_THRESHOLD).cast(pl.Int8).alias("flag_robo"),
             (
-                (pl.col("prescricoes_dia_total_brasil") > 30) & (pl.col("nu_prescricoes_dia") <= 30)
+                (pl.col("prescricoes_dia_total_brasil") > CRM_DAILY_RATE_ALERT_THRESHOLD)
+                & (pl.col("nu_prescricoes_dia") <= CRM_DAILY_RATE_ALERT_THRESHOLD)
             ).cast(pl.Int8).alias("flag_robo_oculto"),
         ])
         .with_columns([
@@ -1444,5 +1525,3 @@ def get_crm_raio_x(cnpj: str, date_str: str, hour: Optional[int] = None) -> "Crm
             status_code=500,
             detail=f"Erro no Raio-X CRM unificado: {e}",
         )
-
-

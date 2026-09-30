@@ -12,6 +12,7 @@ import MortalityTab from './MortalityTab.vue';
 import { useFilterStore } from "@/stores/filters";
 import { useFormatting } from "@/composables/useFormatting";
 import { useFilterParameters } from "@/composables/useFilterParameters";
+import { CRM_DAILY_RATE_ALERT_THRESHOLD } from "@/config/riskConfig";
 
 const { formatarData, toLocalISO } = useFormatting();
 
@@ -201,7 +202,7 @@ const kpiFilterLabels = {
   top1:        "Concentração TOP 1",
   top5:        "Concentração TOP 5",
   agrupamento: "Autorizações em Sequência (Único CRM)",
-  intensiva:   ">30 Prescrições/Dia",
+  intensiva:   `>${CRM_DAILY_RATE_ALERT_THRESHOLD} Prescrições/Dia`,
   exclusivo:   "CRM Exclusivo",
   fraude_crm:  "Fraudes CRM",
   distancia:   "Distância (>400km)",
