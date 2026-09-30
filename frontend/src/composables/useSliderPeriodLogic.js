@@ -1,18 +1,16 @@
 /**
- * Encapsula toda a lógica do slider de período temporal:
- * - Conversão índice ↔ data
- * - Multi-seleção de anos contíguos
- * - Tooltips flutuantes
- * - Sincronização com filterStore.periodo
+ * Período de análise global (filtro "Período de Análise" da sidebar):
+ * - Índices em AVAILABLE_MONTHS ↔ datas de filterStore.periodo
+ * - Sincronização nos dois sentidos com filterStore.sliderValue
  */
-import { ref, computed, watch } from 'vue';
+import { computed, watch } from 'vue';
 import { useFilterStore } from '@/stores/filters';
-import { AVAILABLE_MONTHS as availableMonths, ANALYSIS_YEARS } from '@/config/constants';
+import { AVAILABLE_MONTHS as availableMonths } from '@/config/constants';
 
 export function useSliderPeriodLogic() {
   const filterStore = useFilterStore();
 
-  // ── Slider sincronizado com a store ──────────────────────────────────────
+  // ── Índices sincronizados com a store ────────────────────────────────────
   const timeSliderValue = computed({
     get: () => filterStore.sliderValue,
     set: (val) => { filterStore.sliderValue = val; },
@@ -30,46 +28,13 @@ export function useSliderPeriodLogic() {
     }
   };
 
-  // ── Atalhos de Ano (Seleção Única) ───────────────────────────────────────
-  const toggleYear = (year) => {
-    const startIdx = availableMonths.findIndex(m => m.date.getFullYear() === year);
-    const endIdx   = availableMonths.findLastIndex(m => m.date.getFullYear() === year);
-    
-    if (startIdx !== -1 && endIdx !== -1) {
-      timeSliderValue.value = [startIdx, endIdx];
-      applySliderPeriod(timeSliderValue.value);
-    }
-  };
-
-  const isYearActive = (year) => {
-    const [start, end] = timeSliderValue.value;
-    const s = availableMonths[start].date;
-    const e = availableMonths[end].date;
-    
-    // Um ano é considerado "ativo" se o range selecionado for EXATAMENTE o ano inteiro
-    const isSameYear = s.getFullYear() === year && e.getFullYear() === year;
-    const isFullYear = s.getMonth() === (year === 2015 ? 6 : 0) && e.getMonth() === 11;
-    
-    return isSameYear && isFullYear;
-  };
-
-  const isYearDisabled = () => false; 
-
   const resetYears = () => {
      // Reseta para o período total (Início 2015 até Fim 2024)
      timeSliderValue.value = [0, availableMonths.length - 1];
      applySliderPeriod(timeSliderValue.value);
   };
 
-  // ── Tooltips flutuantes ───────────────────────────────────────────────────
-  const startMonthLabel = computed(() => availableMonths[timeSliderValue.value[0]]?.label);
-  const endMonthLabel   = computed(() => availableMonths[timeSliderValue.value[1]]?.label);
-  const startPos        = computed(() => (timeSliderValue.value[0] / (availableMonths.length - 1)) * 100);
-  const endPos          = computed(() => (timeSliderValue.value[1] / (availableMonths.length - 1)) * 100);
-  const startTransform  = computed(() => startPos.value < 8  ? 'translateX(0%)'    : 'translateX(-50%)');
-  const endTransform    = computed(() => endPos.value   > 92 ? 'translateX(-100%)' : 'translateX(-50%)');
-
-  // ── Sincronização reversa: periodo → slider ───────────────────────────────
+  // ── Sincronização reversa: periodo → índices ─────────────────────────────
   watch(() => filterStore.periodo, (newVal) => {
     if (!newVal || newVal.length < 2 || !newVal[0] || !newVal[1]) return;
     const startIdx = availableMonths.findIndex(
@@ -85,25 +50,10 @@ export function useSliderPeriodLogic() {
     }
   }, { deep: true });
 
-  const isAllSelected = computed(() =>
-    timeSliderValue.value[0] === 0 && timeSliderValue.value[1] === availableMonths.length - 1
-  );
-
   return {
     availableMonths,
-    ANALYSIS_YEARS,
     timeSliderValue,
     applySliderPeriod,
-    toggleYear,
-    isYearActive,
-    isYearDisabled,
     resetYears,
-    startMonthLabel,
-    endMonthLabel,
-    startPos,
-    endPos,
-    startTransform,
-    endTransform,
-    isAllSelected,
   };
 }

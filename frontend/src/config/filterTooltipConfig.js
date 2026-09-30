@@ -196,6 +196,10 @@ const FILTER_TOOLTIP_COPY = Object.freeze({
         label: 'Regra do intervalo',
         text: 'O mês inicial e o mês final são incluídos. A base atualmente cobre de julho de 2015 a dezembro de 2024.',
       },
+      {
+        label: 'Como escolher',
+        text: 'Use um atalho (período completo, 2020 a 2024 ou um ano) ou escolha o intervalo na grade: clique no mês inicial e depois no final.',
+      },
     ],
   },
   valorMin: {

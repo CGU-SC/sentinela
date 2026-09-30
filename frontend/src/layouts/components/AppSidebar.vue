@@ -11,7 +11,6 @@ import { useFilterStore } from "@/stores/filters";
 import { useGeoStore } from "@/stores/geo";
 import { useFormatting } from "@/composables/useFormatting";
 import { useSliderPeriodLogic } from "@/composables/useSliderPeriodLogic";
-import { useFilterParameters } from "@/composables/useFilterParameters";
 import { FILTER_OPTIONS } from "@/config/filterOptions";
 import { filterActionTooltip, filterTooltip } from "@/config/filterTooltipConfig";
 import Button from "primevue/button";
@@ -21,6 +20,7 @@ import Slider from "primevue/slider";
 import InputText from "primevue/inputtext";
 import AutoComplete from "primevue/autocomplete";
 import DataIntegrityBanner from "@/layouts/components/DataIntegrityBanner.vue";
+import MonthRangePicker from "@/views/components/common/MonthRangePicker.vue";
 
 const props = defineProps({
   activeModule: { type: String, required: true },
@@ -555,56 +555,66 @@ const integrityFilterCount = computed(() =>
 );
 
 
-// ── Período de análise (slider) ──────────────────────────────────────────────
-const displayYears = computed(() => ANALYSIS_YEARS.filter((y) => y >= 2020));
-
+// ── Período de análise (seletor de meses) ────────────────────────────────────
 const {
   availableMonths,
   timeSliderValue,
   applySliderPeriod,
-  toggleYear,
-  isYearActive,
-  isYearDisabled,
   resetYears,
-  startMonthLabel,
-  endMonthLabel,
 } = useSliderPeriodLogic();
-
-const { getApiParams } = useFilterParameters();
-
-// Move a ponta inicial do slider em `delta` meses (+1 ou -1)
-const stepStart = (delta) => {
-  filterStore.resetAnimationPreview();
-  const [s, e] = timeSliderValue.value;
-  const newS = Math.max(0, Math.min(e - 1, s + delta));
-  if (newS === s) return;
-  timeSliderValue.value = [newS, e];
-  applySliderPeriod([newS, e]);
-};
-
-// Move a ponta final do slider em `delta` meses (+1 ou -1)
-const stepEnd = (delta) => {
-  filterStore.resetAnimationPreview();
-  const [s, e] = timeSliderValue.value;
-  const newE = Math.max(s + 1, Math.min(availableMonths.length - 1, e + delta));
-  if (newE === e) return;
-  timeSliderValue.value = [s, newE];
-  applySliderPeriod([s, newE]);
-};
 
 onMounted(() => applySliderPeriod(timeSliderValue.value));
 
-const toggleAnalysisYear = (year) => {
-  filterStore.resetAnimationPreview();
-  toggleYear(year);
-};
+// Competência AAAAMM de cada mês do filtro (mesma ordem de availableMonths).
+const COMPS_PERIODO = availableMonths.map((m) => m.date.getFullYear() * 100 + m.date.getMonth() + 1);
+const PERIODO_MIN = COMPS_PERIODO[0];
+const PERIODO_MAX = COMPS_PERIODO[COMPS_PERIODO.length - 1];
+function indiceDaCompetencia(comp) {
+  const indice = COMPS_PERIODO.indexOf(comp);
+  if (indice === -1) throw new Error(`Competência ${comp} fora do período de auditoria.`);
+  return indice;
+}
+function formatCompetencia(comp) {
+  return `${String(comp % 100).padStart(2, "0")}/${Math.floor(comp / 100)}`;
+}
 
-// Handler do @slideend do Slider — extraído do template para evitar o auto-unwrap
-// de refs pelo Vue no contexto inline, que causava "Cannot set properties of null".
-const onSliderEnd = () => {
+const periodoAtalhos = [
+  { value: "completo", label: "Período completo", faixa: { inicio: PERIODO_MIN, fim: PERIODO_MAX } },
+  { value: "2020-2024", label: "2020 a 2024", faixa: { inicio: 202001, fim: Math.min(PERIODO_MAX, 202412) } },
+  ...ANALYSIS_YEARS.filter((ano) => ano >= 2020)
+    .reverse()
+    .map((ano) => ({
+      value: `ano-${ano}`,
+      label: String(ano),
+      faixa: { inicio: Math.max(PERIODO_MIN, ano * 100 + 1), fim: Math.min(PERIODO_MAX, ano * 100 + 12) },
+    })),
+  { value: "personalizado", label: "Período personalizado", grade: true },
+];
+const periodoSelecionado = computed(() => ({
+  inicio: COMPS_PERIODO[timeSliderValue.value[0]],
+  fim: COMPS_PERIODO[timeSliderValue.value[1]],
+}));
+const periodoAtalhoAtivo = computed(() => {
+  const { inicio, fim } = periodoSelecionado.value;
+  const atalho = periodoAtalhos.find((a) => a.faixa && a.faixa.inicio === inicio && a.faixa.fim === fim);
+  return atalho ? atalho.value : "personalizado";
+});
+// Botão do seletor: só o intervalo (ex.: "01/2024 a 12/2024").
+const periodoRotulo = computed(() => {
+  const { inicio, fim } = periodoSelecionado.value;
+  return `${formatCompetencia(inicio)} a ${formatCompetencia(fim)}`;
+});
+
+function aplicarPeriodo({ inicio, fim }) {
   filterStore.resetAnimationPreview();
+  timeSliderValue.value = [indiceDaCompetencia(inicio), indiceDaCompetencia(fim)];
   applySliderPeriod(timeSliderValue.value);
-};
+}
+function aplicarAtalhoPeriodo(valor) {
+  const atalho = periodoAtalhos.find((a) => a.value === valor);
+  if (!atalho?.faixa) throw new Error(`Atalho de período sem intervalo: ${valor}`);
+  aplicarPeriodo(atalho.faixa);
+}
 
 // Limpa o filtro de período — para a animação sem restaurar o range salvo,
 // depois delega ao resetYears para restaurar o padrão.
@@ -1306,77 +1316,18 @@ const clearSearch = () => {
             'filter-active-box': isFilterActive('sliderValue'),
           }"
         >
-          <div class="perc-chips" style="margin-bottom: 0.5rem">
-            <button
-              v-for="year in displayYears"
-              :key="year"
-              class="perc-chip"
-              :class="{
-                'perc-chip-active': isYearActive(year),
-                'perc-chip-disabled': isYearDisabled(year),
-              }"
-              :disabled="isYearDisabled(year) || periodFilterLocked"
-              @click="toggleAnalysisYear(year)"
-            >
-              {{ year }}
-            </button>
-          </div>
-          <div class="period-steppers">
-            <div class="period-stepper-group">
-              <button
-                class="period-step-btn"
-                :disabled="timeSliderValue[0] === 0 || periodFilterLocked"
-                @click="stepStart(-1)"
-              >
-                <i class="pi pi-chevron-left" />
-              </button>
-              <span class="period-step-label">{{ startMonthLabel }}</span>
-              <button
-                class="period-step-btn"
-                :disabled="
-                  timeSliderValue[0] >= timeSliderValue[1] - 1 ||
-                  periodFilterLocked
-                "
-                @click="stepStart(1)"
-              >
-                <i class="pi pi-chevron-right" />
-              </button>
-            </div>
-            <div class="period-stepper-group">
-              <button
-                class="period-step-btn"
-                :disabled="
-                  timeSliderValue[1] <= timeSliderValue[0] + 1 ||
-                  periodFilterLocked
-                "
-                @click="stepEnd(-1)"
-              >
-                <i class="pi pi-chevron-left" />
-              </button>
-              <span class="period-step-label">{{ endMonthLabel }}</span>
-              <button
-                class="period-step-btn"
-                :disabled="
-                  timeSliderValue[1] === availableMonths.length - 1 ||
-                  periodFilterLocked
-                "
-                @click="stepEnd(1)"
-              >
-                <i class="pi pi-chevron-right" />
-              </button>
-            </div>
-          </div>
-          <div class="slider-wrapper">
-            <Slider
-              v-model="timeSliderValue"
-              range
-              :min="0"
-              :max="availableMonths.length - 1"
-              class="w-full time-slider"
-              :disabled="periodFilterLocked"
-              @slideend="onSliderEnd"
-            />
-          </div>
+          <MonthRangePicker
+            :rotulo="periodoRotulo"
+            :inicio="periodoSelecionado.inicio"
+            :fim="periodoSelecionado.fim"
+            :min="PERIODO_MIN"
+            :max="PERIODO_MAX"
+            :atalhos="periodoAtalhos"
+            :atalho-ativo="periodoAtalhoAtivo"
+            :disabled="periodFilterLocked"
+            @select-range="aplicarPeriodo"
+            @select-atalho="aplicarAtalhoPeriodo"
+          />
         </div>
       </div>
 
@@ -2153,12 +2104,6 @@ const clearSearch = () => {
 .sidebar-spacer {
   flex: 1;
 }
-.sidebar-divider {
-  border: 0;
-  border-top: 1px solid var(--sidebar-border);
-  opacity: 0.5;
-  margin: 0.5rem 0;
-}
 
 .sidebar-section-heading {
   position: relative;
@@ -2625,14 +2570,6 @@ const clearSearch = () => {
   padding: 0.5rem 0.2rem;
 }
 
-.slider-values {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.65rem;
-  font-weight: 700;
-  margin-bottom: 0.4rem;
-  color: var(--sidebar-text);
-}
 
 .perc-chips {
   display: grid;
@@ -2675,15 +2612,23 @@ const clearSearch = () => {
   box-shadow: 0 0 6px color-mix(in srgb, var(--filter-active-color) 20%, transparent);
 }
 
-.perc-chip-disabled {
-  opacity: 0.25;
-  cursor: not-allowed;
-  pointer-events: none;
+/* Seletor do Período de Análise: mesmo padrão dos campos da sidebar. */
+.slider-container :deep(.mrp-gatilho) {
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 0.6rem;
+  background: var(--sidebar-input-bg);
+  border-color: var(--sidebar-border);
+  color: var(--sidebar-text);
+  font-size: 0.75rem;
 }
-
-.slider-wrapper {
-  position: relative;
-  margin-top: 8px;
+.slider-container :deep(.mrp-gatilho:not(:disabled):hover) {
+  border-color: color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border));
+}
+.slider-container :deep(.mrp-gatilho-seta) {
+  color: inherit;
+  opacity: 0.7;
 }
 
 .filter-input {

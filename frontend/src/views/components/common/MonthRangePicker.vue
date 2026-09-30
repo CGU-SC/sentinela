@@ -238,8 +238,9 @@ function aoTeclar(event, c) {
 .mrp-gatilho:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent); outline-offset: 1px; }
 .mrp-gatilho:disabled { opacity: .6; cursor: default; }
 .mrp-gatilho > .pi-calendar { color: var(--primary-color); font-size: .8rem; }
-.mrp-gatilho-texto { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mrp-gatilho-seta { margin-left: .15rem; color: var(--text-muted); font-size: .65rem; }
+/* Texto ocupa o espaço livre: a seta fica na borda direita (padrão de dropdown). */
+.mrp-gatilho-texto { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.mrp-gatilho-seta { flex-shrink: 0; margin-left: .35rem; color: var(--text-muted); font-size: .65rem; }
 </style>
 
 <style>
