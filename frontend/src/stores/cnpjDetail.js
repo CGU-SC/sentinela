@@ -1,6 +1,7 @@
 ﻿import { defineStore } from 'pinia';
 import axios from 'axios';
 import { API_ENDPOINTS } from '@/config/api';
+import { requestResumo } from '@/stores/analytics';
 import { fetchRegionalPayload } from '@/composables/useRegional';
 
 const PREFETCH_CONCURRENCY = 2;
@@ -1537,25 +1538,6 @@ export const useCnpjDetailStore = defineStore('cnpjDetail', {
       }
     },
 
-    // CNPJs Avulsos
-    async fetchCnpjAvulso(cnpj, inicio = null, fim = null) {
-      if (!cnpj || this.cnpjsAvulsos.has(cnpj)) return;
-      this.cnpjsAvulsosLoading = true;
-      try {
-        const params = {};
-        if (inicio) params.data_inicio = inicio;
-        if (fim)    params.data_fim    = fim;
-        params.cnpj_raiz = cnpj;
-        const response = await axios.get(API_ENDPOINTS.analyticsResumo, { params });
-        const found = (response.data.resultado_cnpjs || []).find(c => c.cnpj === cnpj);
-        if (found) this.cnpjsAvulsos.set(cnpj, found);
-      } catch (err) {
-        console.error('Erro ao carregar CNPJ avulso:', err);
-      } finally {
-        this.cnpjsAvulsosLoading = false;
-      }
-    },
-
     // ── Municípios da Região ──────────────────────────────────────────────────
     async fetchMunicipiosRegiao(uf, regiaoId, inicio = null, fim = null) {
       if (!uf || !regiaoId) return;
@@ -1568,8 +1550,8 @@ export const useCnpjDetailStore = defineStore('cnpjDetail', {
         if (fim)    params.data_fim    = fim;
         params.uf        = uf;
         params.regiao_id = regiaoId;
-        const response = await axios.get(API_ENDPOINTS.analyticsResumo, { params });
-        this.municipiosRegiao    = response.data.resultado_municipios || [];
+        const data = await requestResumo(params, ['municipios']);
+        this.municipiosRegiao    = data.resultado_municipios;
         this.municipiosRegiaoKey = key;
       } catch (err) {
         console.error('Erro ao buscar municípios da região:', err);

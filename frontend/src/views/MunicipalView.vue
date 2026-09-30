@@ -24,7 +24,10 @@ const riskIndicatorsStore = useRiskIndicatorsStore();
 const geoStore = useGeoStore();
 const municipalMapStore = useMunicipalMapStore();
 const isActive = ref(true);
-const { resultadoMunicipios, isLoading, error: analyticsError, lastParamsHash } = storeToRefs(analyticsStore);
+const { resultadoMunicipios, isLoading, error: analyticsError, sectionKeys } = storeToRefs(analyticsStore);
+// Seções do resumo exibidas nesta tela (KPIs + tabela/mapa municipal).
+const DASHBOARD_SECOES = ['kpis', 'municipios'];
+const municipiosLoadedKey = computed(() => sectionKeys.value.municipios);
 const {
   selectedRiskIndicator,
   kpis,
@@ -35,7 +38,7 @@ const {
 } = storeToRefs(riskIndicatorsStore);
 const { fetchRiskIndicator } = useRiskIndicatorAnalysis({ active: isActive, includeTable: false });
 
-useFetchAnalytics({ includeFatorRisco: false, includeNationalContext: false, active: isActive });
+useFetchAnalytics({ secoes: DASHBOARD_SECOES, includeFatorRisco: false, includeNationalContext: false, active: isActive });
 
 onActivated(() => {
   isActive.value = true;
@@ -128,7 +131,7 @@ const requestedSnapshotKey = computed(() => JSON.stringify({
 }));
 const currentDataReady = computed(() =>
   filterStore.isPeriodoValido
-  && lastParamsHash.value === dashboardParamsKey.value
+  && analyticsStore.isDashboardFresh(dashboardParamsKey.value, DASHBOARD_SECOES)
   && mapLoadedKey.value === mapApiParamsKey.value
   && (!indicatorParamsKey.value || summaryParamsKey.value === indicatorParamsKey.value)
   && !isLoading.value
@@ -167,7 +170,7 @@ const displayError = computed(() => {
 });
 
 watch(
-  [mapApiParamsKey, dashboardParamsKey, lastParamsHash, isActive],
+  [mapApiParamsKey, dashboardParamsKey, municipiosLoadedKey, isActive],
   ([requestKey, dashboardKey, loadedDashboardKey, active]) => {
     if (!active) return;
     if (!filterStore.isPeriodoValido) return;

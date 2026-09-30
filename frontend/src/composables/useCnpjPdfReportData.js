@@ -1,5 +1,6 @@
 import axios from "axios";
 import { API_ENDPOINTS } from "@/config/api";
+import { requestResumo } from "@/stores/analytics";
 import { INDICATOR_GROUPS } from "@/config/riskConfig";
 
 function normalizeCnpj(value) {
@@ -129,8 +130,8 @@ async function fetchMunicipiosRegiao({ geoData, inicio, fim }) {
   if (inicio) params.data_inicio = inicio;
   if (fim) params.data_fim = fim;
 
-  const { data } = await axios.get(API_ENDPOINTS.analyticsResumo, { params });
-  return assertArray(data?.resultado_municipios, "analytics/resumo.resultado_municipios");
+  const data = await requestResumo(params, ["municipios"]);
+  return data.resultado_municipios;
 }
 
 export async function loadCnpjPdfReportData({

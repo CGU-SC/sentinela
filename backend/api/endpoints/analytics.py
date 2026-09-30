@@ -450,13 +450,17 @@ def get_analytics_summary(
     cnae_incompativel: bool = Query(False),
     socio_idade_atipica: bool = Query(False),
     socio_falecido: bool = Query(False),
+    secoes: List[Literal["kpis", "ufs", "municipios", "cnpjs"]] = Query(
+        ...,
+        description="Secoes do resumo a calcular. 'cnpjs' exige o filtro cnpjs.",
+    ),
     db: Session = Depends(get_db)
 ):
     if regiao_saude and regiao_saude != "Todos":
         raise HTTPException(status_code=400, detail="Use regiao_id para filtros regionais; regiao_saude textual e apenas label.")
     if municipio and municipio != "Todos":
         raise HTTPException(status_code=400, detail="Use id_ibge7 para filtros municipais; municipio textual e apenas label.")
-    return AnalyticsService.get_dashboard_data(db, data_inicio, data_fim, perc_min, perc_max, val_min, uf, regiao_saude, municipio, situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, unidade_pf, cnpjs, regiao_id=regiao_id, id_ibge7=id_ibge7, volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, estabelecimento=estabelecimento)
+    return AnalyticsService.get_dashboard_data(db, data_inicio, data_fim, perc_min, perc_max, val_min, uf, regiao_saude, municipio, situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, unidade_pf, cnpjs, regiao_id=regiao_id, id_ibge7=id_ibge7, volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, estabelecimento=estabelecimento, secoes=secoes)
 
 
 @router.get("/producao-semestral", response_model=ProducaoSemestralResponse)

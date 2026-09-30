@@ -76,8 +76,9 @@ class RedeEstabelecimentoSchema(BaseModel):
     is_grande_rede: Optional[bool] = False
 
 class AnalyticsResponse(BaseModel):
-    kpis: List[AnalyticsKPISchema]
-    resultado_sentinela_uf: List[ResultadoSentinelaUFSchema]
+    # Cada secao so vem preenchida quando pedida em `secoes`; as demais sao None.
+    kpis: Optional[List[AnalyticsKPISchema]] = None
+    resultado_sentinela_uf: Optional[List[ResultadoSentinelaUFSchema]] = None
     resultado_municipios: Optional[List[ResultadoSentinelaMunicipioSchema]] = None
     resultado_cnpjs: Optional[List[ResultadoSentinelaCnpjSchema]] = None
 
@@ -218,6 +219,12 @@ class FalecidoTransactionSchema(BaseModel):
     outros_estabelecimentos: Optional[str] = None
 
 class FalecidosRankingSchema(BaseModel):
+    # Cadastro estruturado da farmacia (perfil de estabelecimentos, obrigatorio).
+    cnpj: str
+    razao_social: str
+    municipio: str
+    uf: str
+    # Rotulo "cnpj - razao | municipio/UF" (exportacoes e PDF).
     estabelecimento: str
     qtd_cpfs: int
     pct_total: float

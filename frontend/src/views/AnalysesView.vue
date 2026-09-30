@@ -17,7 +17,7 @@ import KpiSection from './components/KpiSection.vue';
 
 const filterStore = useFilterStore();
 const geoStore = useGeoStore();
-useFetchAnalytics({ includeFatorRisco: false, includeNationalContext: false });
+useFetchAnalytics({ secoes: ['kpis'], includeFatorRisco: false, includeNationalContext: false });
 
 // Nivel do mapa derivado dos filtros (fonte unica): muda junto com UF/regiao/
 // municipio, sem estado intermediario incoerente nos pedidos.

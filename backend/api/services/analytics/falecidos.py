@@ -220,7 +220,10 @@ def get_falecidos_data(
         cnpj=dados.cnpj,
         summary=dados.summary,
         ranking=[
-            FalecidosRankingSchema(estabelecimento=r["estabelecimento"], qtd_cpfs=r["qtd_cpfs"], pct_total=r["pct_total"])
+            FalecidosRankingSchema(
+                cnpj=r["cnpj"], razao_social=r["razao_social"], municipio=r["municipio"], uf=r["uf"],
+                estabelecimento=r["estabelecimento"], qtd_cpfs=r["qtd_cpfs"], pct_total=r["pct_total"],
+            )
             for r in dados.ranking.head(RANKING_TELA).iter_rows(named=True)
         ],
         transacoes=[

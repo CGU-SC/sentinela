@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Collection, List, Optional
 from datetime import date
 import calendar
 import polars as pl
@@ -58,11 +58,43 @@ from ...schemas.analytics import (
     GtinDetalhamentoMensalItem,
 )
 
-def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=None, perc_max=None, val_min=None, uf=None, regiao_saude=None, municipio=None, situacao_rf=None, conexao_ms=None, porte_empresa=None, grande_rede=None, cnpj_raiz=None, unidade_pf=None, cnpjs: Optional[List[str]] = None, regiao_id: Optional[int] = None, id_ibge7: Optional[int] = None, volume_atipico: bool = False, volume_atipico_limite: Optional[float] = None, dispersao_uf_sem_fronteira: bool = False, dispersao_uf_sem_fronteira_limite: Optional[float] = None, par_teia: Optional[str] = None, socio_beneficio: Optional[str] = None, socio_esocial: Optional[str] = None, cnae_incompativel: bool = False, socio_idade_atipica: bool = False, socio_falecido: bool = False, estabelecimento: Optional[str] = None) -> AnalyticsResponse:
+DASHBOARD_SECOES = frozenset({"kpis", "ufs", "municipios", "cnpjs"})
+
+
+def validar_secoes_dashboard(secoes: Collection[str], cnpjs: Optional[List[str]]) -> frozenset[str]:
+    """Valida as secoes pedidas ao resumo do dashboard.
+
+    Args:
+        secoes: secoes solicitadas (kpis, ufs, municipios, cnpjs).
+        cnpjs: filtro explicito de CNPJs da requisicao.
+
+    Returns:
+        Conjunto imutavel das secoes validas.
+
+    Raises:
+        HTTPException 422: sem secoes, secao desconhecida ou `cnpjs` sem o
+            filtro de CNPJs (evita devolver a base inteira de estabelecimentos).
+    """
+    pedidas = frozenset(secoes or ())
+    if not pedidas:
+        raise HTTPException(status_code=422, detail="Informe ao menos uma secao: kpis, ufs, municipios ou cnpjs.")
+    desconhecidas = pedidas - DASHBOARD_SECOES
+    if desconhecidas:
+        raise HTTPException(status_code=422, detail=f"Secoes invalidas no resumo: {', '.join(sorted(desconhecidas))}.")
+    if "cnpjs" in pedidas and not cnpjs:
+        raise HTTPException(status_code=422, detail="A secao cnpjs exige o filtro cnpjs com os estabelecimentos desejados.")
+    return pedidas
+
+
+def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=None, perc_max=None, val_min=None, uf=None, regiao_saude=None, municipio=None, situacao_rf=None, conexao_ms=None, porte_empresa=None, grande_rede=None, cnpj_raiz=None, unidade_pf=None, cnpjs: Optional[List[str]] = None, regiao_id: Optional[int] = None, id_ibge7: Optional[int] = None, volume_atipico: bool = False, volume_atipico_limite: Optional[float] = None, dispersao_uf_sem_fronteira: bool = False, dispersao_uf_sem_fronteira_limite: Optional[float] = None, par_teia: Optional[str] = None, socio_beneficio: Optional[str] = None, socio_esocial: Optional[str] = None, cnae_incompativel: bool = False, socio_idade_atipica: bool = False, socio_falecido: bool = False, estabelecimento: Optional[str] = None, *, secoes: Collection[str]) -> AnalyticsResponse:
     """
     Versão Unificada (Motor Polars): Calcula KPIs e análise por UF em tempo real.
     Garante consistência total entre as telas e alta performance via processamento em memória.
+
+    Só calcula as seções pedidas em `secoes` (kpis, ufs, municipios, cnpjs); as
+    demais voltam como None. A seção cnpjs exige o filtro `cnpjs`.
     """
+    secoes = validar_secoes_dashboard(secoes, cnpjs)
     print(f'DEBUG get_dashboard_data - cnae_incompativel: {cnae_incompativel}')
     try:
         def human_format(num):
@@ -179,113 +211,128 @@ def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=No
         if v_min is not None:
             cnpj_ok = cnpj_ok.filter(pl.col("tsc") >= v_min)
 
-        # 4. Cálculo dos KPIs Globais
-        tv  = float(cnpj_ok["tv"].sum() or 0)
-        tsc = float(cnpj_ok["tsc"].sum() or 0)
-        tqv = float(cnpj_ok["tqv"].sum() or 0)
-        pct = (tsc / tv * 100) if tv else 0.0
         perfil_ok = perfil_filtrado.join(cnpj_ok.select("id_cnpj"), on="id_cnpj", how="inner")
-        qtd_mun = int(perfil_ok.select(pl.n_unique("no_municipio")).item() or 0)
-        kpis = build_kpis(cnpj_ok.height, tv, tsc, pct, tqv, qtd_mun)
+
+        # 4. Cálculo dos KPIs Globais
+        kpis = None
+        if "kpis" in secoes:
+            tv  = float(cnpj_ok["tv"].sum() or 0)
+            tsc = float(cnpj_ok["tsc"].sum() or 0)
+            tqv = float(cnpj_ok["tqv"].sum() or 0)
+            pct = (tsc / tv * 100) if tv else 0.0
+            qtd_mun = int(perfil_ok.select(pl.n_unique("no_municipio")).item() or 0)
+            kpis = build_kpis(cnpj_ok.height, tv, tsc, pct, tqv, qtd_mun)
+
+        period_enriched = (
+            period_df.join(perfil_ok, on="id_cnpj", how="inner")
+            if secoes & {"ufs", "municipios", "cnpjs"} else None
+        )
 
         # 5. Detalhamento por UF (Breakdown)
-        period_enriched = period_df.join(perfil_ok, on="id_cnpj", how="inner")
-        uf_df = (
-            period_enriched
-            .group_by("uf")
-            .agg([
-                pl.n_unique("id_cnpj").alias("cnpjs"),
-                pl.sum("total_vendas").alias("totalMov"),
-                pl.sum("total_sem_comprovacao").alias("valSemComp"),
-                pl.col("total_qnt_caixas_vendidas").cast(pl.Int64).sum().alias("totalQtde"),
-                pl.col("total_qnt_caixas_sem_comprovacao").cast(pl.Int64).sum().alias("qtdeSemComp"),
-            ])
-            .with_columns([
-                (pl.col("valSemComp") / pl.when(pl.col("totalMov") > 0).then(pl.col("totalMov")).otherwise(None) * 100).alias("percValSemComp"),
-                (pl.col("qtdeSemComp") / pl.when(pl.col("totalQtde") > 0).then(pl.col("totalQtde")).otherwise(None) * 100).alias("percQtdeSemComp"),
-            ])
-            .sort("percValSemComp", descending=True, nulls_last=True)
-        )
+        resultado_sentinela_uf = None
+        if "ufs" in secoes:
+            uf_df = (
+                period_enriched
+                .group_by("uf")
+                .agg([
+                    pl.n_unique("id_cnpj").alias("cnpjs"),
+                    pl.sum("total_vendas").alias("totalMov"),
+                    pl.sum("total_sem_comprovacao").alias("valSemComp"),
+                    pl.col("total_qnt_caixas_vendidas").cast(pl.Int64).sum().alias("totalQtde"),
+                    pl.col("total_qnt_caixas_sem_comprovacao").cast(pl.Int64).sum().alias("qtdeSemComp"),
+                ])
+                .with_columns([
+                    (pl.col("valSemComp") / pl.when(pl.col("totalMov") > 0).then(pl.col("totalMov")).otherwise(None) * 100).alias("percValSemComp"),
+                    (pl.col("qtdeSemComp") / pl.when(pl.col("totalQtde") > 0).then(pl.col("totalQtde")).otherwise(None) * 100).alias("percQtdeSemComp"),
+                ])
+                .sort("percValSemComp", descending=True, nulls_last=True)
+            )
 
-        resultado_sentinela_uf = [
-            ResultadoSentinelaUFSchema(**r)
-            for r in uf_df.iter_rows(named=True)
-        ]
+            resultado_sentinela_uf = [
+                ResultadoSentinelaUFSchema(**r)
+                for r in uf_df.iter_rows(named=True)
+            ]
 
         # 6. Agregação por Município
-        muni_df = (
-            period_enriched
-            .group_by(["uf", "no_municipio", "id_ibge7"])
-            .agg([
-                pl.n_unique("id_cnpj").alias("cnpjs"),
-                pl.sum("total_vendas").alias("totalMov"),
-                pl.sum("total_sem_comprovacao").alias("valSemComp"),
-                pl.col("total_qnt_caixas_vendidas").cast(pl.Int64).sum().alias("totalQtde"),
-                pl.col("total_qnt_caixas_sem_comprovacao").cast(pl.Int64).sum().alias("qtdeSemComp"),
-            ])
-            .with_columns([
-                (pl.col("valSemComp") / pl.when(pl.col("totalMov") > 0).then(pl.col("totalMov")).otherwise(None) * 100).alias("percValSemComp"),
-                (pl.col("qtdeSemComp") / pl.when(pl.col("totalQtde") > 0).then(pl.col("totalQtde")).otherwise(None) * 100).alias("percQtdeSemComp"),
-            ])
-            .sort("percValSemComp", descending=True, nulls_last=True)
-        )
+        resultado_municipios = None
+        if "municipios" in secoes:
+            muni_df = (
+                period_enriched
+                .group_by(["uf", "no_municipio", "id_ibge7"])
+                .agg([
+                    pl.n_unique("id_cnpj").alias("cnpjs"),
+                    pl.sum("total_vendas").alias("totalMov"),
+                    pl.sum("total_sem_comprovacao").alias("valSemComp"),
+                    pl.col("total_qnt_caixas_vendidas").cast(pl.Int64).sum().alias("totalQtde"),
+                    pl.col("total_qnt_caixas_sem_comprovacao").cast(pl.Int64).sum().alias("qtdeSemComp"),
+                ])
+                .with_columns([
+                    (pl.col("valSemComp") / pl.when(pl.col("totalMov") > 0).then(pl.col("totalMov")).otherwise(None) * 100).alias("percValSemComp"),
+                    (pl.col("qtdeSemComp") / pl.when(pl.col("totalQtde") > 0).then(pl.col("totalQtde")).otherwise(None) * 100).alias("percQtdeSemComp"),
+                ])
+                # id_ibge7 desempata: group_by nao garante ordem e a tabela de
+                # /municipios mantem a ordem recebida entre valores iguais.
+                .sort(["percValSemComp", "id_ibge7"], descending=[True, False], nulls_last=True)
+            )
 
-        resultado_municipios = [
-            ResultadoSentinelaMunicipioSchema(municipio=r["no_municipio"], **r)
-            for r in muni_df.iter_rows(named=True)
-        ]
+            resultado_municipios = [
+                ResultadoSentinelaMunicipioSchema(municipio=r["no_municipio"], **r)
+                for r in muni_df.iter_rows(named=True)
+            ]
 
-        # 7. Detalhamento por CNPJ (Sempre calculado)
-        cnpj_df = (
-            period_enriched
-            .group_by("id_cnpj")
-            .agg([
-                pl.col("cnpj").first().alias("cnpj"),
-                pl.col("no_municipio").first().alias("municipio"),
-                pl.col("id_ibge7").first().alias("id_ibge7"),
-                pl.col("uf").first().alias("uf"),
-                pl.col("razao_social").first().alias("razao_social"),
-                pl.sum("total_vendas").alias("totalMov"),
-                pl.sum("total_sem_comprovacao").alias("valSemComp"),
-                pl.col("total_qnt_caixas_vendidas").cast(pl.Int64).sum().alias("totalQtde"),
-                pl.col("total_qnt_caixas_sem_comprovacao").cast(pl.Int64).sum().alias("qtdeSemComp"),
-                pl.col("is_grande_rede").first().alias("is_grande_rede"),
-                pl.col("qtd_estabelecimentos_rede").first().alias("qtd_estabelecimentos_rede"),
-                pl.col("situacao_rf").first().alias("situacao_rf"),
-                pl.col("porte_empresa").first().alias("porte_empresa"),
-                pl.col("is_conexao_ativa").first().alias("is_conexao_ativa"),
-                pl.col("is_matriz").first().fill_null(False).alias("is_matriz"),
-            ])
-            .with_columns([
-                (pl.col("valSemComp") / pl.when(pl.col("totalMov") > 0).then(pl.col("totalMov")).otherwise(None) * 100).alias("percValSemComp"),
-                (pl.col("qtdeSemComp") / pl.when(pl.col("totalQtde") > 0).then(pl.col("totalQtde")).otherwise(None) * 100).alias("percQtdeSemComp"),
-                (pl.col("municipio") + " / " + pl.col("uf")).alias("municipio_uf"),
-            ])
-            .sort("percValSemComp", descending=True, nulls_last=True)
-        )
-        risco_cols = [
-            "id_cnpj",
-            "score_risco_final",
-            "classificacao_risco",
-            "rank_nacional",
-            "total_nacional",
-            "rank_uf",
-            "total_uf",
-            "rank_regiao_saude",
-            "total_regiao_saude",
-            "rank_municipio",
-            "total_municipio",
-        ]
-        risco_df = build_dynamic_matriz_risco(
-            data_inicio=inicio,
-            data_fim=fim,
-        ).select(risco_cols)
-        cnpj_df = cnpj_df.join(risco_df, on="id_cnpj", how="left")
+        # 7. Detalhamento por CNPJ (somente com filtro explícito de CNPJs)
+        resultado_cnpjs = None
+        if "cnpjs" in secoes:
+            cnpj_df = (
+                period_enriched
+                .group_by("id_cnpj")
+                .agg([
+                    pl.col("cnpj").first().alias("cnpj"),
+                    pl.col("no_municipio").first().alias("municipio"),
+                    pl.col("id_ibge7").first().alias("id_ibge7"),
+                    pl.col("uf").first().alias("uf"),
+                    pl.col("razao_social").first().alias("razao_social"),
+                    pl.sum("total_vendas").alias("totalMov"),
+                    pl.sum("total_sem_comprovacao").alias("valSemComp"),
+                    pl.col("total_qnt_caixas_vendidas").cast(pl.Int64).sum().alias("totalQtde"),
+                    pl.col("total_qnt_caixas_sem_comprovacao").cast(pl.Int64).sum().alias("qtdeSemComp"),
+                    pl.col("is_grande_rede").first().alias("is_grande_rede"),
+                    pl.col("qtd_estabelecimentos_rede").first().alias("qtd_estabelecimentos_rede"),
+                    pl.col("situacao_rf").first().alias("situacao_rf"),
+                    pl.col("porte_empresa").first().alias("porte_empresa"),
+                    pl.col("is_conexao_ativa").first().alias("is_conexao_ativa"),
+                    pl.col("is_matriz").first().fill_null(False).alias("is_matriz"),
+                ])
+                .with_columns([
+                    (pl.col("valSemComp") / pl.when(pl.col("totalMov") > 0).then(pl.col("totalMov")).otherwise(None) * 100).alias("percValSemComp"),
+                    (pl.col("qtdeSemComp") / pl.when(pl.col("totalQtde") > 0).then(pl.col("totalQtde")).otherwise(None) * 100).alias("percQtdeSemComp"),
+                    (pl.col("municipio") + " / " + pl.col("uf")).alias("municipio_uf"),
+                ])
+                .sort("percValSemComp", descending=True, nulls_last=True)
+            )
+            risco_cols = [
+                "id_cnpj",
+                "score_risco_final",
+                "classificacao_risco",
+                "rank_nacional",
+                "total_nacional",
+                "rank_uf",
+                "total_uf",
+                "rank_regiao_saude",
+                "total_regiao_saude",
+                "rank_municipio",
+                "total_municipio",
+            ]
+            risco_df = build_dynamic_matriz_risco(
+                data_inicio=inicio,
+                data_fim=fim,
+            ).select(risco_cols)
+            cnpj_df = cnpj_df.join(risco_df, on="id_cnpj", how="left")
 
-        resultado_cnpjs = [
-            ResultadoSentinelaCnpjSchema(**r)
-            for r in cnpj_df.iter_rows(named=True)
-        ]
+            resultado_cnpjs = [
+                ResultadoSentinelaCnpjSchema(**r)
+                for r in cnpj_df.iter_rows(named=True)
+            ]
 
         return AnalyticsResponse(
             kpis=kpis, 

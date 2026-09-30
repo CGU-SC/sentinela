@@ -3,7 +3,7 @@ import { useFetchAnalytics } from '@/composables/useFetchAnalytics';
 import KpiSection from './components/KpiSection.vue';
 import UFChart from './components/charts/UFChart.vue';
 
-useFetchAnalytics();
+useFetchAnalytics({ secoes: ['kpis', 'ufs'] });
 </script>
 
 <template>

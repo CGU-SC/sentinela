@@ -32,7 +32,7 @@ const {
   alertasPanoramaLoading,
 } = storeToRefs(analyticsStore);
 
-useFetchAnalytics({ includeFatorRisco: true, includeProducaoSemestral: true, includeAlertasPanorama: true });
+useFetchAnalytics({ secoes: ['kpis', 'ufs'], includeFatorRisco: true, includeProducaoSemestral: true, includeAlertasPanorama: true });
 
 onMounted(() => {
   analyticsStore.fetchCacheStatus();

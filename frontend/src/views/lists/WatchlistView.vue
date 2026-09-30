@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import axios from "axios";
 import { useFarmaciaListsStore } from "@/stores/farmaciaLists";
 import { useFilterStore } from "@/stores/filters";
 import { useGeoStore } from "@/stores/geo";
@@ -11,6 +10,7 @@ import { useFilterParameters } from "@/composables/useFilterParameters";
 import { usePdfExport } from "@/composables/usePdfExport";
 import { loadCnpjPdfReportData } from "@/composables/useCnpjPdfReportData";
 import { API_ENDPOINTS } from "@/config/api";
+import { requestResumo } from "@/stores/analytics";
 import { getApiErrorMessage } from "@/utils/apiErrors";
 import { convertDocxToPdf, downloadBlobFromResponse } from "@/utils/download";
 import ObservationDialog from "@/views/components/cnpj/ObservationDialog.vue";
@@ -96,16 +96,16 @@ async function fetchWatchlistAnalytics() {
   }
 
   const { inicio, fim } = getApiParams();
-  const params = new URLSearchParams();
-  if (inicio) params.append("data_inicio", inicio);
-  if (fim) params.append("data_fim", fim);
-  monitoredCnpjs.value.forEach((cnpj) => params.append("cnpjs", cnpj));
+  const params = { cnpjs: [...monitoredCnpjs.value] };
+  if (inicio) params.data_inicio = inicio;
+  if (fim) params.data_fim = fim;
 
   watchlistLoading.value = true;
   watchlistError.value = null;
   try {
-    const response = await axios.get(`${API_ENDPOINTS.analyticsResumo}?${params.toString()}`);
-    watchlistAnalytics.value = response.data?.resultado_cnpjs || [];
+    // Seção cnpjs só com os CNPJs monitorados (o backend exige o filtro).
+    const data = await requestResumo(params, ["cnpjs"]);
+    watchlistAnalytics.value = data.resultado_cnpjs;
   } catch (error) {
     console.error("Erro ao buscar dados da lista de interesse:", error);
     watchlistAnalytics.value = [];

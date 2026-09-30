@@ -5,7 +5,6 @@ import { useCnpjDetailStore } from '@/stores/cnpjDetail';
 import { useFilterStore } from '@/stores/filters';
 import { useStableTabState } from '@/composables/useStableTabState';
 import { useFormatting } from '@/composables/useFormatting';
-import { useAnalyticsStore } from '@/stores/analytics';
 import { useFarmaciaListsStore } from '@/stores/farmaciaLists';
 import { useToggleInteresse } from '@/composables/useToggleInteresse';
 import Tag from 'primevue/tag';
@@ -42,7 +41,6 @@ const {
 } = useStableTabState(falecidosData, falecidosLoading, falecidosError);
 
 const { formatCurrencyFull, formatarData, formatTitleCase, formatCnpj, toLocalISO } = useFormatting();
-const analyticsStore = useAnalyticsStore();
 const farmaciaLists = useFarmaciaListsStore();
 const toggleInteresse = useToggleInteresse();
 
@@ -216,17 +214,6 @@ const falecidosKpiCards = computed(() => {
   ];
 });
 
-// Mapa para busca O(1) de dados do CNPJ no Pinia Store para enriquecer o painel.
-const cnpjsDict = computed(() => {
-  const dict = {};
-  if (analyticsStore.resultadoCnpjs) {
-    for (const c of analyticsStore.resultadoCnpjs) {
-      dict[c.cnpj] = c;
-    }
-  }
-  return dict;
-});
-
 const formattedPeriod = computed(() => {
   if (!filterStore.periodo || filterStore.periodo.length < 2) return null;
   const start = filterStore.periodo[0];
@@ -245,37 +232,13 @@ const noMovementInPeriod = computed(() =>
 );
 
 
-const getEstabelecimentoInfo = (estabStr) => {
-  if (!estabStr) return { cnpj: '', name: '', geo: '' };
-  const rawCnpj = estabStr.split(' - ')[0]?.trim() || '';
-  const cleanCnpj = rawCnpj.replace(/\D/g, '');
-  
-  // Tenta puxar dados otimizados da store do Pinia
-  const cnpjData = cnpjsDict.value[cleanCnpj];
-  
-  let name = estabStr.split(' - ')[1]?.split(' | ')[0]?.trim() || estabStr;
-  let cityUF = estabStr.split(' | ')[1]?.trim() || '';
-  let regiao = estabStr.split(' | ')[2]?.trim() || '';
-  
-  // Se existir no Pinia Store, prioriza dados consistentes e mais completos
-  if (cnpjData) {
-    if (cnpjData.razao_social) name = cnpjData.razao_social;
-    if (cnpjData.municipio && cnpjData.uf) cityUF = `${cnpjData.municipio} - ${cnpjData.uf}`;
-    if (cnpjData.regiao_saude) regiao = cnpjData.regiao_saude;
-  }
-
-  let geo = cityUF;
-  if (regiao) {
-     geo += ` • ${regiao}`;
-  }
-
-  return { 
-    cnpj: rawCnpj,
-    cleanCnpj: cleanCnpj,
-    name: name,
-    geo: geo
-  };
-};
+// Farmácia do ranking de coincidência: cadastro estruturado vindo do backend.
+const getEstabelecimentoInfo = (row) => ({
+  cnpj: row.cnpj,
+  cleanCnpj: row.cnpj,
+  name: row.razao_social,
+  geo: `${row.municipio} - ${row.uf}`,
+});
 
 // Função para mapear o risco em 10 níveis térmicos descritivos
 function getDayStepClass(days) {
@@ -325,10 +288,8 @@ const toggleMultiCnpj = (event, grupo) => {
   timelineOverlay.value?.open(event, grupo);
 };
 
-const openEstablishment = (estabStr) => {
-  if (!estabStr) return;
-  const targetCnpj = estabStr.split(' - ')[0].replace(/\D/g, '');
-  window.open(`/estabelecimento/${targetCnpj}`, '_blank');
+const openEstablishment = (cnpj) => {
+  window.open(`/estabelecimento/${cnpj}`, '_blank');
 };
 
 const isRankingExpanded = ref(false);
@@ -504,19 +465,19 @@ const falecidosAgrupadosFiltrados = computed(() => {
         <div class="pro-ranking-list">
           <div
              v-for="(r, index) in visibleRanking"
-             :key="r.estabelecimento"
+             :key="r.cnpj"
              class="pro-ranking-item"
           >
             <div class="rank-badge" :class="`rank-${index + 1}`">#{{ index + 1 }}</div>
             
             <div class="rank-info">
                <div class="rank-info-top">
-                   <span class="rank-cnpj">{{ formatCnpj(getEstabelecimentoInfo(r.estabelecimento).cnpj) }}</span>
-                   <span class="rank-name">{{ getEstabelecimentoInfo(r.estabelecimento).name }}</span>
+                   <span class="rank-cnpj">{{ formatCnpj(getEstabelecimentoInfo(r).cnpj) }}</span>
+                   <span class="rank-name">{{ getEstabelecimentoInfo(r).name }}</span>
                </div>
-               <div class="rank-geo" v-if="getEstabelecimentoInfo(r.estabelecimento).geo">
+               <div class="rank-geo" v-if="getEstabelecimentoInfo(r).geo">
                    <i class="pi pi-map-marker"></i>
-                   <span>{{ getEstabelecimentoInfo(r.estabelecimento).geo }}</span>
+                   <span>{{ getEstabelecimentoInfo(r).geo }}</span>
                </div>
                <div class="rank-bar-wrapper">
                    <div class="rank-bar-bg">
@@ -534,26 +495,26 @@ const falecidosAgrupadosFiltrados = computed(() => {
              <div class="rank-action">
                 <button
                   class="rank-filter-btn"
-                  :class="{ active: filteredRankingCnpj === getEstabelecimentoInfo(r.estabelecimento).cleanCnpj }"
-                  @click.stop="toggleRankingFilter(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj)"
+                  :class="{ active: filteredRankingCnpj === getEstabelecimentoInfo(r).cleanCnpj }"
+                  @click.stop="toggleRankingFilter(getEstabelecimentoInfo(r).cleanCnpj)"
                   v-tooltip.top="createMortalityTextTooltip('Filtrar a tabela de transações por este CNPJ')"
                 >
-                  <i :class="filteredRankingCnpj === getEstabelecimentoInfo(r.estabelecimento).cleanCnpj ? 'pi pi-filter-slash' : 'pi pi-filter'" />
+                  <i :class="filteredRankingCnpj === getEstabelecimentoInfo(r).cleanCnpj ? 'pi pi-filter-slash' : 'pi pi-filter'" />
                   <span>Exibir</span>
                 </button>
                 <button
                   class="rank-filter-btn"
-                  :class="{ active: farmaciaLists.isInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj) }"
-                  v-tooltip.top="createMortalityTextTooltip(farmaciaLists.isInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj) ? 'Remover da lista de interesse' : 'Salvar na lista de interesse para acompanhamento')"
-                  @click.stop="toggleInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj, getEstabelecimentoInfo(r.estabelecimento).name)"
+                  :class="{ active: farmaciaLists.isInteresse(getEstabelecimentoInfo(r).cleanCnpj) }"
+                  v-tooltip.top="createMortalityTextTooltip(farmaciaLists.isInteresse(getEstabelecimentoInfo(r).cleanCnpj) ? 'Remover da lista de interesse' : 'Salvar na lista de interesse para acompanhamento')"
+                  @click.stop="toggleInteresse(getEstabelecimentoInfo(r).cleanCnpj, getEstabelecimentoInfo(r).name)"
                 >
-                  <i :class="farmaciaLists.isInteresse(getEstabelecimentoInfo(r.estabelecimento).cleanCnpj) ? 'pi pi-star-fill' : 'pi pi-star'" />
+                  <i :class="farmaciaLists.isInteresse(getEstabelecimentoInfo(r).cleanCnpj) ? 'pi pi-star-fill' : 'pi pi-star'" />
                   <span>Interesse</span>
                 </button>
                 <button
                   class="rank-filter-btn rank-open-btn"
                   v-tooltip.top="createMortalityTextTooltip('Abrir análise completa deste CNPJ')"
-                  @click.stop="openEstablishment(r.estabelecimento)"
+                  @click.stop="openEstablishment(r.cnpj)"
                 >
                   <i class="pi pi-external-link" />
                   <span>Analisar CNPJ</span>
@@ -583,8 +544,8 @@ const falecidosAgrupadosFiltrados = computed(() => {
           <span>
             Exibindo apenas CPFs em comum com
             <strong>{{ formatCnpj(filteredRankingCnpj) }}</strong>
-            <template v-if="getEstabelecimentoInfo(falecidosData?.ranking?.find(r => getEstabelecimentoInfo(r.estabelecimento).cleanCnpj === filteredRankingCnpj)?.estabelecimento)?.name">
-              — {{ getEstabelecimentoInfo(falecidosData?.ranking?.find(r => getEstabelecimentoInfo(r.estabelecimento).cleanCnpj === filteredRankingCnpj)?.estabelecimento)?.name }}
+            <template v-if="falecidosData?.ranking?.find(r => r.cnpj === filteredRankingCnpj)?.razao_social">
+              — {{ falecidosData?.ranking?.find(r => r.cnpj === filteredRankingCnpj)?.razao_social }}
             </template>
             · <strong>{{ falecidosAgrupadosFiltrados.length }}</strong> CPF(s)
           </span>

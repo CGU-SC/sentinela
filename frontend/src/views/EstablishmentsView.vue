@@ -22,7 +22,7 @@ const {
   cnpjsSortField, cnpjsSortOrder, isLoading, isTableLoading, summaryError, tableError
 } = storeToRefs(riskIndicatorsStore);
 const { fetchRiskIndicator, fetchRiskIndicatorEstablishmentsPage } = useRiskIndicatorAnalysis();
-useFetchAnalytics({ includeFatorRisco: false, includeNationalContext: false });
+useFetchAnalytics({ secoes: ['kpis'], includeFatorRisco: false, includeNationalContext: false });
 
 // Metadados do indicador ativo (label, formato, metodologia)
 const activeRiskIndicatorMeta = computed(() => {

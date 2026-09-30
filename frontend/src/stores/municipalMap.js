@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
-import axios from 'axios';
-import { API_ENDPOINTS } from '@/config/api';
+import { requestResumo } from '@/stores/analytics';
 
 let pendingRequest = null;
 
@@ -25,11 +24,8 @@ export const useMunicipalMapStore = defineStore('municipalMap', {
 
       this.isLoading = true;
       this.error = null;
-      const promise = axios.get(API_ENDPOINTS.analyticsResumo, { params })
-        .then(({ data }) => {
-          if (!Array.isArray(data?.resultado_municipios)) {
-            throw new Error('Contrato invalido em analytics/resumo: resultado_municipios ausente.');
-          }
+      const promise = requestResumo(params, ['municipios'])
+        .then((data) => {
           if (pendingRequest?.key !== key) return;
           this.rows = data.resultado_municipios;
           this.loadedKey = key;

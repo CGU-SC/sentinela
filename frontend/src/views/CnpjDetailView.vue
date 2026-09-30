@@ -1,7 +1,6 @@
 <script setup>
 import { useRoute, useRouter } from "vue-router";
 import { computed, onMounted, ref, watch } from "vue";
-import { useAnalyticsStore } from "@/stores/analytics";
 import { useCnpjDetailStore } from "@/stores/cnpjDetail";
 import { useGeoStore } from "@/stores/geo";
 import { useFilterStore } from "@/stores/filters";
@@ -83,9 +82,7 @@ const getTabIndexFromRoute = () => {
 };
 
 // ── Stores ────────────────────────────────────────────────
-const analyticsStore = useAnalyticsStore();
 const cnpjDetailStore = useCnpjDetailStore();
-const { resultadoCnpjs } = storeToRefs(analyticsStore);
 const {
   dadosCadastro,
   evolucaoFinanceira,
@@ -446,12 +443,8 @@ watch(
   { immediate: true },
 );
 
-const cnpjData = computed(
-  () =>
-    cnpjDetailStore.cnpjsAvulsos.get(cnpj.value) ??
-    resultadoCnpjs.value?.find((c) => c.cnpj === cnpj.value) ??
-    null,
-);
+// Dado resumido do CNPJ: vem do /bootstrap da própria tela (obrigatório lá).
+const cnpjData = computed(() => cnpjDetailStore.cnpjsAvulsos.get(cnpj.value) ?? null);
 
 const isPeriodSummaryLoading = computed(() => bootstrapLoading.value || evolucaoLoading.value);
 

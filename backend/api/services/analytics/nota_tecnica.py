@@ -663,7 +663,7 @@ def generate_nota_tecnica(
     cadastro = cadastro_obj.model_dump() if cadastro_obj is not None else {}
     timing.mark("dados cadastrais")
 
-    resumo = get_dashboard_data(db, data_inicio, data_fim, cnpjs=[cnpj])
+    resumo = get_dashboard_data(db, data_inicio, data_fim, cnpjs=[cnpj], secoes={"cnpjs"})
     cnpj_data_obj = resumo.resultado_cnpjs[0] if hasattr(resumo, 'resultado_cnpjs') and resumo.resultado_cnpjs else None
     cnpj_data = cnpj_data_obj.model_dump() if cnpj_data_obj is not None else {}
     timing.mark("dashboard / resumo do CNPJ")

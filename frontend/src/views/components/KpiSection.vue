@@ -39,7 +39,7 @@ const visibleKpis = computed(() =>
     <div v-if="error" class="error-banner">
        <i class="pi pi-exclamation-circle"></i>
        <span>{{ error }}</span>
-       <Button label="Tentar Novamente" icon="pi pi-refresh" @click="analyticsStore.fetchDashboardSummary()" text size="small" />
+       <Button label="Tentar Novamente" icon="pi pi-refresh" @click="analyticsStore.retryDashboardSummary()" text size="small" />
     </div>
 
     <!-- CARDS DE KPI -->

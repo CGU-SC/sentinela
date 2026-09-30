@@ -89,13 +89,56 @@ export function buildAnalyticsParams(filters = {}) {
   return params;
 }
 
+// ── Resumo do dashboard por seções (GET /analytics/resumo?secoes=...) ─────────
+// Cada tela pede só as seções que exibe; `cnpjs` só vale com o filtro `cnpjs`
+// (o backend recusa a base inteira de estabelecimentos).
+const RESUMO_CAMPO_POR_SECAO = Object.freeze({
+  kpis: 'kpis',
+  ufs: 'resultado_sentinela_uf',
+  municipios: 'resultado_municipios',
+  cnpjs: 'resultado_cnpjs',
+});
+const SECOES_DO_STORE = Object.freeze(['kpis', 'ufs', 'municipios']);
+
+function validarSecoes(secoes, permitidas) {
+  if (!Array.isArray(secoes) || !secoes.length) {
+    throw new Error('Informe as seções do resumo (kpis, ufs, municipios ou cnpjs).');
+  }
+  const invalidas = secoes.filter((secao) => !permitidas.includes(secao));
+  if (invalidas.length) throw new Error(`Seções inválidas no resumo: ${invalidas.join(', ')}.`);
+  return [...new Set(secoes)].sort();
+}
+
+/**
+ * Consulta o resumo do dashboard só com as seções pedidas e valida o contrato.
+ * Listas (`secoes`, `cnpjs`) vão repetidas na query (secoes=a&secoes=b), como o
+ * FastAPI espera.
+ * @param {Object} params parâmetros já no formato da API (buildAnalyticsParams).
+ * @param {Array<'kpis'|'ufs'|'municipios'|'cnpjs'>} secoes
+ * @param {{ signal?: AbortSignal }} [options]
+ * @returns {Promise<Object>} resposta com as seções pedidas preenchidas.
+ */
+export async function requestResumo(params, secoes, { signal } = {}) {
+  const pedidas = validarSecoes(secoes, Object.keys(RESUMO_CAMPO_POR_SECAO));
+  const { data } = await axios.get(API_ENDPOINTS.analyticsResumo, {
+    params: { ...params, secoes: pedidas },
+    paramsSerializer: { indexes: null },
+    signal,
+  });
+  for (const secao of pedidas) {
+    if (!Array.isArray(data?.[RESUMO_CAMPO_POR_SECAO[secao]])) {
+      throw new Error(`Contrato inválido em analytics/resumo: seção ${secao} ausente.`);
+    }
+  }
+  return data;
+}
+
 export const useAnalyticsStore = defineStore('analytics', {
   state: () => ({
     kpis: [],
     resultadoSentinelaUF: [],
     resultadoSentinelaUFNacional: [], // dados de todas as UFs — só atualiza sem filtro de UF
     resultadoMunicipios: [],
-    resultadoCnpjs: [],
     fatorRisco: [],
     producaoSemestral: [],
     cacheStatus: null,
@@ -106,15 +149,24 @@ export const useAnalyticsStore = defineStore('analytics', {
     producaoSemestralLoading: false,
     error: null,
     lastSync: null,
-    lastParamsHash: null
+    // Chave (JSON dos parâmetros) com que cada seção foi carregada: "KPIs
+    // prontos" e "municípios prontos" são estados independentes.
+    sectionKeys: { kpis: null, ufs: null, municipios: null },
+    // Último pedido, para o "Tentar novamente" repetir exatamente o mesmo.
+    lastDashboardRequest: null,
   }),
 
   actions: {
-    async fetchDashboardSummary(filters = {}) {
+    /**
+     * Carrega as seções pedidas do resumo para os filtros informados.
+     * @param {Object} filters filtros no formato de filterStore.apiParams.
+     * @param {Array<'kpis'|'ufs'|'municipios'>} secoes seções exibidas pela tela.
+     */
+    async fetchDashboardSummary(filters, secoes) {
+      const pedidas = validarSecoes(secoes, SECOES_DO_STORE);
       const params = buildAnalyticsParams(filters);
-      
-      // Gera um hash simples (string JSON) dos parâmetros para comparar
       const currentParamsHash = JSON.stringify(params);
+      this.lastDashboardRequest = { filters: { ...filters }, secoes: pedidas };
       const requestId = ++dashboardRequestSeq;
       if (dashboardAbortController) {
         dashboardAbortController.abort();
@@ -124,20 +176,21 @@ export const useAnalyticsStore = defineStore('analytics', {
       this.isLoading = true;
       this.error = null;
       try {
-        const response = await axios.get(API_ENDPOINTS.analyticsResumo, {
-          params,
-          signal: dashboardAbortController.signal,
-        });
+        const data = await requestResumo(params, pedidas, { signal: dashboardAbortController.signal });
         if (requestId !== dashboardRequestSeq) return;
-        this.kpis = response.data.kpis;
-        this.resultadoSentinelaUF = response.data.resultado_sentinela_uf;
-        if (!filters.uf || filters.uf === FILTER_ALL_VALUE) {
-          this.resultadoSentinelaUFNacional = response.data.resultado_sentinela_uf;
+        if (pedidas.includes('kpis')) this.kpis = data.kpis;
+        if (pedidas.includes('ufs')) {
+          this.resultadoSentinelaUF = data.resultado_sentinela_uf;
+          if (!filters.uf || filters.uf === FILTER_ALL_VALUE) {
+            this.resultadoSentinelaUFNacional = data.resultado_sentinela_uf;
+          }
         }
-        this.resultadoMunicipios = response.data.resultado_municipios || [];
-        this.resultadoCnpjs = response.data.resultado_cnpjs || [];
+        if (pedidas.includes('municipios')) this.resultadoMunicipios = data.resultado_municipios;
+        this.sectionKeys = {
+          ...this.sectionKeys,
+          ...Object.fromEntries(pedidas.map((secao) => [secao, currentParamsHash])),
+        };
         this.lastSync = new Date();
-        this.lastParamsHash = currentParamsHash;
       } catch (err) {
         if (axios.isCancel(err)) return;
         console.error('Erro ao buscar resumo do dashboard:', err);
@@ -147,6 +200,15 @@ export const useAnalyticsStore = defineStore('analytics', {
           this.isLoading = false;
         }
       }
+    },
+
+    /** Repete o último pedido do resumo (botão "Tentar novamente"). */
+    retryDashboardSummary() {
+      if (!this.lastDashboardRequest) {
+        throw new Error('Nenhum pedido anterior do resumo para repetir.');
+      }
+      const { filters, secoes } = this.lastDashboardRequest;
+      return this.fetchDashboardSummary(filters, secoes);
     },
 
     async fetchAlertasPanorama(filters = {}) {
@@ -216,12 +278,10 @@ export const useAnalyticsStore = defineStore('analytics', {
           cnpjRaiz: null,
           estabelecimento: null,
         });
-        const response = await axios.get(API_ENDPOINTS.analyticsResumo, {
-          params,
-          signal: nacionalAbortController.signal,
-        });
+        // Só a seção de UFs: o mapa do Brasil não usa KPIs, municípios nem CNPJs.
+        const data = await requestResumo(params, ['ufs'], { signal: nacionalAbortController.signal });
         if (requestId !== nacionalRequestSeq) return;
-        this.resultadoSentinelaUFNacional = response.data.resultado_sentinela_uf;
+        this.resultadoSentinelaUFNacional = data.resultado_sentinela_uf;
       } catch (err) {
         if (axios.isCancel(err)) return;
         console.error('Erro ao buscar dados nacionais por UF:', err);
@@ -285,6 +345,13 @@ export const useAnalyticsStore = defineStore('analytics', {
   },
 
   getters: {
+    /**
+     * true quando todas as `secoes` foram carregadas com a chave `paramsKey`.
+     * @returns {(paramsKey: string, secoes: string[]) => boolean}
+     */
+    isDashboardFresh: (state) => (paramsKey, secoes) => (
+      secoes.every((secao) => state.sectionKeys[secao] === paramsKey)
+    ),
     enrichedKpis: (state) => {
       const enriched = state.kpis.map(kpi => {
         let label = kpi.label.toUpperCase();

@@ -1,8 +1,6 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue';
-import { useAnalyticsStore } from '@/stores/analytics';
 import { useGeoStore } from '@/stores/geo';
-import { useFilterParameters } from '@/composables/useFilterParameters';
 import axios from 'axios';
 import { API_ENDPOINTS } from '@/config/api';
 import { TIMING } from '@/config/constants';
@@ -16,11 +14,9 @@ import UpdateDialog from '@/views/components/UpdateDialog.vue';
 import DocumentPreviewDialog from '@/views/components/DocumentPreviewDialog.vue';
 import EvidenciasRemocaoDialog from '@/views/components/evidencias/EvidenciasRemocaoDialog.vue';
 
-const analyticsStore = useAnalyticsStore();
 const geoStore = useGeoStore();
 const themeStore = useThemeStore();
 const updateStore = useSystemUpdateStore();
-const { getApiParams } = useFilterParameters();
 const isAppLoading = ref(true);
 const syncProgress = ref(0);
 const statusMessage = ref("Iniciando Sistema...");
@@ -94,26 +90,15 @@ const initializeApp = async () => {
       console.warn("Alguns caches estão ausentes. Iniciando em Modo Degradado.");
     }
 
-    statusMessage.value = "Sincronizando Dashboard...";
-    const filters = getApiParams();
-    const { uf, regiaoId, idIbge7, unidadePf } = filters;
-
+    statusMessage.value = "Carregando dados de referência...";
+    // Só dados compartilhados por todas as telas. O resumo do dashboard (KPIs,
+    // UFs, municípios), o fator de risco e o contexto nacional são pedidos por
+    // cada tela ao montar, apenas com as seções que ela exibe.
     const fetchList = [
-      analyticsStore.fetchDashboardSummary(filters),
-      analyticsStore.fetchFatorRisco(filters),
       geoStore.fetchLocalidades(),
       geoStore.loadMunicipiosGeo(),
       geoStore.fetchCnpjLookup(),
     ];
-
-    // Se houver filtros geográficos ativos, o fetchDashboardSummary NÃO popula
-    // resultadoSentinelaUFNacional (por design). Forçamos a busca nacional aqui
-    // para garantir que o mapa do Brasil sempre seja exibido corretamente.
-    if (uf || regiaoId || idIbge7 || unidadePf) {
-      fetchList.push(
-        analyticsStore.fetchSentinelaUFNacional(filters)
-      );
-    }
 
     await Promise.allSettled(fetchList);
 

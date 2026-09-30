@@ -93,14 +93,20 @@ async function ensureGeo() {
   }
 }
 
-async function ensureDashboard(filterStore) {
+// Seções do resumo que cada página exibe (as demais não são baixadas).
+const DASHBOARD_SECOES_POR_PAGINA = Object.freeze({
+  '/municipios': ['kpis', 'municipios'],
+  '/estabelecimentos': ['kpis'],
+  '/analises': ['kpis'],
+});
+
+async function ensureDashboard(filterStore, secoes) {
   const analyticsStore = useAnalyticsStore();
   const key = JSON.stringify(buildAnalyticsParams(filterStore.apiParams));
-  if (analyticsStore.lastParamsHash !== key || analyticsStore.error) {
-    await analyticsStore.fetchDashboardSummary({ ...filterStore.apiParams });
+  if (!analyticsStore.isDashboardFresh(key, secoes) || analyticsStore.error) {
+    await analyticsStore.fetchDashboardSummary({ ...filterStore.apiParams }, secoes);
   }
-  if (analyticsStore.lastParamsHash !== key || analyticsStore.error
-    || !Array.isArray(analyticsStore.resultadoMunicipios)) {
+  if (!analyticsStore.isDashboardFresh(key, secoes) || analyticsStore.error) {
     throw new Error(analyticsStore.error || 'O resumo dos dados não ficou pronto.');
   }
   return key;
@@ -192,7 +198,7 @@ export async function prepareAnalysisPage(path) {
 
   try {
     if (!filterStore.isPeriodoValido) throw new Error('Selecione um período válido para abrir esta análise.');
-    const common = [ensureGeo(), ensureBrasilUfMap(), ensureDashboard(filterStore)];
+    const common = [ensureGeo(), ensureBrasilUfMap(), ensureDashboard(filterStore, DASHBOARD_SECOES_POR_PAGINA[path])];
     if (path !== '/analises') common.push(useRiskIndicatorsStore().loadPreferences());
     // /analises: mapa e ranking de CRMs não dependem do resumo nem dos mapas
     // gerais, então correm em paralelo com eles.

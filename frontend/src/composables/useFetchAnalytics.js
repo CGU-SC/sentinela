@@ -4,6 +4,7 @@
  * @param {Object} options
  * @param {boolean} options.includeFatorRisco - Incluir busca do grafico Fator Risco (default: false)
  * @param {boolean} options.includeProducaoSemestral - Incluir serie semestral de producao (default: false)
+ * @param {Array<'kpis'|'ufs'|'municipios'>} options.secoes - Secoes do resumo que a tela exibe (obrigatorio)
  */
 import { onScopeDispose, unref, watch } from 'vue';
 import { useFilterStore } from '@/stores/filters';
@@ -11,7 +12,10 @@ import { useAnalyticsStore, buildAnalyticsParams } from '@/stores/analytics';
 
 const ESTABELECIMENTO_FETCH_DEBOUNCE_MS = 450;
 
-export function useFetchAnalytics({ includeFatorRisco = false, includeNationalContext = true, includeProducaoSemestral = false, includeAlertasPanorama = false, active = true } = {}) {
+export function useFetchAnalytics({ secoes, includeFatorRisco = false, includeNationalContext = true, includeProducaoSemestral = false, includeAlertasPanorama = false, active = true } = {}) {
+  if (!Array.isArray(secoes) || !secoes.length) {
+    throw new Error('useFetchAnalytics exige as secoes do resumo usadas pela tela.');
+  }
   const filterStore = useFilterStore();
   const analyticsStore = useAnalyticsStore();
 
@@ -21,7 +25,7 @@ export function useFetchAnalytics({ includeFatorRisco = false, includeNationalCo
 
   const fetchAll = () => {
     const filters = getApiParams();
-    analyticsStore.fetchDashboardSummary(filters);
+    analyticsStore.fetchDashboardSummary(filters, secoes);
     if (includeFatorRisco) analyticsStore.fetchFatorRisco(filters);
     if (includeProducaoSemestral) analyticsStore.fetchProducaoSemestral(filters);
     if (includeAlertasPanorama) analyticsStore.fetchAlertasPanorama(filters);
@@ -42,7 +46,7 @@ export function useFetchAnalytics({ includeFatorRisco = false, includeNationalCo
   const isFresh = () => {
     const apiReadyParams = buildAnalyticsParams(getApiParams());
     const currentHash = JSON.stringify(apiReadyParams);
-    return analyticsStore.lastParamsHash === currentHash;
+    return analyticsStore.isDashboardFresh(currentHash, secoes);
   };
 
   let dashboardFirstRun = true;
