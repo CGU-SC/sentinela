@@ -6,6 +6,7 @@ import { useFormatting } from '@/composables/useFormatting';
 import { useFrozenData } from '@/composables/useFrozenData';
 import { analysisTooltip } from '@/config/analysisTooltipConfig';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
+import HighlightedText from '@/views/components/common/HighlightedText.vue';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -22,9 +23,11 @@ const props = defineProps({
   isRefreshing: { type: Boolean, default: false },
   isStale: { type: Boolean, default: false },
   farmaciasFiltradas: { type: Boolean, default: false },
+  searchQuery: { type: String, default: '' },
+  appliedQuery: { type: String, default: '' },
 });
 
-const emit = defineEmits(['page', 'sort', 'select-medico']);
+const emit = defineEmits(['page', 'sort', 'search', 'select-medico']);
 const snapshot = useFrozenData(
   () => ({
     rows: props.rows,
@@ -63,7 +66,7 @@ function doctorLabel(row) {
 
 function crmLabel(row) {
   if (row.nu_crm == null) return `CRM ${row.id_medico}`;
-  return `CRM ${formatNumberFull(row.nu_crm)}${row.sg_uf ? `/${row.sg_uf}` : ''}`;
+  return `CRM ${row.nu_crm}${row.sg_uf ? `/${row.sg_uf}` : ''}`;
 }
 
 function onRowClick(event) {
@@ -80,7 +83,11 @@ function onPage(event) {
 </script>
 
 <template>
-  <section class="crm-ranking-panel" :class="{ 'is-refreshing': isRefreshing }">
+  <section
+    class="crm-ranking-panel"
+    :class="{ 'is-refreshing': isRefreshing }"
+    :style="{ '--ranking-page-size': snapshot.pageSize }"
+  >
     <header class="ranking-header">
       <div class="ranking-heading">
         <i class="pi pi-list" aria-hidden="true" />
@@ -92,8 +99,31 @@ function onPage(event) {
           <span v-if="error && snapshot.rows.length" class="ranking-status--error" role="alert" v-tooltip.bottom="error">
             Falha ao atualizar · resultado anterior exibido
           </span>
-          <span v-else>{{ snapshot.escopo }} · {{ formatNumberFull(snapshot.totalRecords) }} médicos no recorte</span>
+          <span v-else>{{ snapshot.escopo }} · {{ formatNumberFull(snapshot.totalRecords) }} {{ appliedQuery ? 'médicos encontrados' : 'médicos no recorte' }}</span>
         </div>
+      </div>
+      <div class="ranking-search">
+        <i class="pi pi-search" aria-hidden="true" />
+        <input
+          type="text"
+          role="searchbox"
+          :value="searchQuery"
+          maxlength="120"
+          placeholder="Nome ou nº do CRM"
+          aria-label="Buscar médico por nome ou CRM no ranking"
+          :disabled="isLoading"
+          @input="emit('search', $event.target.value)"
+        />
+        <button
+          type="button"
+          aria-label="Limpar busca de médicos"
+          :aria-hidden="!searchQuery"
+          :disabled="!searchQuery"
+          :class="{ 'is-hidden': !searchQuery }"
+          @click="emit('search', '')"
+        >
+          <i class="pi pi-eraser" aria-hidden="true" />
+        </button>
       </div>
     </header>
 
@@ -110,7 +140,7 @@ function onPage(event) {
     </div>
     <div v-else-if="!snapshot.rows.length" class="ranking-state">
       <i class="pi pi-info-circle" />
-      <span>Nenhum médico encontrado para os filtros atuais.</span>
+      <span>{{ appliedQuery ? 'Nenhum médico corresponde à busca neste recorte.' : 'Nenhum médico encontrado para os filtros atuais.' }}</span>
     </div>
     <div v-else class="ranking-table-wrap" :aria-busy="isRefreshing">
       <DataTable
@@ -140,8 +170,8 @@ function onPage(event) {
         </Column>
         <Column field="no_medico" header="MÉDICO / CRM" sortable header-class="col-doctor" body-class="col-doctor">
           <template #body="{ data }">
-            <span class="doctor-name">{{ doctorLabel(data) }}</span>
-            <span class="doctor-crm">{{ crmLabel(data) }}</span>
+            <span class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="appliedQuery" /></span>
+            <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="appliedQuery" /></span>
           </template>
         </Column>
         <Column field="taxa_prescricoes_dia" header="TAXA / DIA" sortable header-class="col-number col-rate" body-class="col-number col-rate rate-cell">
@@ -185,19 +215,29 @@ function onPage(event) {
 </template>
 
 <style scoped>
-.crm-ranking-panel { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; overflow: hidden; transition: border-color .18s ease; }
+.crm-ranking-panel { --ranking-row-height: 3.6rem; --ranking-column-header-height: 3.3125rem; --ranking-paginator-height: 4.35rem; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; overflow: hidden; transition: border-color .18s ease; }
 .crm-ranking-panel.is-refreshing { border-color: color-mix(in srgb, var(--primary-color) 24%, var(--card-border)); }
-.ranking-header { display: flex; align-items: center; padding: .85rem 1.15rem; border-bottom: 1px solid var(--tabs-border); }
-.ranking-heading { display: flex; align-items: center; gap: .75rem; min-width: 0; }
+.ranking-header { display: flex; align-items: center; gap: .75rem; padding: .85rem 1.15rem; border-bottom: 1px solid var(--tabs-border); }
+.ranking-heading { display: flex; flex: 1; align-items: center; gap: .75rem; min-width: 0; }
 .ranking-heading > i { color: var(--primary-color); font-size: 1rem; flex-shrink: 0; }
 .ranking-heading > div { min-width: 0; }
 .ranking-title-row { display: flex; align-items: center; gap: .4rem; }
 .ranking-title-row h2 { margin: 0; color: var(--text-color-85); font-size: .82rem; font-weight: 600; line-height: 1.1; text-transform: uppercase; letter-spacing: .05em; }
 .ranking-heading span { display: block; margin-top: .16rem; color: var(--text-muted); font-size: .68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ranking-heading .ranking-status--error { color: var(--risk-high); }
+.ranking-search { display: flex; align-items: center; gap: .45rem; box-sizing: border-box; width: 15.5rem; min-width: 12rem; height: 36px; padding: .4rem .55rem; border: 1px solid var(--card-border); border-radius: 7px; color: var(--text-muted); }
+.ranking-search:focus-within { border-color: var(--primary-color); }
+.ranking-search > i { font-size: .78rem; }
+.ranking-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-color-85); font: inherit; font-size: .73rem; }
+.ranking-search input::placeholder { color: var(--text-muted); }
+.ranking-search button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--color-error); opacity: .7; cursor: pointer; }
+.ranking-search button.is-hidden { visibility: hidden; }
+.ranking-search button .pi { font-size: .75rem; }
+.ranking-search button:hover, .ranking-search button:focus-visible { opacity: 1; }
+.ranking-search button:focus-visible { outline: 2px solid var(--color-error); outline-offset: 2px; border-radius: 3px; }
 .info-icon { color: var(--text-muted); font-size: .8rem; opacity: .7; }
 .info-icon:hover { opacity: 1; }
-.ranking-state { min-height: 180px; display: flex; align-items: center; justify-content: center; gap: .6rem; color: var(--text-muted); font-size: .8rem; }
+.ranking-state { min-height: calc(var(--ranking-column-header-height) + var(--ranking-page-size) * var(--ranking-row-height) + var(--ranking-paginator-height)); display: flex; align-items: center; justify-content: center; gap: .6rem; color: var(--text-muted); font-size: .8rem; }
 .ranking-state i { color: var(--primary-color); }
 .ranking-state--error { text-align: left; }
 .ranking-state--error strong, .ranking-state--error span { display: block; }
@@ -206,8 +246,10 @@ function onPage(event) {
 .ranking-table-wrap { position: relative; overflow-x: auto; }
 .crm-ranking-table { font-family: inherit; }
 .crm-ranking-table.is-stale { pointer-events: none; }
+.crm-ranking-table :deep(.p-datatable-wrapper) { min-height: calc(var(--ranking-column-header-height) + var(--ranking-page-size) * var(--ranking-row-height)); }
 .crm-ranking-table :deep(.p-datatable-table) { width: max(100%, 44rem); table-layout: fixed; }
 .crm-ranking-table:has(.col-filtered) :deep(.p-datatable-table) { width: calc(max(100%, 44rem) + 11.25rem); }
+.crm-ranking-table :deep(.p-datatable-tbody > tr) { height: var(--ranking-row-height); }
 .crm-ranking-table :deep(.p-datatable-thead > tr > th) { white-space: normal; vertical-align: bottom; line-height: 1.25; }
 .crm-ranking-table :deep(.p-datatable-thead > tr > th .p-column-header-content) { gap: .3rem; }
 .crm-ranking-table :deep(.p-datatable-thead > tr > th.col-number .p-column-header-content) { justify-content: flex-end; }
@@ -223,7 +265,7 @@ function onPage(event) {
 .metric-main, .metric-detail, .doctor-name, .doctor-crm { overflow: hidden; text-overflow: ellipsis; }
 .metric-main { color: var(--text-color-85); font-weight: 500; }
 .metric-detail { margin-top: .15rem; color: var(--text-muted); font-size: .68rem; }
-.doctor-name, .doctor-crm { display: block; }
+.doctor-name, .doctor-crm { display: block; white-space: nowrap; }
 .doctor-name { color: var(--text-color-85); font-weight: 500; }
 .doctor-crm { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
 .rate-value { display: inline-block; color: var(--text-color-85); font-weight: 500; }

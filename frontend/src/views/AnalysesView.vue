@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onScopeDispose, ref } from 'vue';
 import { useFilterStore } from '@/stores/filters';
 import { useGeoStore } from '@/stores/geo';
 import { useFetchAnalytics } from '@/composables/useFetchAnalytics';
@@ -35,8 +35,13 @@ const {
   rankingPageSize,
   rankingSortField,
   rankingSortOrder,
+  rankingSearch,
+  rankingResponseSearch,
   fetchRankingPage,
 } = useCrmPrescricoesAnalysis(mapLevel);
+const searchInput = ref(rankingSearch.value);
+let searchTimer = null;
+onScopeDispose(() => clearTimeout(searchTimer));
 
 const selectedUf = computed(() => filterStore.selectedUF !== 'Todos' ? filterStore.selectedUF : null);
 const selectedRegiaoId = computed(() => filterStore.selectedRegiaoSaude !== 'Todos' ? filterStore.selectedRegiaoSaude : null);
@@ -63,8 +68,26 @@ const rankingFirst = computed(() => (rankingPage.value - 1) * rankingPageSize.va
 const rankingInitialLoading = computed(() => isRankingLoading.value && ranking.value.length === 0);
 const rankingPageLoading = computed(() => isRankingPageLoading.value && ranking.value.length > 0);
 const rankingIsStale = computed(() => Boolean(
-  rankingResponse.value && rankingResponseKey.value !== activeKey.value,
+  rankingResponse.value && (
+    rankingResponseKey.value !== activeKey.value
+    || rankingResponseSearch.value !== rankingSearch.value
+    || searchInput.value.trim() !== rankingSearch.value
+  ),
 ));
+
+function onRankingSearch(value) {
+  searchInput.value = value;
+  clearTimeout(searchTimer);
+  const query = value.trim();
+  if (query === rankingSearch.value) return;
+  if (!query) {
+    fetchRankingPage(1, rankingPageSize.value, rankingSortField.value, rankingSortOrder.value, '');
+    return;
+  }
+  searchTimer = setTimeout(() => {
+    fetchRankingPage(1, rankingPageSize.value, rankingSortField.value, rankingSortOrder.value, query);
+  }, 350);
+}
 
 function onSelectUf(uf) {
   navigationError.value = null;
@@ -169,8 +192,11 @@ function onRankingSort(event) {
             :page-size="rankingPageSize"
             :sort-field="rankingSortField"
             :sort-order="rankingSortOrder"
+            :search-query="searchInput"
+            :applied-query="rankingResponseSearch"
             @page="onRankingPage"
             @sort="onRankingSort"
+            @search="onRankingSearch"
             @select-medico="abrirHistorico"
           />
         </main>

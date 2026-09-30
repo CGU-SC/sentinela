@@ -1051,10 +1051,9 @@ function riscoTextStyle(indicadorData) {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--primary-color);
-  opacity: 0.85;
+  color: color-mix(in srgb, var(--primary-color) 15%, #78716c);
   background: transparent !important;
-  border-top: 2px solid var(--primary-color) !important;
+  border-top: 2px solid color-mix(in srgb, var(--primary-color) 15%, #78716c) !important;
   border-bottom: none !important;
 }
 
@@ -1082,7 +1081,7 @@ function riscoTextStyle(indicadorData) {
 }
 
 .ind-data-row.is-clickable:hover td {
-  background: color-mix(in srgb, var(--primary-color) 8%, var(--table-hover)) !important;
+  background: var(--table-hover) !important;
 }
 
 .ind-data-row.is-detail-disabled:hover td {

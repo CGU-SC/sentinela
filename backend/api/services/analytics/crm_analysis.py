@@ -1,6 +1,7 @@
 """Dados agregados para a análise geográfica de prescrições por médico."""
 
 import threading
+import unicodedata
 from collections import OrderedDict
 from datetime import date, timedelta
 from typing import Callable, Literal, Optional, cast
@@ -11,6 +12,7 @@ from fastapi import HTTPException
 from data_cache import (
     get_localidades_df,
     get_cache_generation,
+    get_global_cache_signature,
     scan_crm_mapa_uf_periodo,
     scan_crm_mapa_municipio_regiao_periodo,
     scan_crm_limiar_p95_mes,
@@ -105,6 +107,8 @@ CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS = {
 _CRM_RANKING_CACHE_MAX_ITEMS = 8
 _CRM_RANKING_CACHE_LOCK = threading.Lock()
 _CRM_RANKING_CACHE: "OrderedDict[tuple[object, ...], pl.DataFrame]" = OrderedDict()
+_CRM_MEDICO_NAME_INDEX_LOCK = threading.Lock()
+_CRM_MEDICO_NAME_INDEX: tuple[tuple[str, int, int], pl.DataFrame] | None = None
 
 
 def _ranking_cache_key(
@@ -756,6 +760,66 @@ def _agregar_ranking(
     )
 
 
+def _normalizar_busca_medico(value: str) -> str:
+    sem_acentos = "".join(
+        char for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
+    return " ".join(sem_acentos.casefold().split())
+
+
+def _get_medico_name_index(
+    medicos: pl.DataFrame,
+    signature: tuple[str, int, int],
+) -> pl.DataFrame:
+    """Indexa nomes uma vez por versao do cadastro, sem alterar o Parquet."""
+    global _CRM_MEDICO_NAME_INDEX
+    cached = _CRM_MEDICO_NAME_INDEX
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+    with _CRM_MEDICO_NAME_INDEX_LOCK:
+        cached = _CRM_MEDICO_NAME_INDEX
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        index = medicos.select(
+            "id_medico",
+            pl.col("no_medico")
+            .str.normalize("NFKD")
+            .str.replace_all(r"\p{M}", "")
+            .str.to_lowercase()
+            .str.replace_all(r"\s+", " ")
+            .str.strip_chars()
+            .alias("nome_busca"),
+        )
+        if get_global_cache_signature("dados_medico") != signature:
+            raise HTTPException(status_code=503, detail="Cadastro de medicos atualizado durante a busca. Tente novamente.")
+        _CRM_MEDICO_NAME_INDEX = (signature, index)
+        return index
+
+
+def _filtrar_ranking_medico(ranking: pl.DataFrame, query: str) -> pl.DataFrame:
+    termo = _normalizar_busca_medico(query)
+    if not termo:
+        return ranking
+    try:
+        signature = get_global_cache_signature("dados_medico")
+        medicos = get_dados_medico_df()
+        if get_global_cache_signature("dados_medico") != signature:
+            raise RuntimeError("Cadastro de medicos atualizado durante a busca. Tente novamente.")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Cache de dados dos medicos indisponivel: {exc}") from exc
+    _require_columns(medicos, CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos medicos")
+    if termo.isdecimal():
+        ids = medicos.filter(
+            pl.col("nu_crm").cast(pl.String).str.starts_with(termo)
+        ).get_column("id_medico")
+    else:
+        ids = _get_medico_name_index(medicos, signature).filter(
+            pl.col("nome_busca").str.contains(termo, literal=True)
+        ).get_column("id_medico")
+    return ranking.filter(pl.col("id_medico").is_in(ids))
+
+
 def _montar_resposta_ranking(
     ranking_aggregated: pl.DataFrame,
     *,
@@ -765,6 +829,7 @@ def _montar_resposta_ranking(
     fim: date,
     page: int,
     page_size: int,
+    medico_query: Optional[str],
     sort_field: str,
     sort_order: str,
     manager_map: Optional[list[CrmPrescricoesMapaItemSchema]],
@@ -778,6 +843,8 @@ def _montar_resposta_ranking(
     medicos exibidos precisam dessa soma.
     """
     farmacias_filtradas = prescricoes_filtradas is not None
+    if medico_query:
+        ranking_aggregated = _filtrar_ranking_medico(ranking_aggregated, medico_query)
     ranking_total = ranking_aggregated.height
     if ranking_total == 0:
         return CrmPrescricoesAnaliseResponse(
@@ -1010,6 +1077,7 @@ def get_crm_prescricoes_analise(
     map_level: str = "uf",
     page: int = 1,
     page_size: int = 25,
+    medico_query: Optional[str] = None,
     sort_field: str = "taxa_prescricoes_dia",
     sort_order: str = "desc",
     include_map: bool = True,
@@ -1200,6 +1268,7 @@ def get_crm_prescricoes_analise(
             fim=fim,
             page=page,
             page_size=page_size,
+            medico_query=medico_query,
             sort_field=sort_field,
             sort_order=sort_order,
             manager_map=manager_map,
@@ -1226,6 +1295,7 @@ def get_crm_prescricoes_analise(
         fim=fim,
         page=page,
         page_size=page_size,
+        medico_query=medico_query,
         sort_field=sort_field,
         sort_order=sort_order,
         manager_map=manager_map,

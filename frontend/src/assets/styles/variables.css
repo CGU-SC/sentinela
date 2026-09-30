@@ -19,9 +19,10 @@
   --sidebar-text: #A1A1AA;
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-input-bg: rgba(255, 255, 255, 0.06);
-  --sidebar-heading-tint: rgba(57, 140, 186, 0.14);
-  --sidebar-heading-hover: rgba(57, 140, 186, 0.21);
-  --sidebar-heading-icon: #66b0d8;
+  --sidebar-heading-tint: color-mix(in srgb, var(--primary-color) 4%, color-mix(in srgb, #94a3b8 14%, transparent));
+  --sidebar-heading-hover: color-mix(in srgb, var(--primary-color) 6%, color-mix(in srgb, #94a3b8 19%, transparent));
+  --sidebar-heading-icon: color-mix(in srgb, var(--primary-color) 15%, #94a3b8);
+  --filter-active-color: #fca5a5;
   --navbar-bg: #f8fafc;
   --navbar-border: #e2e8f0;
 
@@ -33,7 +34,7 @@
   --table-header-bg: transparent;
   --table-header-text: #64748b;
   --table-footer-bg: #f1f5f9;
-  --table-hover: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg));
+  --table-hover: color-mix(in srgb, #78716c 11%, var(--card-bg));
   --table-stripe: #f8fafc;
 
   /* Scrollbar */
@@ -60,6 +61,11 @@
   /* Amber — alertas de surto/concentração */
   --amber-500: #f59e0b;
 
+  /* Realce de termos encontrados na busca */
+  --search-highlight-bg: #fef08a;
+  --search-highlight-text: #422006;
+  --search-highlight-border: #eab308;
+
   /* Tooltips (modo claro): superfície clara, para combinar com as cores de texto
      do tema usadas nos tooltips HTML (--text-color-85, --text-secondary). */
   --tooltip-bg: #ffffff;
@@ -85,9 +91,10 @@
   --sidebar-text: #e6edf3;
   --sidebar-border: #30363d;
   --sidebar-input-bg: #161b22;
-  --sidebar-heading-tint: rgba(57, 140, 186, 0.14);
-  --sidebar-heading-hover: rgba(57, 140, 186, 0.21);
-  --sidebar-heading-icon: #66b0d8;
+  --sidebar-heading-tint: color-mix(in srgb, var(--primary-color) 4%, color-mix(in srgb, #94a3b8 14%, transparent));
+  --sidebar-heading-hover: color-mix(in srgb, var(--primary-color) 6%, color-mix(in srgb, #94a3b8 19%, transparent));
+  --sidebar-heading-icon: color-mix(in srgb, var(--primary-color) 15%, #94a3b8);
+  --filter-active-color: #fca5a5;
   --navbar-bg: #0d1117;
   --navbar-border: #30363d;
 
@@ -95,7 +102,7 @@
   --table-header-bg: transparent;
   --table-header-text: #8b949e;
   --table-footer-bg: #1c2128;
-  --table-hover: color-mix(in srgb, var(--primary-color) 15%, var(--card-bg));
+  --table-hover: color-mix(in srgb, #78716c 15%, var(--card-bg));
   --table-stripe: #131920;
 
   /* PRIME VUE INTERNAL SURFACES */
@@ -122,6 +129,11 @@
 
   /* Amber — alertas de surto/concentração */
   --amber-500: #f59e0b;
+
+  /* Realce de termos encontrados na busca */
+  --search-highlight-bg: #fde047;
+  --search-highlight-text: #422006;
+  --search-highlight-border: #eab308;
 
   /* Tooltips Dark */
   --tooltip-bg: #252b33;

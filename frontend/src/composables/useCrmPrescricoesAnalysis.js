@@ -57,6 +57,6 @@ export function useCrmPrescricoesAnalysis(mapLevel) {
   return {
     ...storeToRefs(analysisStore),
     fetchAnalysis: () => analysisStore.activate({ ...params.value }),
-    fetchRankingPage: (page, pageSize, sortField, sortOrder) => analysisStore.fetchRankingPage(page, pageSize, sortField, sortOrder),
+    fetchRankingPage: (page, pageSize, sortField, sortOrder, medicoQuery) => analysisStore.fetchRankingPage(page, pageSize, sortField, sortOrder, medicoQuery),
   };
 }

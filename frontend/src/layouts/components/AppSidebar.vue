@@ -2278,13 +2278,13 @@ const clearSearch = () => {
 }
 
 .sidebar-search:hover {
-  border-color: color-mix(in srgb, var(--primary-color) 40%, var(--sidebar-border));
+  border-color: color-mix(in srgb, var(--sidebar-text) 30%, var(--sidebar-border));
 }
 
 .sidebar-search:focus-within {
-  border-color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--sidebar-text) 45%, var(--sidebar-border));
   background: var(--sidebar-input-bg);
-  box-shadow: 0 0 0 1px var(--primary-color),
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sidebar-text) 12%, transparent),
     0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
@@ -2362,7 +2362,7 @@ const clearSearch = () => {
 
 .filter-section:has(.filter-active),
 .filter-section:has(.filter-active-box) {
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  background: color-mix(in srgb, var(--filter-active-color) 10%, transparent);
 }
 
 .filter-locked {
@@ -2441,7 +2441,6 @@ const clearSearch = () => {
 
 .filter-info-icon:hover {
   opacity: 0.9;
-  color: var(--primary-color);
 }
 
 .grid-filters {
@@ -2484,21 +2483,52 @@ const clearSearch = () => {
   color: var(--sidebar-text) !important;
 }
 
+/* Hover neutro: borda da sidebar clareada com o cinza do texto. Exclui foco
+   (primary) e filtro com valor (verde) para nao sobrepor esses estados. */
+:deep(.filter-input.p-dropdown:not(.p-disabled):not(.p-focus):not(.filter-active):hover),
+:deep(.filter-input.p-inputtext:not(.p-dropdown-label):not(:focus):not(.filter-active):hover) {
+  border-color: color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border)) !important;
+}
+
 :deep(.filter-input .p-dropdown-label),
 :deep(.filter-input .p-dropdown-trigger) {
   background: transparent !important;
   color: inherit !important;
 }
 
-:global(.admin-sidebar .p-dropdown.p-focus),
-:global(.admin-sidebar .p-inputtext:not(.p-dropdown-label):focus),
+/* Filtro com valor: vermelho pastel indica estado aplicado */
 :global(.admin-sidebar .filter-active.p-dropdown),
 :global(.admin-sidebar .filter-active.p-inputtext:not(.p-dropdown-label)) {
   border: 1px solid
-    color-mix(in srgb, var(--primary-color) 30%, transparent) !important;
+    color-mix(in srgb, var(--filter-active-color) 30%, transparent) !important;
   background: rgba(255, 255, 255, 0.03) !important;
   box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--primary-color) 8%, transparent) !important;
+    color-mix(in srgb, var(--filter-active-color) 8%, transparent) !important;
+  outline: none !important;
+}
+
+/* Hover sobre filtro com valor: mesmo tom, um degrau acima; especificidade
+   elevada para vencer as regras globais de hover do AppLayout (primary). */
+:global(.admin-sidebar .filter-active.p-dropdown:not(.p-disabled):hover),
+:global(.admin-sidebar .filter-active.p-inputtext:not(.p-dropdown-label):enabled:hover) {
+  border: 1px solid
+    color-mix(in srgb, var(--filter-active-color) 45%, transparent) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--filter-active-color) 12%, transparent) !important;
+  outline: none !important;
+}
+
+/* Foco do campo (select aberto / digitando): neutro, um degrau acima do hover.
+   .p-component/:not/:enabled elevam a especificidade para vencer as regras
+   globais de foco do AppLayout, que pintam com primary. */
+:global(.admin-sidebar .p-dropdown.p-component:not(.p-disabled).p-focus),
+:global(.admin-sidebar .filter-input.p-inputtext:not(.p-dropdown-label):enabled:focus) {
+  border: 1px solid
+    color-mix(in srgb, var(--sidebar-text) 45%, var(--sidebar-border)) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--sidebar-text) 10%, transparent) !important;
   outline: none !important;
 }
 
@@ -2529,19 +2559,31 @@ const clearSearch = () => {
 :global(
   .sidebar-panel
     .p-dropdown-items
-    .p-dropdown-item:not(.p-highlight):not(.p-disabled):hover
+    .p-dropdown-item:not(.p-highlight):not(.p-disabled):hover,
+  .sidebar-panel
+    .p-dropdown-items
+    .p-dropdown-item:not(.p-highlight):not(.p-disabled):focus,
+  .sidebar-panel
+    .p-dropdown-items
+    .p-dropdown-item:not(.p-highlight):not(.p-disabled).p-focus
 ) {
   background: var(--sidebar-input-bg) !important;
   color: var(--sidebar-text) !important;
 }
 
-:global(.sidebar-panel .p-dropdown-items .p-dropdown-item.p-highlight) {
+:global(.p-dropdown-panel.sidebar-panel .p-dropdown-items li.p-dropdown-item.p-highlight),
+:global(
+  .p-dropdown-panel.sidebar-panel .p-dropdown-items li.p-dropdown-item.p-highlight.p-focus
+),
+:global(
+  .p-dropdown-panel.sidebar-panel .p-dropdown-items li.p-dropdown-item.p-highlight:hover
+) {
   background: color-mix(
     in srgb,
-    var(--primary-color) 20%,
+    color-mix(in srgb, var(--primary-color) 15%, #a8a29e) 28%,
     transparent
   ) !important;
-  color: var(--primary-color) !important;
+  color: var(--sidebar-text) !important;
 }
 
 :global(.sidebar-panel .p-dropdown-header) {
@@ -2552,6 +2594,30 @@ const clearSearch = () => {
 :global(.sidebar-panel .p-dropdown-filter-container .p-inputtext) {
   background: var(--sidebar-input-bg) !important;
   color: var(--sidebar-text) !important;
+  border-color: var(--sidebar-border) !important;
+}
+
+/* Input de pesquisa dentro do painel do dropdown: foco/hover em stone
+   (Tailwind), com especificidade elevada para vencer as globais do AppLayout. */
+/* Input de pesquisa dentro do painel do dropdown: mesmo tom da sidebar de
+   indicadores (stone + 15% de primary, usado nos títulos de grupo). */
+:global(
+  .p-dropdown-panel.sidebar-panel
+  .p-dropdown-filter-container
+  .p-inputtext:enabled:focus
+) {
+  border-color: color-mix(in srgb, var(--primary-color) 15%, #78716c) !important;
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, color-mix(in srgb, var(--primary-color) 15%, #78716c) 25%, transparent) !important;
+  outline: none !important;
+}
+
+:global(
+  .p-dropdown-panel.sidebar-panel
+  .p-dropdown-filter-container
+  .p-inputtext:enabled:hover:not(:focus)
+) {
+  border-color: color-mix(in srgb, var(--primary-color) 10%, color-mix(in srgb, #78716c 60%, var(--sidebar-border))) !important;
 }
 
 /* SLIDERS */
@@ -2589,9 +2655,9 @@ const clearSearch = () => {
 }
 
 .perc-chip:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  border-color: color-mix(in srgb, var(--sidebar-text) 35%, var(--sidebar-border));
+  color: var(--sidebar-text);
+  background: var(--sidebar-input-bg);
 }
 
 .perc-chip:focus {
@@ -2599,14 +2665,14 @@ const clearSearch = () => {
 }
 
 .perc-chip-active {
-  border-color: var(--primary-color) !important;
-  color: var(--primary-color) !important;
+  border-color: var(--filter-active-color) !important;
+  color: var(--filter-active-color) !important;
   background: color-mix(
     in srgb,
-    var(--primary-color) 14%,
+    var(--filter-active-color) 14%,
     transparent
   ) !important;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--primary-color) 20%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--filter-active-color) 20%, transparent);
 }
 
 .perc-chip-disabled {
@@ -2718,20 +2784,20 @@ const clearSearch = () => {
 }
 
 .filter-active-box :deep(.p-slider-handle) {
-  border-color: var(--primary-color) !important;
+  border-color: var(--filter-active-color) !important;
 }
 
 .filter-active-box :deep(.p-slider:not(.p-disabled) .p-slider-handle:hover) {
-  background: var(--primary-color) !important;
+  background: var(--filter-active-color) !important;
   box-shadow: 0 0 0 6px
-    color-mix(in srgb, var(--primary-color) 20%, transparent) !important;
+    color-mix(in srgb, var(--filter-active-color) 20%, transparent) !important;
 }
 
 /* FILTROS ATIVOS */
 .filter-active-box {
   background: color-mix(
     in srgb,
-    var(--primary-color) 12%,
+    var(--filter-active-color) 12%,
     transparent
   ) !important;
   border-radius: 4px;
@@ -2879,12 +2945,25 @@ const clearSearch = () => {
   color: var(--sidebar-text) !important;
 }
 
-:global(.admin-sidebar .estabelecimento-ac .p-autocomplete-input:focus) {
-  border: 2px solid color-mix(in srgb, var(--primary-color) 50%, transparent) !important;
+/* Foco do autocomplete de estabelecimento: mesmo tom stone+primary da sidebar
+   de indicadores; .p-component/:enabled elevam a especificidade para vencer
+   as regras globais de foco do AppLayout. */
+:global(
+  .admin-sidebar .estabelecimento-ac .p-autocomplete.p-component .p-autocomplete-input:enabled:focus
+) {
+  border: 1px solid
+    color-mix(in srgb, var(--primary-color) 15%, #78716c) !important;
   background: rgba(255, 255, 255, 0.03) !important;
-  box-shadow: 0 0 0 2px
-    color-mix(in srgb, var(--primary-color) 15%, transparent) !important;
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, color-mix(in srgb, var(--primary-color) 15%, #78716c) 25%, transparent) !important;
   outline: none !important;
+}
+
+:global(
+  .admin-sidebar .estabelecimento-ac .p-autocomplete.p-component .p-autocomplete-input:enabled:hover:not(:focus)
+) {
+  border: 1px solid
+    color-mix(in srgb, var(--primary-color) 10%, color-mix(in srgb, #78716c 60%, var(--sidebar-border))) !important;
 }
 
 :global(
@@ -2974,7 +3053,7 @@ const clearSearch = () => {
 }
 
 .checkbox-label:hover {
-  color: var(--primary-color);
+  color: var(--sidebar-text);
 }
 
 .filter-checkbox {
@@ -2996,23 +3075,23 @@ const clearSearch = () => {
 }
 
 :global(.checkbox-label:hover .filter-checkbox.p-checkbox .p-checkbox-box) {
-  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--sidebar-border));
-  background: color-mix(in srgb, var(--sidebar-input-bg) 86%, var(--primary-color));
+  border-color: color-mix(in srgb, var(--sidebar-text) 45%, var(--sidebar-border));
+  background: var(--sidebar-input-bg);
 }
 
 :global(.filter-checkbox.p-checkbox.p-highlight .p-checkbox-box),
 :global(.filter-checkbox.p-checkbox-checked .p-checkbox-box) {
-  border-color: var(--primary-color);
-  background: var(--primary-color);
+  border-color: var(--filter-active-color);
+  background: var(--filter-active-color);
 }
 
 :global(.filter-checkbox.p-checkbox .p-checkbox-icon) {
-  color: var(--color-on-primary, #ffffff);
+  color: var(--sidebar-bg);
 }
 
 :global(.filter-checkbox.p-checkbox.p-focus .p-checkbox-box),
 :global(.filter-checkbox.p-checkbox:has(.p-checkbox-input:focus-visible) .p-checkbox-box) {
-  outline: 2px solid var(--primary-color);
+  outline: 2px solid color-mix(in srgb, var(--sidebar-text) 45%, transparent);
   outline-offset: 2px;
 }
 

@@ -42,6 +42,7 @@ router = APIRouter()
 def get_crm_prescricoes_analise(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
+    medico_query: Optional[str] = Query(None, max_length=120),
     sort_field: str = Query("taxa_prescricoes_dia"),
     sort_order: Literal["asc", "desc"] = Query("desc"),
     include_map: bool = Query(True),
@@ -78,6 +79,7 @@ def get_crm_prescricoes_analise(
     return AnalyticsService.get_crm_prescricoes_analise(
         page=page,
         page_size=page_size,
+        medico_query=medico_query,
         sort_field=sort_field,
         sort_order=sort_order,
         include_map=include_map,

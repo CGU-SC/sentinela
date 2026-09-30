@@ -17,9 +17,9 @@ export const SURFACE_COLORS = {
       "sidebar-text": "#A1A1AA",
       "sidebar-border": "rgba(255, 255, 255, 0.1)",
       "sidebar-input-bg": "rgba(255, 255, 255, 0.06)",
-      "sidebar-heading-tint": "rgba(57, 140, 186, 0.14)",
-      "sidebar-heading-hover": "rgba(57, 140, 186, 0.21)",
-      "sidebar-heading-icon": "#66b0d8",
+      "sidebar-heading-tint": "color-mix(in srgb, var(--primary-color) 4%, color-mix(in srgb, #94a3b8 14%, transparent))",
+      "sidebar-heading-hover": "color-mix(in srgb, var(--primary-color) 6%, color-mix(in srgb, #94a3b8 19%, transparent))",
+      "sidebar-heading-icon": "color-mix(in srgb, var(--primary-color) 15%, #94a3b8)",
       "navbar-bg": "#f8fafc",
       "navbar-text": "#1e293b",
       "navbar-border": "#e2e8f0",
@@ -34,7 +34,7 @@ export const SURFACE_COLORS = {
       "card-border": "#e2e8f0",
       "table-footer-bg": "#f1f5f9",
       "table-hover":
-        "color-mix(in srgb, var(--primary-color) 5%, var(--card-bg))",
+        "color-mix(in srgb, #78716c 11%, var(--card-bg))",
       "table-stripe": "#f8fafc",
       "table-expansion-bg": "#f8fafc",
       "risk-low": "#faa716",
@@ -42,6 +42,7 @@ export const SURFACE_COLORS = {
       "risk-high": "#f43f5e",
       "risk-critical": "#be123c",
       "status-success": "#10b981",
+      "filter-active-color": "#fca5a5",
       "risk-indicator-normal": "#10b981",
       "risk-indicator-warning": "#d97706",
       "risk-indicator-critical": "#be123c",
@@ -68,9 +69,9 @@ export const SURFACE_COLORS = {
       "sidebar-text": "#7a92bb",
       "sidebar-border": "rgba(59, 130, 246, 0.12)",
       "sidebar-input-bg": "rgba(59, 130, 246, 0.05)",
-      "sidebar-heading-tint": "rgba(57, 140, 186, 0.16)",
-      "sidebar-heading-hover": "rgba(57, 140, 186, 0.23)",
-      "sidebar-heading-icon": "#66b0d8",
+      "sidebar-heading-tint": "color-mix(in srgb, var(--primary-color) 4%, color-mix(in srgb, #94a3b8 14%, transparent))",
+      "sidebar-heading-hover": "color-mix(in srgb, var(--primary-color) 6%, color-mix(in srgb, #94a3b8 19%, transparent))",
+      "sidebar-heading-icon": "color-mix(in srgb, var(--primary-color) 15%, #94a3b8)",
       "navbar-bg": "#050d1a",
       "navbar-text": "#cdd9f0",
       "navbar-border": "rgba(59, 130, 246, 0.15)",
@@ -85,7 +86,7 @@ export const SURFACE_COLORS = {
       "card-border": "rgba(59, 130, 246, 0.15)",
       "table-footer-bg": "#071020",
       "table-hover":
-        "color-mix(in srgb, var(--primary-color) 8%, var(--card-bg))",
+        "color-mix(in srgb, #78716c 15%, var(--card-bg))",
       "table-stripe": "#071020",
       "table-expansion-bg": "#071120",
       // Risco — tons luminosos sobre fundo azul escuro
@@ -94,6 +95,7 @@ export const SURFACE_COLORS = {
       "risk-high": "#f87171",
       "risk-critical": "#fca5a5",
       "status-success": "#34d399",
+      "filter-active-color": "#fca5a5",
       "risk-indicator-normal": "#22c55e",
       "risk-indicator-warning": "#fbbf24",
       "risk-indicator-critical": "#fb7185",
@@ -120,9 +122,9 @@ export const SURFACE_COLORS = {
       "sidebar-text": "#A1A1AA",
       "sidebar-border": "rgba(255, 255, 255, 0.1)",
       "sidebar-input-bg": "rgba(255, 255, 255, 0.06)",
-      "sidebar-heading-tint": "rgba(57, 140, 186, 0.14)",
-      "sidebar-heading-hover": "rgba(57, 140, 186, 0.21)",
-      "sidebar-heading-icon": "#66b0d8",
+      "sidebar-heading-tint": "color-mix(in srgb, var(--primary-color) 4%, color-mix(in srgb, #94a3b8 14%, transparent))",
+      "sidebar-heading-hover": "color-mix(in srgb, var(--primary-color) 6%, color-mix(in srgb, #94a3b8 19%, transparent))",
+      "sidebar-heading-icon": "color-mix(in srgb, var(--primary-color) 15%, #94a3b8)",
       "navbar-bg": "#ffffff",
       "navbar-text": "#1c1917",
       "navbar-border": "#e7e5e4",
@@ -137,7 +139,7 @@ export const SURFACE_COLORS = {
       "card-border": "#e7e5e4",
       "table-footer-bg": "#f5f5f4",
       "table-hover":
-        "color-mix(in srgb, var(--primary-color) 5%, var(--card-bg))",
+        "color-mix(in srgb, #78716c 11%, var(--card-bg))",
       "table-stripe": "#fafaf9",
       "table-expansion-bg": "#f5f5f4",
       // Risco — escala quente: amber claro → orange → rose → red
@@ -145,7 +147,8 @@ export const SURFACE_COLORS = {
       "risk-medium": "#f97316", // orange-500 — intermediário entre amber e vermelho
       "risk-high": "#f43f5e", // rose-500
       "risk-critical": "#be123c", // rose-700
-      "status-success": "#10b981", // emerald-500
+      "status-success": "#10b981",
+      "filter-active-color": "#fca5a5", // emerald-500
       "risk-indicator-normal": "#10b981",
       "risk-indicator-warning": "#d97706",
       "risk-indicator-critical": "#be123c",
@@ -171,9 +174,9 @@ export const SURFACE_COLORS = {
       "sidebar-text": "#9ca3af",
       "sidebar-border": "rgba(255, 255, 255, 0.08)",
       "sidebar-input-bg": "#161b22",
-      "sidebar-heading-tint": "rgba(57, 140, 186, 0.14)",
-      "sidebar-heading-hover": "rgba(57, 140, 186, 0.21)",
-      "sidebar-heading-icon": "#66b0d8",
+      "sidebar-heading-tint": "color-mix(in srgb, var(--primary-color) 4%, color-mix(in srgb, #94a3b8 14%, transparent))",
+      "sidebar-heading-hover": "color-mix(in srgb, var(--primary-color) 6%, color-mix(in srgb, #94a3b8 19%, transparent))",
+      "sidebar-heading-icon": "color-mix(in srgb, var(--primary-color) 15%, #94a3b8)",
       "navbar-bg": "#0d1117",
       "navbar-text": "#e6edf3",
       "navbar-border": "#30363d",
@@ -188,7 +191,7 @@ export const SURFACE_COLORS = {
       "card-border": "#3d3d3d",
       "table-footer-bg": "#1c2128",
       "table-hover":
-        "color-mix(in srgb, var(--primary-color) 8%, var(--card-bg))",
+        "color-mix(in srgb, #78716c 15%, var(--card-bg))",
       "table-stripe": "#131920",
       "table-expansion-bg": "#12161c",
       // Risco — escala quente: amber claro → orange → rose → red
@@ -196,7 +199,8 @@ export const SURFACE_COLORS = {
       "risk-medium": "#fb923c", // orange-400 — intermediário entre amber e vermelho
       "risk-high": "#f87171", // red-400
       "risk-critical": "#fca5a5", // red-300
-      "status-success": "#34d399", // emerald-400
+      "status-success": "#34d399",
+      "filter-active-color": "#fca5a5", // emerald-400
       "risk-indicator-normal": "#22c55e",
       "risk-indicator-warning": "#fbbf24",
       "risk-indicator-critical": "#fb7185",

@@ -99,12 +99,12 @@ function hideTooltipOnBlur(event) {
   gap: 0.6rem;
   padding: 0.9rem 1rem;
   border-bottom: 1px solid var(--card-border);
-  background: color-mix(in srgb, var(--primary-color) 6%, var(--card-bg));
+  background: var(--sidebar-heading-tint);
 }
 
 .selector-header-icon {
   font-size: 0.9rem;
-  color: var(--primary-color);
+  color: var(--sidebar-heading-icon);
 }
 
 .selector-header-label {
@@ -129,12 +129,11 @@ function hideTooltipOnBlur(event) {
 
 .group-title {
   padding: 0.6rem 1rem 0.25rem;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--primary-color);
-  opacity: 0.75;
+  color: color-mix(in srgb, var(--primary-color) 15%, #78716c);
   border-top: 1px solid var(--card-border);
   margin-top: 0.25rem;
 }
