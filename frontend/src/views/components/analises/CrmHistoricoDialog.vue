@@ -4,12 +4,15 @@
  *
  * Indicadores, pontos de atenção, tabela de farmácias e mapa de calor usam o
  * período filtrado; a linha do tempo mostra todo o histórico.
+ * Filtros do próprio modal (não mexem nos filtros da página): período e uma
+ * farmácia (só uma por vez: dias de farmácias diferentes não se somam).
  * Dados: GET /analytics/crm-medico-historico.
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import Dialog from 'primevue/dialog';
+import Dropdown from 'primevue/dropdown';
 import Paginator from 'primevue/paginator';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
@@ -29,6 +32,8 @@ import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
 import { useFormatting } from '@/composables/useFormatting';
 import CrmAtuacaoDialog from '@/views/components/cnpj/CrmAtuacaoDialog.vue';
+import MonthRangePicker from '@/views/components/common/MonthRangePicker.vue';
+import { AUDIT_PERIOD } from '@/config/constants';
 
 use([
   CanvasRenderer, BarChart, LineChart, ScatterChart, HeatmapChart,
@@ -66,55 +71,164 @@ const corTaxa = computed(() => DATA_NEUTRAL[tema.value].line);
 const infoTooltip = analysisTooltip('crmHistorico');
 const atencaoTooltip = analysisTooltip('crmHistoricoAtencao');
 const atuacaoTooltip = analysisTooltip('crmHistoricoAtuacao');
+const filtrosTooltip = analysisTooltip('crmHistoricoFiltros');
 
+// ── Filtros do modal ──────────────────────────────────────────────────────────
+// Atalhos do seletor de período; intervalo escolhido na grade = "personalizado".
+const PERIODO_ATALHOS = [
+  { value: 'analise', label: 'Período da análise' },
+  { value: 'completo', label: 'Histórico completo' },
+  { value: 'ultimos12', label: 'Últimos 12 meses de atuação' },
+  { value: 'personalizado', label: 'Período personalizado', grade: true },
+];
+const COMP_MIN_BASE = AUDIT_PERIOD.START_YEAR * 100 + AUDIT_PERIOD.START_MONTH + 1;
+const COMP_MAX_BASE = AUDIT_PERIOD.END_YEAR * 100 + AUDIT_PERIOD.END_MONTH + 1;
+const periodoModo = ref('analise');
+const personalizado = ref(null); // { inicio, fim } em AAAAMM
+const farmaciaFiltro = ref(null); // id_cnpj
+// Cadastro das farmácias já vistas nas respostas (nome da farmácia filtrada
+// mesmo quando ela não atuou no período escolhido).
+const farmaciasConhecidas = ref(new Map());
+const ultimaCompetencia = ref(null); // último mês com prescrição do médico
+const jaExibido = ref(false);
+
+function resetFiltros() {
+  periodoModo.value = 'analise';
+  personalizado.value = null;
+  farmaciaFiltro.value = null;
+  farmaciasConhecidas.value = new Map();
+  ultimaCompetencia.value = null;
+}
+function isoInicio(comp) {
+  return `${Math.floor(comp / 100)}-${String(comp % 100).padStart(2, '0')}-01`;
+}
+function isoFim(comp) {
+  const ano = Math.floor(comp / 100);
+  const mes = comp % 100;
+  const ultimoDia = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
+}
+
+const periodoConsulta = computed(() => {
+  switch (periodoModo.value) {
+    case 'analise':
+      return { valido: true, inicio: props.dataInicio, fim: props.dataFim };
+    case 'completo':
+      return { valido: true, inicio: null, fim: null };
+    case 'ultimos12': {
+      const fim = ultimaCompetencia.value;
+      if (!fim) return { valido: false, motivo: null };
+      return { valido: true, inicio: isoInicio(compDoIndice(indiceMes(fim) - 11)), fim: isoFim(fim) };
+    }
+    case 'personalizado': {
+      const faixa = personalizado.value;
+      if (!faixa || faixa.inicio > faixa.fim) throw new Error('Período personalizado do histórico sem intervalo válido.');
+      return { valido: true, inicio: isoInicio(faixa.inicio), fim: isoFim(faixa.fim) };
+    }
+    default:
+      throw new Error(`Período do histórico inválido: ${periodoModo.value}`);
+  }
+});
+function escolherPeriodo(faixa) {
+  personalizado.value = faixa;
+  periodoModo.value = 'personalizado';
+}
+function escolherAtalhoPeriodo(valor) {
+  periodoModo.value = valor;
+}
+// Botão do seletor: atalho (quando houver) + intervalo exibido.
+const periodoCompsExibido = computed(() => (
+  dados.value
+    ? { inicio: compDaData(dados.value.periodo_inicio), fim: compDaData(dados.value.periodo_fim) }
+    : null
+));
+const periodoRotulo = computed(() => {
+  const atalho = PERIODO_ATALHOS.find((a) => a.value === periodoModo.value);
+  if (!atalho) throw new Error(`Período do histórico sem atalho: ${periodoModo.value}`);
+  const faixa = periodoModo.value === 'personalizado' ? personalizado.value : periodoCompsExibido.value;
+  const intervalo = faixa ? `${formatComp(faixa.inicio)} – ${formatComp(faixa.fim)}` : '';
+  return intervalo ? `${atalho.label} · ${intervalo}` : atalho.label;
+});
+
+let chaveCarregada = null;
 async function carregar() {
   if (!props.medico?.id_medico) return;
+  const periodo = periodoConsulta.value;
+  if (!periodo.valido) return;
+  const params = { id_medico: props.medico.id_medico };
+  if (periodo.inicio) params.data_inicio = periodo.inicio;
+  if (periodo.fim) params.data_fim = periodo.fim;
+  if (farmaciaFiltro.value != null) params.id_cnpj = farmaciaFiltro.value;
+  const chave = JSON.stringify(params);
+  if (chave === chaveCarregada) return;
+  chaveCarregada = chave;
   controller?.abort();
   const requestController = new AbortController();
   controller = requestController;
   carregando.value = true;
-  erro.value = null;
-  dados.value = null;
   try {
-    const params = { id_medico: props.medico.id_medico };
-    if (props.dataInicio) params.data_inicio = props.dataInicio;
-    if (props.dataFim) params.data_fim = props.dataFim;
     const { data } = await axios.get(API_ENDPOINTS.analyticsCrmMedicoHistorico, {
       params,
       signal: requestController.signal,
     });
     if (controller !== requestController) return;
+    if ((data.id_cnpj_filtro ?? null) !== (params.id_cnpj ?? null)) {
+      throw new Error('Contrato inválido em crm-medico-historico: farmácia filtrada diferente da solicitada.');
+    }
+    const conhecidas = new Map(farmaciasConhecidas.value);
+    for (const f of data.farmacias) conhecidas.set(f.id_cnpj, f);
+    farmaciasConhecidas.value = conhecidas;
+    if (data.id_cnpj_filtro == null && data.meses.length) {
+      ultimaCompetencia.value = data.meses[data.meses.length - 1].competencia;
+    }
+    erro.value = null;
     dados.value = data;
   } catch (err) {
     if (axios.isCancel(err) || controller !== requestController) return;
     const status = err?.response?.status;
+    const detalhe = err?.response?.data?.detail;
+    dados.value = null;
     erro.value = status === 404
-      ? 'Este CRM não tem prescrições registradas.'
+      ? (farmaciaFiltro.value != null ? 'Este CRM não tem prescrições na farmácia escolhida.' : 'Este CRM não tem prescrições registradas.')
       : status === 503
-        ? (err?.response?.data?.detail || 'Os dados de prescrições por médico não estão disponíveis. Sincronize os módulos CRM.')
-        : 'Não foi possível carregar o histórico deste CRM.';
+        ? (detalhe || 'Os dados de prescrições por médico não estão disponíveis. Sincronize os módulos CRM.')
+        : status === 422 && typeof detalhe === 'string'
+          ? detalhe
+          : 'Não foi possível carregar o histórico deste CRM.';
   } finally {
     if (controller === requestController) {
       controller = null;
       carregando.value = false;
+      jaExibido.value = true;
     }
   }
 }
 
 watch(
-  () => [props.modelValue, props.medico?.id_medico, props.dataInicio, props.dataFim],
+  () => [props.modelValue, props.medico?.id_medico],
   ([aberto]) => {
-    if (aberto) {
-      carregar();
-    } else {
-      controller?.abort();
-      controller = null;
-      carregando.value = false;
-    }
+    controller?.abort();
+    controller = null;
+    chaveCarregada = null;
+    carregando.value = false;
+    jaExibido.value = false;
+    dados.value = null;
+    erro.value = null;
+    resetFiltros();
+    if (aberto) carregar();
   },
   { immediate: true },
 );
+// Filtros do modal e período da página (no modo "Período da análise").
+watch(
+  () => [periodoConsulta.value.valido, periodoConsulta.value.inicio, periodoConsulta.value.fim, farmaciaFiltro.value],
+  () => { if (props.modelValue) carregar(); },
+);
 onBeforeUnmount(() => controller?.abort());
+
+function filtrarFarmacia(idCnpj) {
+  farmaciaFiltro.value = farmaciaFiltro.value === idCnpj ? null : idCnpj;
+}
 
 function fechar() {
   atuacaoController?.abort();
@@ -170,6 +284,30 @@ const periodoTexto = computed(() => (
 const kpis = computed(() => {
   const k = dados.value?.kpis;
   if (!k) return [];
+  if (filtroAtivo.value != null) {
+    // Farmácia filtrada: números dela; taxa elevada continua a do total do médico.
+    return [
+      {
+        label: 'Prescrições na farmácia',
+        value: formatNumberFull(k.nu_prescricoes),
+        detail: `${formatNumberFull(k.qtd_dias_com_prescricao)} dias com prescrição`,
+      },
+      { label: 'Taxa diária na farmácia', value: formatDecimal(k.taxa_prescricoes_dia) },
+      {
+        label: 'Meses ativos na farmácia',
+        value: formatNumberFull(k.qtd_meses_ativos),
+        detail: `${formatNumberFull(k.qtd_meses_alta_intensidade)} com taxa elevada (total do médico)`,
+      },
+      { label: 'Participação no total do médico', value: formatPct(k.percentual_farmacia_principal) },
+      {
+        label: 'Pior mês na farmácia',
+        value: k.pior_mes_competencia
+          ? `${formatDecimal(k.pior_mes_taxa_prescricoes_dia)}/dia em ${formatComp(k.pior_mes_competencia)}`
+          : '—',
+        detail: k.pior_mes_competencia ? `${formatNumberFull(k.pior_mes_prescricoes)} prescrições` : null,
+      },
+    ];
+  }
   return [
     {
       label: 'Prescrições',
@@ -198,6 +336,21 @@ const kpis = computed(() => {
 
 // ── Farmácias (cor segue a farmácia: as 5 maiores do período) ────────────────
 const farmacias = computed(() => dados.value?.farmacias ?? []);
+// Farmácia filtrada na resposta exibida (null = todas).
+const filtroAtivo = computed(() => dados.value?.id_cnpj_filtro ?? null);
+function cadastroFarmacia(idCnpj) {
+  const f = farmaciasConhecidas.value.get(idCnpj);
+  if (!f) throw new Error(`Farmácia ${idCnpj} sem cadastro nas respostas do histórico.`);
+  return f;
+}
+const opcoesFarmacia = computed(() => (
+  [...farmaciasConhecidas.value.values()]
+    .filter((f) => farmacias.value.some((x) => x.id_cnpj === f.id_cnpj) || f.id_cnpj === farmaciaFiltro.value)
+    .map((f) => ({
+      value: f.id_cnpj,
+      label: `${nomeFarmacia(f)} · ${f.cnpj ? formatCnpj(f.cnpj) : f.id_cnpj}${f.municipio ? ` · ${formatTitleCase(f.municipio)}/${f.uf ?? ''}` : ''}`,
+    }))
+));
 const corPorFarmacia = computed(() => {
   const mapa = new Map();
   farmacias.value.slice(0, TOP_FARMACIAS_GRAFICO).forEach((f, i) => mapa.set(f.id_cnpj, cores.value[i]));
@@ -207,6 +360,9 @@ function nomeFarmacia(f) {
   return f?.razao_social ? formatTitleCase(f.razao_social) : formatCnpj(f?.cnpj ?? '');
 }
 const legenda = computed(() => {
+  if (filtroAtivo.value != null) {
+    return [{ nome: nomeFarmacia(cadastroFarmacia(filtroAtivo.value)), cor: corPorFarmacia.value.get(filtroAtivo.value) ?? corOutras.value }];
+  }
   const itens = farmacias.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => ({
     nome: nomeFarmacia(f),
     cor: corPorFarmacia.value.get(f.id_cnpj),
@@ -226,7 +382,11 @@ const farmaciasInicio = ref(0);
 const farmaciasPagina = computed(() => (
   farmacias.value.slice(farmaciasInicio.value, farmaciasInicio.value + FARMACIAS_POR_PAGINA)
 ));
-watch(dados, () => { farmaciasInicio.value = 0; });
+// Volta à 1ª página ao trocar de médico ou de período (não ao filtrar farmácia).
+watch(
+  () => [dados.value?.id_medico, dados.value?.periodo_inicio, dados.value?.periodo_fim],
+  () => { farmaciasInicio.value = 0; },
+);
 
 // ── Coluna "Atuação na farmácia" (mesma da tabela de CRMs do CNPJ) ────────────
 // Eixo comum a todas as farmácias: do primeiro ao último mês com prescrição do
@@ -347,7 +507,9 @@ const linhaDoTempo = computed(() => {
   if (!d?.meses?.length) return null;
   const meses = mesesEntre(d.meses[0].competencia, d.meses[d.meses.length - 1].competencia);
   const porMes = new Map(d.meses.map((m) => [m.competencia, m]));
-  const topIds = farmacias.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => f.id_cnpj);
+  const topIds = filtroAtivo.value != null
+    ? [filtroAtivo.value]
+    : farmacias.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => f.id_cnpj);
   const series = new Map(topIds.map((id) => [id, new Map()]));
   const outras = new Map();
   for (const r of d.farmacia_mes) {
@@ -380,11 +542,15 @@ const chartOption = computed(() => {
     ...extra,
   });
 
-  const barras = lt.topIds.map((id) => {
-    const f = farmacias.value.find((x) => x.id_cnpj === id);
-    return barra(nomeFarmacia(f), corPorFarmacia.value.get(id), lt.series.get(id));
-  });
-  barras.push(barra('Outras farmácias', corOutras.value, lt.outras));
+  const filtrada = filtroAtivo.value != null;
+  const barras = lt.topIds.map((id) => barra(
+    nomeFarmacia(cadastroFarmacia(id)),
+    corPorFarmacia.value.get(id) ?? corOutras.value,
+    lt.series.get(id),
+  ));
+  if (!filtrada) barras.push(barra('Outras farmácias', corOutras.value, lt.outras));
+  const nomeTaxa = filtrada ? 'Taxa diária na farmácia' : 'Taxa diária';
+  const nomeAlta = filtrada ? 'Mês com taxa elevada (total do médico)' : 'Mês com taxa elevada';
   // Marca a 1ª inscrição no CFM na primeira série.
   if (inscricaoNoEixo) {
     barras[0].markLine = {
@@ -428,15 +594,15 @@ const chartOption = computed(() => {
           .map((p) => linha(`${p.marker}${p.seriesName}`, formatNumberFull(p.value)))
           .join('');
         return `<div style="min-width:240px">
-          <div style="font-weight:600;margin-bottom:6px">${formatComp(comp)}${mes.alta_intensidade ? ' · <span style="color:' + corAlerta + '">taxa elevada</span>' : ''}</div>
+          <div style="font-weight:600;margin-bottom:6px">${formatComp(comp)}${mes.alta_intensidade ? ' · <span style="color:' + corAlerta + '">taxa elevada' + (filtrada ? ' (total do médico)' : '') + '</span>' : ''}</div>
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:18px;margin:2px 0 8px;padding:6px 8px;border-radius:6px;background:${mes.alta_intensidade ? corAlerta + '22' : c.axisShadow}">
-            <span style="font-weight:600">Taxa diária</span>
-            <span><strong style="font-size:16px;font-weight:600;color:${mes.alta_intensidade ? corAlerta : c.tooltipText}">${formatDecimal(mes.taxa_prescricoes_dia)}</strong><span style="opacity:.72"> /dia · ${formatDecimal(mes.taxa_prescricoes_dia / mes.p95_taxa_dia, 1)}× o P95</span></span>
+            <span style="font-weight:600">${nomeTaxa}</span>
+            <span><strong style="font-size:16px;font-weight:600;color:${mes.alta_intensidade ? corAlerta : c.tooltipText}">${formatDecimal(mes.taxa_prescricoes_dia)}</strong><span style="opacity:.72"> /dia${filtrada ? '' : ` · ${formatDecimal(mes.taxa_prescricoes_dia / mes.p95_taxa_dia, 1)}× o P95`}</span></span>
           </div>
           ${linha('Prescrições', formatNumberFull(mes.nu_prescricoes))}
           ${linha('Dias com prescrição', formatNumberFull(mes.qtd_dias_com_prescricao))}
           ${linha('P95 nacional do mês', formatDecimal(mes.p95_taxa_dia))}
-          ${linha('Farmácias / UFs', `${mes.qtd_farmacias} / ${mes.qtd_ufs}`)}
+          ${filtrada ? '' : linha('Farmácias / UFs', `${mes.qtd_farmacias} / ${mes.qtd_ufs}`)}
           <div style="border-top:1px solid ${c.tooltipBorder};margin-top:6px;padding-top:4px">${farm}</div>
         </div>`;
       },
@@ -492,7 +658,7 @@ const chartOption = computed(() => {
         data: p95,
       },
       {
-        name: 'Taxa diária',
+        name: nomeTaxa,
         type: 'line',
         xAxisIndex: 1,
         yAxisIndex: 1,
@@ -502,7 +668,7 @@ const chartOption = computed(() => {
         data: taxa,
       },
       {
-        name: 'Mês com taxa elevada',
+        name: nomeAlta,
         type: 'scatter',
         xAxisIndex: 1,
         yAxisIndex: 1,
@@ -517,7 +683,8 @@ const chartOption = computed(() => {
 // ── Mapa de calor farmácia x mês (período filtrado) ──────────────────────────
 const calor = computed(() => {
   const d = dados.value;
-  if (!d || !farmacias.value.length) return null;
+  // Com farmácia filtrada vira uma linha só (repetiria a linha do tempo).
+  if (!d || !farmacias.value.length || filtroAtivo.value != null) return null;
   const meses = mesesEntre(compDaData(d.periodo_inicio), compDaData(d.periodo_fim))
     .filter((m) => m >= d.meses[0].competencia && m <= d.meses[d.meses.length - 1].competencia);
   if (!meses.length) return null;
@@ -648,7 +815,7 @@ const ICONE_ATENCAO = {
 
 <template>
   <Dialog
-    :visible="modelValue && !carregando && !!(dados || erro)"
+    :visible="modelValue && jaExibido"
     modal
     maximizable
     dismissableMask
@@ -671,6 +838,44 @@ const ICONE_ATENCAO = {
             <i class="pi pi-exclamation-triangle" /> Não localizado no cadastro do CFM
           </span>
         </div>
+        <div class="hist-filtros">
+          <div class="hist-filtro">
+            <span>Período</span>
+            <MonthRangePicker
+              :rotulo="periodoRotulo"
+              :inicio="periodoCompsExibido?.inicio ?? null"
+              :fim="periodoCompsExibido?.fim ?? null"
+              :min="COMP_MIN_BASE"
+              :max="COMP_MAX_BASE"
+              :atalhos="PERIODO_ATALHOS"
+              :atalho-ativo="periodoModo"
+              @select-range="escolherPeriodo"
+              @select-atalho="escolherAtalhoPeriodo"
+            />
+          </div>
+          <label class="hist-filtro hist-filtro--farmacia">
+            <span>Farmácia</span>
+            <Dropdown
+              v-model="farmaciaFiltro"
+              :options="opcoesFarmacia"
+              option-label="label"
+              option-value="value"
+              filter
+              show-clear
+              placeholder="Todas as farmácias"
+              empty-filter-message="Nenhuma farmácia encontrada"
+              class="hist-filtro-campo"
+              aria-label="Filtrar por farmácia"
+            />
+          </label>
+          <i
+            class="pi pi-info-circle hist-info"
+            v-tooltip.bottom="filtrosTooltip"
+            aria-label="Como funcionam os filtros do histórico"
+          />
+          <span v-if="carregando" class="hist-filtro-status"><i class="pi pi-spin pi-spinner" aria-hidden="true" /> Atualizando…</span>
+          <span v-else-if="periodoConsulta.motivo" class="hist-filtro-status hist-filtro-status--erro">{{ periodoConsulta.motivo }}</span>
+        </div>
       </div>
     </template>
 
@@ -678,7 +883,7 @@ const ICONE_ATENCAO = {
       <i class="pi pi-exclamation-circle" /> {{ erro }}
     </div>
 
-    <div v-else-if="dados" class="hist-body">
+    <div v-else-if="dados" class="hist-body" :class="{ 'is-atualizando': carregando }" :aria-busy="carregando">
       <!-- Indicadores do período -->
       <div class="hist-kpis">
         <div v-for="kpi in kpis" :key="kpi.label" class="hist-kpi">
@@ -710,20 +915,20 @@ const ICONE_ATENCAO = {
       <section class="hist-panel">
         <header class="hist-panel-header">
           <h3>Linha do tempo mensal</h3>
-          <span class="hist-panel-sub">histórico completo</span>
+          <span class="hist-panel-sub">histórico completo{{ filtroAtivo != null ? ' · somente a farmácia filtrada' : '' }}</span>
         </header>
         <div class="hist-legenda">
           <span v-for="item in legenda" :key="item.nome" class="hist-legenda-item">
             <i class="hist-swatch" :style="{ backgroundColor: item.cor }" aria-hidden="true" />{{ item.nome }}
           </span>
           <span class="hist-legenda-item">
-            <i class="hist-swatch hist-swatch--linha" :style="{ backgroundColor: corTaxa }" aria-hidden="true" />Taxa diária
+            <i class="hist-swatch hist-swatch--linha" :style="{ backgroundColor: corTaxa }" aria-hidden="true" />{{ filtroAtivo != null ? 'Taxa diária na farmácia' : 'Taxa diária' }}
           </span>
           <span class="hist-legenda-item">
             <i class="hist-swatch hist-swatch--tracejada" aria-hidden="true" />P95 nacional do mês
           </span>
           <span class="hist-legenda-item">
-            <i class="hist-swatch hist-swatch--ponto" aria-hidden="true" />Mês com taxa elevada
+            <i class="hist-swatch hist-swatch--ponto" aria-hidden="true" />{{ filtroAtivo != null ? 'Mês com taxa elevada (total do médico)' : 'Mês com taxa elevada' }}
           </span>
         </div>
         <VChart class="hist-chart" :option="chartOption" autoresize />
@@ -733,7 +938,7 @@ const ICONE_ATENCAO = {
       <section class="hist-panel">
         <header class="hist-panel-header">
           <h3>Farmácias onde atuou</h3>
-          <span class="hist-panel-sub">período filtrado · clique para abrir o estabelecimento</span>
+          <span class="hist-panel-sub">período filtrado · clique para abrir o estabelecimento · <i class="pi pi-filter" aria-hidden="true" /> filtra o histórico pela farmácia</span>
         </header>
         <p v-if="atuacaoErro" class="hist-atuacao-erro" role="alert">
           <i class="pi pi-exclamation-triangle" aria-hidden="true" />{{ atuacaoErro }}
@@ -763,6 +968,7 @@ const ICONE_ATENCAO = {
               <tr
                 v-for="f in farmaciasPagina"
                 :key="f.id_cnpj"
+                :class="{ 'is-filtrada': f.id_cnpj === filtroAtivo }"
                 tabindex="0"
                 @click="abrirFarmacia(f)"
                 @keydown.enter="abrirFarmacia(f)"
@@ -779,6 +985,18 @@ const ICONE_ATENCAO = {
                       <span class="hist-farm-cnpj">{{ formatCnpj(f.cnpj ?? '') }}</span>
                       <i class="pi pi-arrow-up-right hist-farm-abrir" aria-hidden="true" />
                     </span>
+                    <button
+                      type="button"
+                      class="hist-farm-filtrar"
+                      :class="{ 'is-ativo': f.id_cnpj === farmaciaFiltro }"
+                      :aria-pressed="f.id_cnpj === farmaciaFiltro"
+                      :aria-label="f.id_cnpj === farmaciaFiltro ? `Remover filtro de ${nomeFarmacia(f)}` : `Filtrar o histórico por ${nomeFarmacia(f)}`"
+                      v-tooltip.top="f.id_cnpj === farmaciaFiltro ? 'Remover filtro' : 'Filtrar o histórico por esta farmácia'"
+                      @click.stop="filtrarFarmacia(f.id_cnpj)"
+                      @keydown.enter.stop
+                    >
+                      <i class="pi" :class="f.id_cnpj === farmaciaFiltro ? 'pi-filter-slash' : 'pi-filter'" aria-hidden="true" />
+                    </button>
                   </span>
                 </td>
                 <td>
@@ -953,6 +1171,15 @@ const ICONE_ATENCAO = {
 .hist-header { display: flex; flex-direction: column; gap: .2rem; }
 .hist-eyebrow { display: inline-flex; align-items: center; gap: .4rem; font-size: .66rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .hist-title { font-size: 1.05rem; font-weight: 600; color: var(--text-color); }
+.hist-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .75rem; margin-top: .55rem; }
+.hist-filtro { display: flex; flex-direction: column; gap: .2rem; font-size: .62rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.hist-filtro-campo { min-width: 13rem; font-size: .76rem; }
+.hist-filtro--farmacia .hist-filtro-campo { width: min(28rem, 60vw); }
+.hist-filtro-campo :deep(.p-dropdown-label) { padding: .4rem .6rem; font-size: .76rem; }
+.hist-filtros > .hist-info { margin-bottom: .55rem; }
+.hist-filtro-status { display: inline-flex; align-items: center; gap: .35rem; margin-bottom: .5rem; font-size: .72rem; color: var(--text-muted); }
+.hist-filtro-status--erro { color: var(--risk-critical); }
+.hist-body.is-atualizando { opacity: .55; pointer-events: none; transition: opacity .15s ease; }
 .hist-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; font-size: .74rem; color: var(--text-secondary); }
 .hist-info { font-size: .8rem; color: var(--text-muted); opacity: .7; cursor: default; }
 .hist-info:hover { opacity: 1; }
@@ -1020,6 +1247,12 @@ const ICONE_ATENCAO = {
 .hist-tabela td { padding: .7rem .7rem; border-top: 1px solid color-mix(in srgb, var(--tabs-border) 65%, transparent); vertical-align: middle; overflow-wrap: anywhere; }
 .hist-tabela td.num { text-align: right; }
 .hist-tabela tbody tr { cursor: pointer; transition: background-color .15s ease; }
+.hist-tabela tbody tr.is-filtrada { background: color-mix(in srgb, var(--primary-color) 9%, var(--card-bg)); box-shadow: inset 3px 0 0 var(--primary-color); }
+.hist-farm-filtrar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 26px; height: 26px; margin-left: auto; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; opacity: .55; transition: opacity .15s ease, border-color .15s ease, color .15s ease; }
+.hist-farm-filtrar .pi { font-size: .72rem; }
+.hist-tabela tbody tr:hover .hist-farm-filtrar, .hist-farm-filtrar:focus-visible { opacity: 1; }
+.hist-farm-filtrar:hover, .hist-farm-filtrar:focus-visible { border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); color: var(--primary-color); outline: none; }
+.hist-farm-filtrar.is-ativo { opacity: 1; color: var(--primary-color); border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
 .hist-tabela tbody tr:hover, .hist-tabela tbody tr:focus-visible { background: color-mix(in srgb, var(--primary-color) 5%, var(--card-bg)); outline: none; }
 .hist-farm { display: flex; align-items: flex-start; gap: .5rem; }
 .hist-farm .hist-swatch { margin-top: .24rem; }

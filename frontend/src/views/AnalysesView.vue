@@ -1,6 +1,9 @@
 <script setup>
-import { computed, onScopeDispose, ref } from 'vue';
+import { computed, onScopeDispose, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
 import { useFilterStore } from '@/stores/filters';
+import { useCrmPrescricoesAnalysisStore } from '@/stores/crmPrescricoesAnalysis';
+import { useCrmPrescricoesMensalStore } from '@/stores/crmPrescricoesMensal';
 import { useGeoStore } from '@/stores/geo';
 import { useFetchAnalytics } from '@/composables/useFetchAnalytics';
 import { getCrmMapLevel, useCrmPrescricoesAnalysis } from '@/composables/useCrmPrescricoesAnalysis';
@@ -40,6 +43,71 @@ const {
   fetchRankingPage,
 } = useCrmPrescricoesAnalysis(mapLevel);
 const searchInput = ref(rankingSearch.value);
+
+// ── Abas mensais do ranking ("Por mês" e "Linha do tempo") ────────────────────
+const analysisStore = useCrmPrescricoesAnalysisStore();
+const mensalStore = useCrmPrescricoesMensalStore();
+const {
+  tab: rankingTab,
+  mensalResponse,
+  mensalLoading,
+  mensalError,
+  mensalPage,
+  mensalPageSize,
+  mensalSortField,
+  mensalSortOrder,
+  mensalSearch,
+  serieResponse,
+  serieLoading,
+  serieError,
+} = storeToRefs(mensalStore);
+
+// "Por mês": acompanha filtros (mesma chave do ranking), busca e versão do cache.
+watch(
+  () => [rankingTab.value, activeKey.value, rankingSearch.value, analysisStore.cacheVersion],
+  ([tab]) => {
+    if (tab !== 'mes' || !analysisStore.activeParams || analysisStore.cacheVersion === null) return;
+    mensalStore.activateMensal(analysisStore.activeParams, rankingSearch.value, analysisStore.cacheVersion);
+  },
+  { immediate: true },
+);
+// "Linha do tempo": série dos médicos da página exibida do ranking, com os
+// mesmos filtros da resposta (rankingResponseKey = JSON dos parâmetros).
+watch(
+  () => [rankingTab.value, rankingResponse.value, rankingResponseKey.value, analysisStore.cacheVersion],
+  ([tab, response, responseKey, version]) => {
+    if (tab !== 'linha' || !response?.ranking?.length || !responseKey || version === null) return;
+    mensalStore.loadSerie(JSON.parse(responseKey), response.ranking.map((r) => r.id_medico), version);
+  },
+  { immediate: true },
+);
+const mensalProps = computed(() => ({
+  response: mensalResponse.value,
+  loading: mensalLoading.value,
+  error: mensalError.value,
+  first: (mensalPage.value - 1) * mensalPageSize.value,
+  pageSize: mensalPageSize.value,
+  sortField: mensalSortField.value,
+  sortOrder: mensalSortOrder.value,
+  appliedQuery: mensalSearch.value,
+}));
+const serieProps = computed(() => ({
+  response: serieResponse.value,
+  loading: serieLoading.value,
+  error: serieError.value,
+}));
+function onMensalPage(event) {
+  const rows = event.rows ?? mensalPageSize.value;
+  const page = Math.floor((event.first ?? 0) / rows) + 1;
+  mensalStore.loadMensal(analysisStore.activeParams, analysisStore.cacheVersion, page, rows, mensalSortField.value, mensalSortOrder.value);
+}
+function onMensalSort(event) {
+  if (!event.sortField || ![1, -1].includes(event.sortOrder)) return;
+  mensalStore.loadMensal(
+    analysisStore.activeParams, analysisStore.cacheVersion, 1, mensalPageSize.value,
+    event.sortField, event.sortOrder === 1 ? 'asc' : 'desc',
+  );
+}
 let searchTimer = null;
 onScopeDispose(() => clearTimeout(searchTimer));
 
@@ -194,6 +262,12 @@ function onRankingSort(event) {
             :sort-order="rankingSortOrder"
             :search-query="searchInput"
             :applied-query="rankingResponseSearch"
+            :tab="rankingTab"
+            :mensal="mensalProps"
+            :serie="serieProps"
+            @update:tab="mensalStore.setTab"
+            @mensal-page="onMensalPage"
+            @mensal-sort="onMensalSort"
             @page="onRankingPage"
             @sort="onRankingSort"
             @search="onRankingSearch"

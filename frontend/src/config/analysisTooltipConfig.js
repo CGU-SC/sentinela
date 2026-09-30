@@ -48,6 +48,44 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
         },
     ],
   },
+  crmRankingMensal: {
+    title: 'Por mês',
+    body: 'Uma linha por médico e mês, no escopo e no período selecionados. Inicialmente, os meses mais distantes do P95 aparecem primeiro, de qualquer médico do recorte.',
+    icon: 'pi-calendar',
+    sections: [
+      {
+        label: 'Taxa diária do mês',
+        text: 'Prescrições ÷ dias com prescrição naquele mês, dentro do escopo.',
+      },
+      {
+        label: '×P95',
+        text: 'Taxa do mês ÷ P95 nacional do mesmo mês. Acima de 1× o mês tem taxa elevada. Comparar pelo ×P95 deixa meses de anos diferentes na mesma régua.',
+      },
+      {
+        label: 'Colunas agrupadas',
+        text: 'Produção ordena pelo número de prescrições; ×P95 / P95 do mês ordena pelo ×P95. Os valores complementares aparecem abaixo em cada célula.',
+      },
+    ],
+  },
+  crmRankingLinhaTempo: {
+    title: 'Taxa diária mensal',
+    body: 'Uma barra por mês do período, na mesma linha do tempo para todos os médicos. A altura é a taxa diária do mês (prescrições ÷ dias com prescrição) relativa ao maior mês do próprio médico.',
+    icon: 'pi-chart-bar',
+    sections: [
+      {
+        label: 'Cor',
+        text: 'Vermelho: mês com taxa elevada (acima do P95 nacional do mês). Azul: demais meses.',
+      },
+      {
+        label: 'Comparação entre médicos',
+        text: 'Cada linha tem a própria escala: a altura mostra os meses que destoam do padrão do médico. Para comparar médicos entre si, use a cor ou o tooltip de cada mês, que traz a taxa, o ×P95 e o P95 do mês.',
+      },
+      {
+        label: 'Mês sem barra',
+        text: 'O médico não teve prescrição no escopo naquele mês.',
+      },
+    ],
+  },
   crmHistorico: {
     title: 'Histórico do CRM',
     body: 'Tudo o que o CRM prescreveu no Farmácia Popular, em todas as farmácias. Os indicadores, a tabela, o mapa de calor e os pontos de atenção são do período filtrado; a linha do tempo mostra o histórico completo, com o período sombreado.',
@@ -75,6 +113,25 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
       {
         label: 'Detalhe',
         text: 'Clique na célula para abrir o detalhe mensal da atuação do CRM na farmácia.',
+      },
+    ],
+  },
+  crmHistoricoFiltros: {
+    title: 'Filtros do histórico',
+    body: 'Valem só para este modal; os filtros da página de análises não mudam. Ao fechar, o modal volta ao período da análise e a todas as farmácias.',
+    icon: 'pi-filter',
+    sections: [
+      {
+        label: 'Período',
+        text: 'Use um atalho ou escolha o intervalo na grade: clique no mês inicial e depois no final. Muda indicadores, pontos de atenção, tabela de farmácias e mapa de calor; a linha do tempo continua mostrando o histórico completo. "Últimos 12 meses de atuação" termina no último mês com prescrição do médico.',
+      },
+      {
+        label: 'Farmácia',
+        text: 'Uma farmácia por vez: indicadores, linha do tempo e pontos de atenção passam a ser só os dela, com taxa diária exata. Várias ao mesmo tempo não é possível porque o mesmo dia pode ter prescrição em duas farmácias, e os dados mensais não dizem quais dias se repetem.',
+      },
+      {
+        label: 'Taxa elevada com farmácia filtrada',
+        text: 'Continua sendo a do total do médico no mês: o P95 é calculado sobre a produção total de cada médico, não sobre uma farmácia.',
       },
     ],
   },
@@ -142,5 +199,41 @@ export function analysisTooltip(key, { extraSections = [] } = {}) {
     class: 'analysis-info-tooltip',
     showDelay: 120,
     hideDelay: 80,
+  };
+}
+
+function formatTooltipDecimal(value, casas = 2) {
+  return Number(value).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+}
+
+/**
+ * Tooltip de um mês de um médico (aba "Linha do tempo" do ranking de CRMs).
+ * @param {{competencia:number, nu_prescricoes:number, qtd_dias_com_prescricao:number,
+ *   taxa_prescricoes_dia:number, razao_p95:number, taxa_elevada:boolean}} ponto
+ * @param {number} p95 - P95 nacional do mês
+ */
+export function crmMesTooltip(ponto, p95) {
+  const comp = Number(ponto.competencia);
+  const mes = `${String(comp % 100).padStart(2, '0')}/${Math.floor(comp / 100)}`;
+  const dias = Number(ponto.qtd_dias_com_prescricao);
+  return {
+    value: `
+      <div class="analysis-tooltip-content analysis-tooltip-content--mes">
+        <div class="analysis-tooltip-heading">
+          <i class="pi pi-calendar" aria-hidden="true"></i>
+          <span>${escapeTooltipHtml(mes)}</span>
+          ${ponto.taxa_elevada ? '<span class="analysis-tooltip-flag">Taxa elevada</span>' : ''}
+        </div>
+        <dl class="analysis-tooltip-metrics">
+          <dt>Taxa diária</dt><dd>${formatTooltipDecimal(ponto.taxa_prescricoes_dia)}/dia</dd>
+          <dt>×P95</dt><dd>${formatTooltipDecimal(ponto.razao_p95, 1)}× (P95 ${formatTooltipDecimal(p95)})</dd>
+          <dt>Prescrições</dt><dd>${Number(ponto.nu_prescricoes).toLocaleString('pt-BR')} em ${dias} ${dias === 1 ? 'dia' : 'dias'}</dd>
+        </dl>
+      </div>
+    `,
+    escape: false,
+    class: 'analysis-info-tooltip',
+    showDelay: 0,
+    hideDelay: 0,
   };
 }

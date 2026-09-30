@@ -580,8 +580,73 @@ class CrmPrescricoesAnaliseResponse(BaseModel):
     filtro_farmacias_ativo: bool = False
 
 
+class CrmPrescricoesMensalItemSchema(BaseModel):
+    """Um medico em um mes (aba "Por mes" do ranking de /analises)."""
+    rank: int
+    id_medico: str
+    nu_crm: Optional[int] = None
+    sg_uf: Optional[str] = None
+    no_medico: Optional[str] = None
+    competencia: int
+    nu_prescricoes: int
+    qtd_dias_com_prescricao: int
+    # prescricoes / dias com prescricao no mes, no escopo consultado
+    taxa_prescricoes_dia: float
+    # P95 nacional do mes e taxa do mes / P95
+    p95_taxa_dia: float
+    razao_p95: float
+    # Mesma regra do ranking: taxa arredondada a 6 casas acima do P95 do mes.
+    taxa_elevada: bool
+
+
+class CrmPrescricoesMensalResponse(BaseModel):
+    escopo: str
+    periodo_inicio: date
+    periodo_fim: date
+    # Total de linhas medico x mes no recorte (com a busca aplicada).
+    qtd_linhas: int
+    page: int
+    page_size: int
+    linhas: List[CrmPrescricoesMensalItemSchema]
+    filtro_farmacias_ativo: bool = False
+
+
+class CrmSerieMensalMesSchema(BaseModel):
+    competencia: int
+    p95_taxa_dia: float
+
+
+class CrmSerieMensalPontoSchema(BaseModel):
+    competencia: int
+    nu_prescricoes: int
+    qtd_dias_com_prescricao: int
+    taxa_prescricoes_dia: float
+    razao_p95: float
+    taxa_elevada: bool
+
+
+class CrmSerieMensalMedicoSchema(BaseModel):
+    id_medico: str
+    # Somente os meses com prescricao no escopo e no periodo.
+    meses: List[CrmSerieMensalPontoSchema]
+
+
+class CrmPrescricoesSerieMensalResponse(BaseModel):
+    """Serie mensal dos medicos de uma pagina do ranking (aba "Linha do tempo")."""
+    escopo: str
+    periodo_inicio: date
+    periodo_fim: date
+    # Eixo comum: todos os meses do periodo, com o P95 nacional de cada um.
+    meses: List[CrmSerieMensalMesSchema]
+    medicos: List[CrmSerieMensalMedicoSchema]
+
+
 class CrmHistoricoMesSchema(BaseModel):
-    """Um mes do medico no Brasil (todas as farmacias)."""
+    """Um mes do medico no Brasil (todas as farmacias).
+
+    Com filtro de farmacia: prescricoes, dias e taxa sao os da farmacia;
+    alta_intensidade continua sendo a do total do medico no mes.
+    """
     competencia: int
     nu_prescricoes: int
     qtd_dias_com_prescricao: int
@@ -654,6 +719,8 @@ class CrmMedicoHistoricoResponse(BaseModel):
     localizado_cfm: bool
     periodo_inicio: date
     periodo_fim: date
+    # Farmacia filtrada (None = todas as farmacias).
+    id_cnpj_filtro: Optional[int] = None
     kpis: CrmHistoricoKpisSchema
     # Historico completo (todas as competencias com prescricao), para o grafico.
     meses: List[CrmHistoricoMesSchema]

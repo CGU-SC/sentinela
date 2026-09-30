@@ -110,8 +110,8 @@ def _farmacias(filtros: Mapping[str, object], inicio: date, fim: date) -> pl.Dat
     return _em_cache(("farmacias", _chave_filtros(filtros), inicio, fim), calcular)
 
 
-def _cnpjs(farmacias: pl.DataFrame, nivel: Optional[str], territorio: Optional[str]) -> list[int]:
-    if nivel is None:
+def _cnpjs(farmacias: pl.DataFrame, nivel: str, territorio: Optional[str]) -> list[int]:
+    if nivel == "brasil":
         return farmacias.get_column("id_cnpj").to_list()
     return farmacias.filter(pl.col(_COLUNA_TERRITORIO[nivel]) == territorio).get_column("id_cnpj").to_list()
 
@@ -133,9 +133,9 @@ def _medicos_por_territorio(filtros, nivel: str, inicio: date, fim: date) -> dic
     return _em_cache(("medicos", nivel, _chave_filtros(filtros), inicio, fim), calcular)
 
 
-def _medicos_escopo(filtros, nivel: Optional[str], territorio: Optional[str], inicio: date, fim: date) -> BitMap:
-    """Medicos com prescricao nas farmacias filtradas do escopo (None = Brasil)."""
-    if nivel == "brasil" or nivel is None:
+def _medicos_escopo(filtros, nivel: str, territorio: Optional[str], inicio: date, fim: date) -> BitMap:
+    """Medicos com prescricao nas farmacias filtradas do escopo (nivel de base.escopo_territorial)."""
+    if nivel == "brasil":
         por_uf = _medicos_por_territorio(filtros, "uf", inicio, fim)
         return _em_cache(
             ("medicos_brasil", _chave_filtros(filtros), inicio, fim),
@@ -202,10 +202,8 @@ def mapa_filtrado(
             .sort("percentual_alta_intensidade", descending=True, nulls_last=True)
         )
         referencia = {"percentual_referencia_brasil": percentual_brasil}
-        qtd = len(
-            _medicos_escopo(filtros, "uf", uf, inicio, fim) if uf and uf != "Todos"
-            else _medicos_escopo(filtros, None, None, inicio, fim)
-        )
+        # Mapa por UF: escopo e a UF selecionada ou o Brasil.
+        qtd = len(_medicos_escopo(filtros, *base.escopo_territorial(uf, None, None), inicio, fim))
         return base._map_items_from_summary(summary, "uf", percentual_brasil=percentual_brasil), qtd, referencia
 
     localidades = get_localidades_df()
@@ -249,14 +247,10 @@ def mapa_filtrado(
     if id_ibge7 is not None:
         geo_scope = geo_scope.filter(pl.col("id_ibge7") == id_ibge7)
 
-    if id_ibge7 is not None:
-        qtd = len(_medicos_escopo(filtros, "municipio", str(id_ibge7), inicio, fim))
-    elif regiao_id is not None:
-        qtd = len(_medicos_escopo(filtros, "regiao_saude", str(regiao_id), inicio, fim))
-    elif uf_referencia is not None:
-        qtd = len(_medicos_escopo(filtros, "uf", uf_referencia, inicio, fim))
-    else:
+    nivel_escopo, territorio_escopo = base.escopo_territorial(uf, regiao_id, id_ibge7)
+    if nivel_escopo == "brasil":
         raise HTTPException(status_code=422, detail="O mapa geografico exige UF, regiao de saude ou municipio.")
+    qtd = len(_medicos_escopo(filtros, nivel_escopo, territorio_escopo, inicio, fim))
 
     summary = (
         geo_scope
@@ -347,14 +341,7 @@ def ranking_filtrado(
     Devolve o agregado, a soma dos medicos da pagina e a soma completa sob
     demanda para ordenar pelas colunas das farmacias filtradas.
     """
-    if id_ibge7 is not None:
-        nivel, territorio = "municipio", str(id_ibge7)
-    elif regiao_id is not None:
-        nivel, territorio = "regiao_saude", str(regiao_id)
-    elif uf and uf != "Todos":
-        nivel, territorio = "uf", uf
-    else:
-        nivel, territorio = None, None
+    nivel, territorio = base.escopo_territorial(uf, regiao_id, id_ibge7)
 
     def calcular() -> pl.DataFrame:
         medicos = _medicos_escopo(filtros, nivel, territorio, inicio, fim)
@@ -387,3 +374,22 @@ def ranking_filtrado(
         )
 
     return agregado, prescricoes_pagina, prescricoes_completas
+
+
+def ids_medicos_filtrados(
+    *,
+    filtros: Mapping[str, object],
+    inicio: date,
+    fim: date,
+    uf: Optional[str],
+    regiao_id: Optional[int],
+    id_ibge7: Optional[int],
+) -> pl.Series:
+    """id_medico dos medicos com prescricao nas farmacias filtradas do escopo, no periodo."""
+    nivel, territorio = base.escopo_territorial(uf, regiao_id, id_ibge7)
+
+    def calcular() -> pl.Series:
+        medicos = _medicos_escopo(filtros, nivel, territorio, inicio, fim)
+        return _indice().ids_medico(medicos).cast(pl.Utf8).alias("id_medico")
+
+    return _em_cache(("ids_medicos", nivel, territorio, _chave_filtros(filtros), inicio, fim), calcular)

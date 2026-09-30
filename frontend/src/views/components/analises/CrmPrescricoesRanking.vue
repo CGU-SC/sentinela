@@ -4,9 +4,12 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { useFormatting } from '@/composables/useFormatting';
 import { useFrozenData } from '@/composables/useFrozenData';
-import { analysisTooltip } from '@/config/analysisTooltipConfig';
+import { analysisTooltip, crmMesTooltip } from '@/config/analysisTooltipConfig';
+import { DATA_NEUTRAL } from '@/config/colors';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
+import { useThemeStore } from '@/stores/theme';
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
+import CrmPrescricoesMensalTable from './CrmPrescricoesMensalTable.vue';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -25,9 +28,26 @@ const props = defineProps({
   farmaciasFiltradas: { type: Boolean, default: false },
   searchQuery: { type: String, default: '' },
   appliedQuery: { type: String, default: '' },
+  /** Aba ativa: 'resumo' | 'linha' | 'mes' */
+  tab: { type: String, default: 'resumo' },
+  /** Aba "Por mês": { response, loading, error, first, pageSize, sortField, sortOrder, appliedQuery } */
+  mensal: { type: Object, required: true },
+  /** Aba "Linha do tempo": { response, loading, error } da série mensal da página */
+  serie: { type: Object, required: true },
 });
 
-const emit = defineEmits(['page', 'sort', 'search', 'select-medico']);
+const emit = defineEmits(['page', 'sort', 'search', 'select-medico', 'update:tab', 'mensal-page', 'mensal-sort']);
+
+const TABS = [
+  { value: 'resumo', label: 'Resumo' },
+  { value: 'linha', label: 'Linha do tempo' },
+  { value: 'mes', label: 'Por mês' },
+];
+const themeStore = useThemeStore();
+const dataColorVars = computed(() => {
+  const cores = DATA_NEUTRAL[themeStore.isDark ? 'dark' : 'light'];
+  return { '--data-color': cores.strong, '--data-color-soft': cores.soft };
+});
 const snapshot = useFrozenData(
   () => ({
     rows: props.rows,
@@ -49,7 +69,56 @@ const rankingInfoTooltip = computed(() => analysisTooltip('crmRanking', {
     }]
     : [],
 }));
+const mensalInfoTooltip = analysisTooltip('crmRankingMensal');
+const linhaTempoTooltip = analysisTooltip('crmRankingLinhaTempo');
+const headerInfoTooltip = computed(() => (props.tab === 'mes' ? mensalInfoTooltip : rankingInfoTooltip.value));
 const { formatNumberFull, formatTitleCase } = useFormatting();
+
+// ── Aba "Por mês" ────────────────────────────────────────────────────────────
+const mensalRows = computed(() => props.mensal.response?.linhas ?? []);
+const mensalTotal = computed(() => props.mensal.response?.qtd_linhas ?? 0);
+const mensalInitialLoading = computed(() => props.mensal.loading && !props.mensal.response);
+
+// ── Aba "Linha do tempo": eixo comum (meses do período) e barras por médico ──
+const eixo = computed(() => {
+  const meses = props.serie.response?.meses;
+  if (!meses?.length) return null;
+  const indice = new Map(meses.map((m, i) => [m.competencia, i]));
+  const anos = [];
+  for (const m of meses) {
+    const ano = Math.floor(m.competencia / 100);
+    const ultimo = anos[anos.length - 1];
+    if (ultimo?.ano === ano) ultimo.meses += 1;
+    else anos.push({ ano, meses: 1 });
+  }
+  return { meses, indice, anos };
+});
+const barrasPorMedico = computed(() => {
+  const mapa = new Map();
+  const e = eixo.value;
+  if (!e) return mapa;
+  for (const medico of props.serie.response.medicos) {
+    const celulas = e.meses.map((m) => ({
+      competencia: m.competencia,
+      inicioAno: m.competencia % 100 === 1,
+      ponto: null,
+    }));
+    // Escala do próprio médico (como em "Farmácias onde atuou"): a barra mais
+    // alta é o mês de maior taxa diária dele; a cor indica taxa elevada.
+    const maximo = Math.max(...medico.meses.map((p) => Number(p.taxa_prescricoes_dia)));
+    for (const ponto of medico.meses) {
+      const i = e.indice.get(ponto.competencia);
+      if (i === undefined) {
+        throw new Error(`Contrato inválido em crm-prescricoes-serie-mensal: mês ${ponto.competencia} fora do período.`);
+      }
+      celulas[i].ponto = ponto;
+      celulas[i].altura = `${(Number(ponto.taxa_prescricoes_dia) / maximo) * 100}%`;
+      celulas[i].tooltip = crmMesTooltip(ponto, e.meses[i].p95_taxa_dia);
+    }
+    mapa.set(medico.id_medico, celulas);
+  }
+  return mapa;
+});
 const highRateTooltip = `Taxa de pelo menos ${CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD} prescrições por dia no período selecionado. Destaque visual, sem classificação de irregularidade.`;
 
 function isHighDailyRate(row) {
@@ -80,6 +149,15 @@ function onSort(event) {
 function onPage(event) {
   if (!props.isRefreshing && !props.isStale) emit('page', event);
 }
+
+const subtitulo = computed(() => {
+  if (props.tab === 'mes') {
+    const r = props.mensal.response;
+    if (!r) return snapshot.value.escopo;
+    return `${r.escopo} · ${formatNumberFull(r.qtd_linhas)} ${props.mensal.appliedQuery ? 'meses encontrados' : 'linhas médico × mês'}`;
+  }
+  return `${snapshot.value.escopo} · ${formatNumberFull(snapshot.value.totalRecords)} ${props.appliedQuery ? 'médicos encontrados' : 'médicos no recorte'}`;
+});
 </script>
 
 <template>
@@ -94,13 +172,28 @@ function onPage(event) {
         <div>
           <div class="ranking-title-row">
             <h2>Ranking de médicos por taxa diária</h2>
-            <i class="pi pi-info-circle info-icon" v-tooltip.bottom="rankingInfoTooltip" aria-label="Como ler o ranking" />
+            <i class="pi pi-info-circle info-icon" v-tooltip.bottom="headerInfoTooltip" aria-label="Como ler o ranking" />
           </div>
-          <span v-if="error && snapshot.rows.length" class="ranking-status--error" role="alert" v-tooltip.bottom="error">
+          <span v-if="tab !== 'mes' && error && snapshot.rows.length" class="ranking-status--error" role="alert" v-tooltip.bottom="error">
             Falha ao atualizar · resultado anterior exibido
           </span>
-          <span v-else>{{ snapshot.escopo }} · {{ formatNumberFull(snapshot.totalRecords) }} {{ appliedQuery ? 'médicos encontrados' : 'médicos no recorte' }}</span>
+          <span v-else-if="tab === 'mes' && mensal.error && mensal.response" class="ranking-status--error" role="alert" v-tooltip.bottom="mensal.error">
+            Falha ao atualizar · resultado anterior exibido
+          </span>
+          <span v-else>{{ subtitulo }}</span>
         </div>
+      </div>
+      <div class="ranking-tabs" role="tablist" aria-label="Visões do ranking">
+        <button
+          v-for="opcao in TABS"
+          :key="opcao.value"
+          type="button"
+          role="tab"
+          class="ranking-tab"
+          :class="{ 'is-active': tab === opcao.value }"
+          :aria-selected="tab === opcao.value"
+          @click="emit('update:tab', opcao.value)"
+        >{{ opcao.label }}</button>
       </div>
       <div class="ranking-search">
         <i class="pi pi-search" aria-hidden="true" />
@@ -127,7 +220,50 @@ function onPage(event) {
       </div>
     </header>
 
-    <div v-if="error && !snapshot.rows.length && !isLoading" class="ranking-state ranking-state--error">
+    <template v-if="tab === 'mes'">
+      <div v-if="mensal.error && !mensal.response && !mensal.loading" class="ranking-state ranking-state--error">
+        <i class="pi pi-database" />
+        <div>
+          <strong>Visão mensal indisponível no momento</strong>
+          <span>{{ mensal.error }}</span>
+        </div>
+      </div>
+      <div v-else-if="mensalInitialLoading || !mensal.response" class="ranking-state">
+        <i class="pi pi-spin pi-spinner" />
+        <span>Calculando meses...</span>
+      </div>
+      <div v-else-if="!mensalRows.length" class="ranking-state ranking-state--vazio">
+        <i class="pi pi-info-circle" />
+        <span v-if="mensal.appliedQuery">
+          Nenhum médico encontrado para o termo “<HighlightedText :text="mensal.appliedQuery" :query="mensal.appliedQuery" />”
+        </span>
+        <span v-else>Nenhum mês com prescrição para os filtros atuais.</span>
+      </div>
+      <div v-else class="ranking-table-wrap" :aria-busy="mensal.loading">
+        <CrmPrescricoesMensalTable
+          :rows="mensalRows"
+          :total-records="mensalTotal"
+          :first="mensal.first"
+          :page-size="mensal.pageSize"
+          :sort-field="mensal.sortField"
+          :sort-order="mensal.sortOrder"
+          :is-loading="mensal.loading"
+          :applied-query="mensal.appliedQuery"
+          @page="emit('mensal-page', $event)"
+          @sort="emit('mensal-sort', $event)"
+          @select-medico="emit('select-medico', $event)"
+        />
+        <div v-if="mensal.loading" class="ranking-table-loading" role="status" aria-label="Atualizando visão mensal">
+          <i class="pi pi-spin pi-spinner" aria-hidden="true" />
+        </div>
+      </div>
+      <div v-if="mensal.error && mensal.response" class="ranking-page-error" role="alert">
+        <i class="pi pi-exclamation-circle" />
+        <span>{{ mensal.error }}</span>
+      </div>
+    </template>
+
+    <div v-else-if="error && !snapshot.rows.length && !isLoading" class="ranking-state ranking-state--error">
       <i class="pi pi-database" />
       <div>
         <strong>Ranking indisponível no momento</strong>
@@ -138,13 +274,16 @@ function onPage(event) {
       <i class="pi pi-spin pi-spinner" />
       <span>Calculando ranking...</span>
     </div>
-    <div v-else-if="!snapshot.rows.length" class="ranking-state">
+    <div v-else-if="!snapshot.rows.length" class="ranking-state ranking-state--vazio">
       <i class="pi pi-info-circle" />
-      <span>{{ appliedQuery ? 'Nenhum médico corresponde à busca neste recorte.' : 'Nenhum médico encontrado para os filtros atuais.' }}</span>
+      <span v-if="appliedQuery">
+        Nenhum médico encontrado para o termo “<HighlightedText :text="appliedQuery" :query="appliedQuery" />”
+      </span>
+      <span v-else>Nenhum médico encontrado para os filtros atuais.</span>
     </div>
     <div v-else class="ranking-table-wrap" :aria-busy="isRefreshing">
       <DataTable
-        :key="`${snapshot.sortField}:${snapshot.sortOrder}:${pageError ?? ''}`"
+        :key="`${tab}:${snapshot.sortField}:${snapshot.sortOrder}:${pageError ?? ''}`"
         :value="snapshot.rows"
         data-key="id_medico"
         size="small"
@@ -156,7 +295,7 @@ function onPage(event) {
         :rows-per-page-options="[25, 50, 100]"
         :sort-field="snapshot.sortField"
         :sort-order="snapshot.sortOrder === 'asc' ? 1 : -1"
-        :class="['enterprise-table', 'crm-ranking-table', 'clickable-rows', { 'is-stale': isStale }]"
+        :class="['enterprise-table', 'crm-ranking-table', 'clickable-rows', { 'is-stale': isStale, 'is-linha': tab === 'linha' }]"
         @row-click="onRowClick"
         @sort="onSort"
         @page="onPage"
@@ -174,7 +313,7 @@ function onPage(event) {
             <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="appliedQuery" /></span>
           </template>
         </Column>
-        <Column field="taxa_prescricoes_dia" header="TAXA / DIA" sortable header-class="col-number col-rate" body-class="col-number col-rate rate-cell">
+        <Column v-if="tab === 'resumo'" field="taxa_prescricoes_dia" header="TAXA / DIA" sortable header-class="col-number col-rate" body-class="col-number col-rate rate-cell">
           <template #body="{ data }">
             <span
               class="rate-value"
@@ -183,19 +322,56 @@ function onPage(event) {
             >{{ Number(data.taxa_prescricoes_dia).toFixed(2).replace('.', ',') }}</span>
           </template>
         </Column>
-        <Column field="nu_prescricoes" header="PRODUÇÃO" sortable header-class="col-number col-production" body-class="col-number col-production">
+        <Column v-if="tab === 'resumo'" field="nu_prescricoes" header="PRODUÇÃO" sortable header-class="col-number col-production" body-class="col-number col-production">
           <template #body="{ data }">
             <span class="metric-main">{{ formatNumberFull(data.nu_prescricoes) }} prescrições</span>
             <span class="metric-detail">{{ formatNumberFull(data.qtd_dias_com_prescricao) }} dias com prescrição</span>
           </template>
         </Column>
-        <Column field="percentual_meses_alta_intensidade" header="MESES COM TAXA ELEVADA" sortable header-class="col-number col-months" body-class="col-number col-months">
+        <Column v-if="tab === 'linha'" header-class="col-linha" body-class="col-linha">
+          <template #header>
+            <div class="lt-header">
+              <span class="lt-header-title">
+                TAXA DIÁRIA MENSAL
+                <i
+                  class="pi pi-info-circle info-icon"
+                  v-tooltip.top="linhaTempoTooltip"
+                  tabindex="0"
+                  aria-label="Como ler a linha do tempo"
+                />
+              </span>
+              <span v-if="eixo" class="lt-anos" aria-hidden="true">
+                <span v-for="a in eixo.anos" :key="a.ano" :style="{ flexGrow: a.meses }">{{ a.ano }}</span>
+              </span>
+            </div>
+          </template>
+          <template #body="{ data }">
+            <div v-if="barrasPorMedico.get(data.id_medico)" class="lt-bars" :style="dataColorVars">
+              <span
+                v-for="celula in barrasPorMedico.get(data.id_medico)"
+                :key="celula.competencia"
+                class="lt-mes"
+                :class="{ 'is-ano': celula.inicioAno }"
+                v-tooltip.top="celula.tooltip ?? null"
+              >
+                <span
+                  v-if="celula.ponto"
+                  class="lt-bar"
+                  :class="{ 'is-elevada': celula.ponto.taxa_elevada }"
+                  :style="{ height: celula.altura }"
+                />
+              </span>
+            </div>
+            <div v-else class="lt-placeholder" :class="{ 'is-loading': serie.loading }" aria-hidden="true" />
+          </template>
+        </Column>
+        <Column v-if="tab === 'resumo'" field="percentual_meses_alta_intensidade" header="MESES COM TAXA ELEVADA" sortable header-class="col-number col-months" body-class="col-number col-months">
           <template #body="{ data }">
             <span class="metric-main">{{ formatPercent(data.percentual_meses_alta_intensidade) }}</span>
             <span class="metric-detail">{{ formatNumberFull(data.qtd_meses_alta_intensidade) }} de {{ formatNumberFull(data.qtd_meses_ativos) }} meses</span>
           </template>
         </Column>
-        <Column v-if="snapshot.farmaciasFiltradas" field="nu_prescricoes_farmacias_filtradas" header="FARMÁCIAS FILTRADAS" sortable header-class="col-number col-filtered" body-class="col-number col-filtered">
+        <Column v-if="tab === 'resumo' && snapshot.farmaciasFiltradas" field="nu_prescricoes_farmacias_filtradas" header="FARMÁCIAS FILTRADAS" sortable header-class="col-number col-filtered" body-class="col-number col-filtered">
           <template #body="{ data }">
             <span class="metric-main">{{ formatNumberFull(data.nu_prescricoes_farmacias_filtradas) }} prescrições</span>
             <span class="metric-detail">{{ formatPercent(data.percentual_prescricoes_farmacias_filtradas) }} do total</span>
@@ -207,9 +383,13 @@ function onPage(event) {
       </div>
     </div>
 
-    <div v-if="pageError && snapshot.rows.length" class="ranking-page-error" role="alert">
+    <div v-if="tab !== 'mes' && pageError && snapshot.rows.length" class="ranking-page-error" role="alert">
       <i class="pi pi-exclamation-circle" />
       <span>{{ pageError }}</span>
+    </div>
+    <div v-if="tab === 'linha' && serie.error && snapshot.rows.length" class="ranking-page-error" role="alert">
+      <i class="pi pi-exclamation-circle" />
+      <span>{{ serie.error }}</span>
     </div>
   </section>
 </template>
@@ -238,6 +418,8 @@ function onPage(event) {
 .info-icon { color: var(--text-muted); font-size: .8rem; opacity: .7; }
 .info-icon:hover { opacity: 1; }
 .ranking-state { min-height: calc(var(--ranking-column-header-height) + var(--ranking-page-size) * var(--ranking-row-height) + var(--ranking-paginator-height)); display: flex; align-items: center; justify-content: center; gap: .6rem; color: var(--text-muted); font-size: .8rem; }
+/* Sem resultados: card baixo, para a mensagem ficar à vista sem rolar a página. */
+.ranking-state--vazio { min-height: 12rem; }
 .ranking-state i { color: var(--primary-color); }
 .ranking-state--error { text-align: left; }
 .ranking-state--error strong, .ranking-state--error span { display: block; }
@@ -251,6 +433,8 @@ function onPage(event) {
 .crm-ranking-table:has(.col-filtered) :deep(.p-datatable-table) { width: calc(max(100%, 44rem) + 11.25rem); }
 .crm-ranking-table :deep(.p-datatable-tbody > tr) { height: var(--ranking-row-height); }
 .crm-ranking-table :deep(.p-datatable-thead > tr > th) { white-space: normal; vertical-align: bottom; line-height: 1.25; }
+/* Mesma altura de cabeçalho nas três abas (duas linhas de título). */
+.crm-ranking-panel :deep(.crm-ranking-table .p-datatable-thead > tr) { height: var(--ranking-column-header-height); }
 .crm-ranking-table :deep(.p-datatable-thead > tr > th .p-column-header-content) { gap: .3rem; }
 .crm-ranking-table :deep(.p-datatable-thead > tr > th.col-number .p-column-header-content) { justify-content: flex-end; }
 .crm-ranking-table :deep(.p-datatable-tbody > tr > td) { padding: .65rem .8rem; vertical-align: middle; overflow: hidden; }
@@ -261,15 +445,44 @@ function onPage(event) {
 .crm-ranking-table :deep(.col-production) { width: 10.5rem; }
 .crm-ranking-table :deep(.col-months) { width: 10rem; }
 .crm-ranking-table :deep(.col-filtered) { width: 11.25rem; }
-.metric-main, .metric-detail { display: block; white-space: nowrap; }
-.metric-main, .metric-detail, .doctor-name, .doctor-crm { overflow: hidden; text-overflow: ellipsis; }
-.metric-main { color: var(--text-color-85); font-weight: 500; }
-.metric-detail { margin-top: .15rem; color: var(--text-muted); font-size: .68rem; }
-.doctor-name, .doctor-crm { display: block; white-space: nowrap; }
-.doctor-name { color: var(--text-color-85); font-weight: 500; }
-.doctor-crm { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
-.rate-value { display: inline-block; color: var(--text-color-85); font-weight: 500; }
-.rate-value--high { padding: .18rem .38rem; margin: -.18rem -.38rem; border-radius: 5px; background: color-mix(in srgb, var(--risk-high) 12%, var(--card-bg)); color: var(--risk-high); font-weight: 600; }
+/* :deep: também valem para a tabela da aba "Por mês" (componente filho). */
+.crm-ranking-panel :deep(.metric-main), .crm-ranking-panel :deep(.metric-detail) { display: block; white-space: nowrap; }
+.crm-ranking-panel :deep(.metric-main), .crm-ranking-panel :deep(.metric-detail),
+.crm-ranking-panel :deep(.doctor-name), .crm-ranking-panel :deep(.doctor-crm) { overflow: hidden; text-overflow: ellipsis; }
+.crm-ranking-panel :deep(.metric-main) { color: var(--text-color-85); font-weight: 500; }
+.crm-ranking-panel :deep(.metric-detail) { margin-top: .15rem; color: var(--text-muted); font-size: .68rem; }
+.crm-ranking-panel :deep(.doctor-name), .crm-ranking-panel :deep(.doctor-crm) { display: block; white-space: nowrap; }
+.crm-ranking-panel :deep(.doctor-name) { color: var(--text-color-85); font-weight: 500; }
+.crm-ranking-panel :deep(.doctor-crm) { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
+
+/* Abas */
+.ranking-tabs { display: inline-flex; flex-shrink: 0; gap: 2px; padding: 3px; border: 1px solid var(--card-border); border-radius: 9px; background: color-mix(in srgb, var(--text-color) 4%, transparent); }
+.ranking-tab { min-height: 28px; padding: 0 .75rem; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
+.ranking-tab:hover { color: var(--text-color-85); background: color-mix(in srgb, var(--text-color-85) 6%, transparent); }
+.ranking-tab:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 2px; }
+.ranking-tab.is-active { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 45%, transparent); }
+
+/* Linha do tempo */
+.crm-ranking-table.is-linha :deep(.p-datatable-table) { width: max(100%, 56rem); }
+.crm-ranking-table.is-linha :deep(.col-doctor) { width: 15rem; }
+.crm-ranking-table :deep(.col-linha) { width: auto; }
+.crm-ranking-table :deep(th.col-linha .p-column-header-content) { display: block; }
+.lt-header { display: flex; flex-direction: column; gap: .12rem; }
+.lt-header-title { display: inline-flex; align-items: center; gap: .3rem; }
+.lt-anos { display: flex; color: var(--text-muted); font-size: .6rem; font-weight: 500; line-height: 1; letter-spacing: 0; }
+.lt-anos > span { flex-basis: 0; min-width: 0; padding-left: .2rem; border-left: 1px solid var(--card-border); overflow: hidden; white-space: nowrap; }
+.lt-bars { position: relative; display: flex; align-items: flex-end; height: 34px; border-bottom: 1px solid var(--card-border); }
+.lt-mes { position: relative; display: flex; flex: 1 1 0; align-items: flex-end; justify-content: center; min-width: 0; height: 100%; }
+.lt-mes.is-ano:not(:first-child) { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--card-border) 70%, transparent); }
+.lt-mes:hover { background: color-mix(in srgb, var(--text-color) 6%, transparent); }
+.lt-bar { width: 72%; max-width: 10px; min-height: 1.5px; border-radius: 1px 1px 0 0; background: var(--data-color); }
+.lt-bar.is-elevada { background: var(--risk-high); }
+.lt-placeholder { height: 34px; border-bottom: 1px solid var(--card-border); }
+.lt-placeholder.is-loading { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text-color) 6%, transparent), transparent); background-size: 200% 100%; animation: lt-shimmer 1.2s linear infinite; }
+@keyframes lt-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+/* :deep: também vale para a aba "Por mês" (componente filho). */
+.crm-ranking-panel :deep(.rate-value) { display: inline-block; color: var(--text-color-85); font-weight: 500; }
+.crm-ranking-panel :deep(.rate-value--high) { padding: .18rem .38rem; margin: -.18rem -.38rem; border-radius: 5px; background: color-mix(in srgb, var(--risk-high) 12%, var(--card-bg)); color: var(--risk-high); font-weight: 600; }
 .rank-button { padding: .12rem .25rem; margin: -.12rem -.25rem; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .rank-button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 .rank-button:disabled { cursor: default; }

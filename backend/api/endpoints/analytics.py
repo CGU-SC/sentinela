@@ -22,6 +22,8 @@ from ..schemas.analytics import (
     ClinicoIncompatibilidadeResponse,
     AlertasPanoramaResponse,
     CrmPrescricoesAnaliseResponse,
+    CrmPrescricoesMensalResponse,
+    CrmPrescricoesSerieMensalResponse,
     CrmMedicoHistoricoResponse,
     NotaTecnicaReadinessResponse,
     NotaTecnicaPrepareResponse,
@@ -114,17 +116,118 @@ def get_crm_prescricoes_analise(
     )
 
 
+def _crm_filtros_farmacia(
+    perc_min: Optional[float] = Query(None),
+    perc_max: Optional[float] = Query(None),
+    val_min: Optional[float] = Query(None),
+    situacao_rf: Optional[str] = Query(None),
+    conexao_ms: Optional[str] = Query(None),
+    porte_empresa: Optional[str] = Query(None),
+    grande_rede: Optional[str] = Query(None),
+    cnpj_raiz: Optional[str] = Query(None),
+    unidade_pf: Optional[str] = Query(None),
+    razao_social: Optional[str] = Query(None),
+    estabelecimento: Optional[str] = Query(None),
+    par_teia: Optional[str] = Query(None),
+    socio_beneficio: Optional[str] = Query(None),
+    socio_esocial: Optional[str] = Query(None),
+    cnae_incompativel: bool = Query(False),
+    socio_idade_atipica: bool = Query(False),
+    socio_falecido: bool = Query(False),
+    volume_atipico: bool = Query(False),
+    volume_atipico_limite: Optional[float] = Query(None),
+    dispersao_uf_sem_fronteira: bool = Query(False),
+    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
+) -> dict:
+    """Filtros de farmacia da tela /analises (mesmos de /crm-prescricoes-analise)."""
+    return {
+        "perc_min": perc_min,
+        "perc_max": perc_max,
+        "val_min": val_min,
+        "situacao_rf": situacao_rf,
+        "conexao_ms": conexao_ms,
+        "porte_empresa": porte_empresa,
+        "grande_rede": grande_rede,
+        "cnpj_raiz": cnpj_raiz,
+        "unidade_pf": unidade_pf,
+        "razao_social": razao_social,
+        "estabelecimento": estabelecimento,
+        "par_teia": par_teia,
+        "socio_beneficio": socio_beneficio,
+        "socio_esocial": socio_esocial,
+        "cnae_incompativel": cnae_incompativel,
+        "socio_idade_atipica": socio_idade_atipica,
+        "socio_falecido": socio_falecido,
+        "volume_atipico": volume_atipico,
+        "volume_atipico_limite": volume_atipico_limite,
+        "dispersao_uf_sem_fronteira": dispersao_uf_sem_fronteira,
+        "dispersao_uf_sem_fronteira_limite": dispersao_uf_sem_fronteira_limite,
+    }
+
+
+@router.get("/crm-prescricoes-mensal", response_model=CrmPrescricoesMensalResponse)
+def get_crm_prescricoes_mensal(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    medico_query: Optional[str] = Query(None, max_length=120),
+    sort_field: str = Query("razao_p95"),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+    uf: Optional[str] = Query(None),
+    regiao_id: Optional[int] = Query(None),
+    id_ibge7: Optional[int] = Query(None),
+    filtros: dict = Depends(_crm_filtros_farmacia),
+):
+    """Uma linha por medico e mes (aba "Por mês" do ranking de /analises)."""
+    return AnalyticsService.get_crm_prescricoes_mensal(
+        page=page,
+        page_size=page_size,
+        medico_query=medico_query,
+        sort_field=sort_field,
+        sort_order=sort_order,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        uf=uf,
+        regiao_id=regiao_id,
+        id_ibge7=id_ibge7,
+        **filtros,
+    )
+
+
+@router.get("/crm-prescricoes-serie-mensal", response_model=CrmPrescricoesSerieMensalResponse)
+def get_crm_prescricoes_serie_mensal(
+    ids: str = Query(..., max_length=4000, description="id_medico separados por virgula (ex.: 26188/SC,1234/PR)."),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+    uf: Optional[str] = Query(None),
+    regiao_id: Optional[int] = Query(None),
+    id_ibge7: Optional[int] = Query(None),
+):
+    """Série mensal dos médicos de uma página do ranking (aba "Linha do tempo")."""
+    return AnalyticsService.get_crm_prescricoes_serie_mensal(
+        ids=ids,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        uf=uf,
+        regiao_id=regiao_id,
+        id_ibge7=id_ibge7,
+    )
+
+
 @router.get("/crm-medico-historico", response_model=CrmMedicoHistoricoResponse)
 def get_crm_medico_historico(
     id_medico: str = Query(..., description="CRM no formato numero/UF, ex.: 26188/SC."),
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
+    id_cnpj: Optional[int] = Query(None, description="Filtra o historico por uma farmacia (id_cnpj)."),
 ):
     """Historico completo de um CRM: meses, farmacias e pontos de atencao."""
     return AnalyticsService.get_crm_medico_historico(
         id_medico=id_medico,
         data_inicio=data_inicio,
         data_fim=data_fim,
+        id_cnpj=id_cnpj,
     )
 
 

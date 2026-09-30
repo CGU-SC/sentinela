@@ -2946,10 +2946,10 @@ const clearSearch = () => {
 }
 
 /* Foco do autocomplete de estabelecimento: mesmo tom stone+primary da sidebar
-   de indicadores; .p-component/:enabled elevam a especificidade para vencer
-   as regras globais de foco do AppLayout. */
+   de indicadores. .estabelecimento-ac e .p-autocomplete sao o MESMO elemento
+   (cadeia encadeada); :enabled/:focus elevam especificidade sobre o AppLayout. */
 :global(
-  .admin-sidebar .estabelecimento-ac .p-autocomplete.p-component .p-autocomplete-input:enabled:focus
+  .admin-sidebar .estabelecimento-ac.p-autocomplete.p-component .p-autocomplete-input:enabled:focus
 ) {
   border: 1px solid
     color-mix(in srgb, var(--primary-color) 15%, #78716c) !important;
@@ -2960,7 +2960,7 @@ const clearSearch = () => {
 }
 
 :global(
-  .admin-sidebar .estabelecimento-ac .p-autocomplete.p-component .p-autocomplete-input:enabled:hover:not(:focus)
+  .admin-sidebar .estabelecimento-ac.p-autocomplete.p-component .p-autocomplete-input:enabled:hover:not(:focus)
 ) {
   border: 1px solid
     color-mix(in srgb, var(--primary-color) 10%, color-mix(in srgb, #78716c 60%, var(--sidebar-border))) !important;

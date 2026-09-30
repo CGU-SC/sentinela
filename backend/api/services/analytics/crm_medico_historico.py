@@ -11,6 +11,14 @@ Fontes (todas ja sincronizadas; nenhuma consulta ao banco):
 
 As duas tabelas por medico tem de bater mes a mes (mesma execucao da etapa 1);
 se nao baterem, responde 503 em vez de mostrar numeros incoerentes.
+
+Filtro de farmacia (id_cnpj): meses, indicadores e pontos de atencao passam a
+ser os da farmacia (prescricoes e dias dela no mes, exatos). So uma farmacia
+por vez: os dias de farmacias diferentes nao se somam (o mesmo dia pode ter
+prescricao nas duas). A marcacao de taxa elevada continua sendo a do total do
+medico no mes (o P95 e calculado sobre o total). A lista de farmacias e a
+serie farmacia x mes continuam completas (tabela e coluna de atuacao), com a
+participacao de cada farmacia no total do medico.
 """
 
 from datetime import date
@@ -67,6 +75,7 @@ def get_crm_medico_historico(
     id_medico: str,
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
+    id_cnpj: Optional[int] = None,
 ) -> CrmMedicoHistoricoResponse:
     id_medico = id_medico.strip()
     if not id_medico:
@@ -107,6 +116,8 @@ def get_crm_medico_historico(
 
     if por_farmacia.is_empty():
         raise HTTPException(status_code=404, detail=f"CRM {id_medico} sem prescricoes registradas.")
+    if id_cnpj is not None and por_farmacia.filter(pl.col("id_cnpj") == id_cnpj).is_empty():
+        raise HTTPException(status_code=404, detail=f"CRM {id_medico} sem prescricoes na farmacia {id_cnpj}.")
 
     # Conferencia: soma por farmacia = total Brasil, mes a mes.
     soma_farmacias = por_farmacia.group_by("competencia").agg(pl.col("nu_prescricoes").sum().alias("soma"))
@@ -138,6 +149,7 @@ def get_crm_medico_historico(
         .unique("id_cnpj", keep="first")
     )
     por_farmacia = por_farmacia.join(cadastro.select(["id_cnpj", "uf", "municipio"]), on="id_cnpj", how="left")
+    por_farmacia_todas = por_farmacia
 
     # Cadastro do medico
     medico = (
@@ -172,6 +184,26 @@ def get_crm_medico_historico(
     )
     if meses_df.filter(pl.col("p95_taxa_dia").is_null()).height:
         raise HTTPException(status_code=503, detail="Limiar P95 ausente para algum mes do historico do medico.")
+    # Total do medico no periodo (base do % de cada farmacia na tabela).
+    total_medico_periodo = int(meses_df.filter(pl.col("no_periodo")).get_column("nu_prescricoes").sum() or 0)
+    if id_cnpj is not None:
+        # Meses da farmacia: prescricoes, dias e taxa dela; taxa elevada do total.
+        por_farmacia = por_farmacia.filter(pl.col("id_cnpj") == id_cnpj)
+        meses_df = (
+            por_farmacia.select(["competencia", "nu_prescricoes", "qtd_dias", "uf"])
+            .join(
+                meses_df.select(["competencia", "p95_taxa_dia", "alta", "no_periodo"]),
+                on="competencia", how="left",
+            )
+            .with_columns([
+                (pl.col("nu_prescricoes") / pl.col("qtd_dias")).alias("taxa"),
+                pl.lit(1, dtype=pl.Int64).alias("qtd_farmacias"),
+                pl.col("uf").is_not_null().cast(pl.Int64).alias("qtd_ufs"),
+            ])
+            .sort("competencia")
+        )
+        if meses_df.filter(pl.col("p95_taxa_dia").is_null()).height:
+            raise HTTPException(status_code=503, detail="Farmacia com mes ausente no total mensal do medico.")
     meses = [
         CrmHistoricoMesSchema(
             competencia=int(r["competencia"]),
@@ -193,8 +225,9 @@ def get_crm_medico_historico(
     total_periodo = int(meses_periodo.get_column("nu_prescricoes").sum() or 0)
     dias_periodo = int(meses_periodo.get_column("qtd_dias").sum() or 0)
 
+    farm_todas = por_farmacia_todas.filter(pl.col("competencia").is_between(comp_ini, comp_fim))
     farmacias_df = (
-        farm_periodo.group_by("id_cnpj")
+        farm_todas.group_by("id_cnpj")
         .agg([
             pl.col("nu_prescricoes").sum().alias("nu_prescricoes"),
             pl.col("competencia").n_unique().alias("qtd_meses"),
@@ -214,7 +247,7 @@ def get_crm_medico_historico(
             situacao_rf=r["situacao_rf"],
             conexao_ativa=r["conexao_ativa"],
             nu_prescricoes=int(r["nu_prescricoes"]),
-            percentual_prescricoes=(r["nu_prescricoes"] / total_periodo * 100) if total_periodo else 0.0,
+            percentual_prescricoes=(r["nu_prescricoes"] / total_medico_periodo * 100) if total_medico_periodo else 0.0,
             qtd_meses=int(r["qtd_meses"]),
             primeira_competencia=int(r["primeira"]),
             ultima_competencia=int(r["ultima"]),
@@ -226,7 +259,12 @@ def get_crm_medico_historico(
     # Pior mes: maior taxa diaria; empate -> mais prescricoes, depois o mais antigo.
     pior = meses_periodo.sort(["taxa", "nu_prescricoes", "competencia"], descending=[True, True, False]).head(1)
     qtd_alta = int(meses_periodo.get_column("alta").sum() or 0)
-    pcts = [f.percentual_prescricoes for f in farmacias]
+    if id_cnpj is not None:
+        # Com filtro: "farmacia principal" = participacao da farmacia no total.
+        selecionada = [f.percentual_prescricoes for f in farmacias if f.id_cnpj == id_cnpj]
+        pcts = selecionada
+    else:
+        pcts = [f.percentual_prescricoes for f in farmacias]
     kpis = CrmHistoricoKpisSchema(
         nu_prescricoes=total_periodo,
         qtd_dias_com_prescricao=dias_periodo,
@@ -234,11 +272,11 @@ def get_crm_medico_historico(
         qtd_meses_ativos=meses_periodo.height,
         qtd_meses_alta_intensidade=qtd_alta,
         percentual_meses_alta_intensidade=(qtd_alta / meses_periodo.height * 100) if meses_periodo.height else None,
-        qtd_farmacias=len(farmacias),
+        qtd_farmacias=farm_periodo.get_column("id_cnpj").n_unique(),
         qtd_municipios=farm_periodo.select(pl.col("municipio").drop_nulls().n_unique()).item(),
         qtd_ufs=farm_periodo.select(pl.col("uf").drop_nulls().n_unique()).item(),
         percentual_farmacia_principal=pcts[0] if pcts else None,
-        percentual_top3_farmacias=sum(pcts[:3]) if pcts else None,
+        percentual_top3_farmacias=sum(pcts[:3]) if pcts and id_cnpj is None else None,
         pior_mes_competencia=int(pior.item(0, "competencia")) if pior.height else None,
         pior_mes_taxa_prescricoes_dia=float(pior.item(0, "taxa")) if pior.height else None,
         pior_mes_prescricoes=int(pior.item(0, "nu_prescricoes")) if pior.height else None,
@@ -262,7 +300,7 @@ def get_crm_medico_historico(
                 competencias=antes,
             ))
     multi = meses_periodo.filter(pl.col("qtd_ufs") > 1).get_column("competencia").to_list()
-    if multi:
+    if multi and id_cnpj is None:
         pontos.append(CrmHistoricoAtencaoSchema(
             codigo="multiplas_ufs",
             titulo="Prescrições em mais de uma UF no mesmo mês",
@@ -280,7 +318,7 @@ def get_crm_medico_historico(
             ),
             competencias=sequencia,
         ))
-    if farmacias and farmacias[0].percentual_prescricoes >= LIMITE_CONCENTRACAO_PERCENTUAL:
+    if id_cnpj is None and farmacias and farmacias[0].percentual_prescricoes >= LIMITE_CONCENTRACAO_PERCENTUAL:
         principal = farmacias[0]
         pontos.append(CrmHistoricoAtencaoSchema(
             codigo="concentracao",
@@ -300,6 +338,7 @@ def get_crm_medico_historico(
         localizado_cfm=bool(info),
         periodo_inicio=inicio,
         periodo_fim=fim,
+        id_cnpj_filtro=id_cnpj,
         kpis=kpis,
         meses=meses,
         farmacias=farmacias,
@@ -307,7 +346,7 @@ def get_crm_medico_historico(
             CrmHistoricoFarmaciaMesSchema(
                 id_cnpj=int(a), competencia=int(b), nu_prescricoes=int(c), qtd_dias_com_prescricao=int(e),
             )
-            for a, b, c, e in por_farmacia.select(["id_cnpj", "competencia", "nu_prescricoes", "qtd_dias"])
+            for a, b, c, e in por_farmacia_todas.select(["id_cnpj", "competencia", "nu_prescricoes", "qtd_dias"])
             .sort(["competencia", "id_cnpj"]).iter_rows()
         ],
         pontos_atencao=pontos,

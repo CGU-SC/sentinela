@@ -196,52 +196,6 @@ def _filtro_ativo(value: object, *, neutral: set[object] | None = None) -> bool:
     return value not in (neutral or set())
 
 
-def _pode_usar_cache_gerencial(
-    *,
-    perc_min: Optional[float],
-    perc_max: Optional[float],
-    val_min: Optional[float],
-    situacao_rf: Optional[str],
-    conexao_ms: Optional[str],
-    porte_empresa: Optional[str],
-    grande_rede: Optional[str],
-    cnpj_raiz: Optional[str],
-    unidade_pf: Optional[str],
-    razao_social: Optional[str],
-    estabelecimento: Optional[str],
-    par_teia: Optional[str],
-    socio_beneficio: Optional[str],
-    socio_esocial: Optional[str],
-    cnae_incompativel: bool,
-    socio_idade_atipica: bool,
-    socio_falecido: bool,
-    volume_atipico: bool,
-    dispersao_uf_sem_fronteira: bool,
-) -> bool:
-    """Indica se o agregado gerencial preserva a semantica dos filtros recebidos."""
-    return not any([
-        perc_min is not None and float(perc_min) != 0,
-        perc_max is not None and float(perc_max) != 100,
-        val_min is not None and float(val_min) > 0,
-        _filtro_ativo(situacao_rf, neutral={"Todos"}),
-        _filtro_ativo(conexao_ms, neutral={"Todos"}),
-        _filtro_ativo(porte_empresa, neutral={"Todos"}),
-        _filtro_ativo(grande_rede, neutral={"Todos"}),
-        _filtro_ativo(cnpj_raiz),
-        _filtro_ativo(unidade_pf, neutral={"Todos"}),
-        _filtro_ativo(razao_social),
-        _filtro_ativo(estabelecimento),
-        _filtro_ativo(par_teia),
-        _filtro_ativo(socio_beneficio),
-        _filtro_ativo(socio_esocial),
-        cnae_incompativel,
-        socio_idade_atipica,
-        socio_falecido,
-        volume_atipico,
-        dispersao_uf_sem_fronteira,
-    ])
-
-
 def _percentual_expr() -> pl.Expr:
     return (
         pl.when(pl.col("qtd_medicos_ativos") > 0)
@@ -797,10 +751,11 @@ def _get_medico_name_index(
         return index
 
 
-def _filtrar_ranking_medico(ranking: pl.DataFrame, query: str) -> pl.DataFrame:
-    termo = _normalizar_busca_medico(query)
+def ids_busca_medico(query: Optional[str]) -> Optional[pl.Series]:
+    """id_medico dos medicos cujo nome ou nº do CRM corresponde a busca (None = sem busca)."""
+    termo = _normalizar_busca_medico(query or "")
     if not termo:
-        return ranking
+        return None
     try:
         signature = get_global_cache_signature("dados_medico")
         medicos = get_dados_medico_df()
@@ -817,7 +772,7 @@ def _filtrar_ranking_medico(ranking: pl.DataFrame, query: str) -> pl.DataFrame:
         ids = _get_medico_name_index(medicos, signature).filter(
             pl.col("nome_busca").str.contains(termo, literal=True)
         ).get_column("id_medico")
-    return ranking.filter(pl.col("id_medico").is_in(ids))
+    return ids
 
 
 def _montar_resposta_ranking(
@@ -843,8 +798,9 @@ def _montar_resposta_ranking(
     medicos exibidos precisam dessa soma.
     """
     farmacias_filtradas = prescricoes_filtradas is not None
-    if medico_query:
-        ranking_aggregated = _filtrar_ranking_medico(ranking_aggregated, medico_query)
+    ids_busca = ids_busca_medico(medico_query)
+    if ids_busca is not None:
+        ranking_aggregated = ranking_aggregated.filter(pl.col("id_medico").is_in(ids_busca))
     ranking_total = ranking_aggregated.height
     if ranking_total == 0:
         return CrmPrescricoesAnaliseResponse(
@@ -982,6 +938,81 @@ def _montar_resposta_ranking(
 
 
 
+def escopo_territorial(
+    uf: Optional[str],
+    regiao_id: Optional[int],
+    id_ibge7: Optional[int],
+) -> tuple[str, Optional[str]]:
+    """Nivel e identificador do escopo mais especifico ("brasil", None sem filtro)."""
+    if id_ibge7 is not None:
+        return "municipio", str(id_ibge7)
+    if regiao_id is not None:
+        return "regiao_saude", str(regiao_id)
+    if uf and uf != "Todos":
+        return "uf", uf
+    return "brasil", None
+
+
+def montar_filtros_farmacia(
+    *,
+    perc_min: Optional[float],
+    perc_max: Optional[float],
+    val_min: Optional[float],
+    situacao_rf: Optional[str],
+    conexao_ms: Optional[str],
+    porte_empresa: Optional[str],
+    grande_rede: Optional[str],
+    cnpj_raiz: Optional[str],
+    unidade_pf: Optional[str],
+    razao_social: Optional[str],
+    estabelecimento: Optional[str],
+    par_teia: Optional[str],
+    socio_beneficio: Optional[str],
+    socio_esocial: Optional[str],
+    cnae_incompativel: bool,
+    socio_idade_atipica: bool,
+    socio_falecido: bool,
+    volume_atipico: bool,
+    volume_atipico_limite: Optional[float],
+    dispersao_uf_sem_fronteira: bool,
+    dispersao_uf_sem_fronteira_limite: Optional[float],
+) -> tuple[bool, dict[str, object]]:
+    """(filtro de farmacia ativo?, filtros normalizados para crm_analysis_filtrado).
+
+    Com filtro de farmacia, o universo e o das farmacias filtradas (as mesmas de
+    /estabelecimentos): ver crm_analysis_filtrado. Valores neutros viram None.
+    """
+    if _filtro_ativo(razao_social):
+        raise HTTPException(
+            status_code=422,
+            detail="Filtro razao_social nao e usado na analise de CRMs; use 'estabelecimento'.",
+        )
+    filtros: dict[str, object] = {
+        "situacao_rf": situacao_rf if _filtro_ativo(situacao_rf, neutral={"Todos"}) else None,
+        "conexao_ms": conexao_ms if _filtro_ativo(conexao_ms, neutral={"Todos"}) else None,
+        "porte_empresa": porte_empresa if _filtro_ativo(porte_empresa, neutral={"Todos"}) else None,
+        "grande_rede": grande_rede if _filtro_ativo(grande_rede, neutral={"Todos"}) else None,
+        "cnpj_raiz": cnpj_raiz if _filtro_ativo(cnpj_raiz) else None,
+        "estabelecimento": estabelecimento if _filtro_ativo(estabelecimento) else None,
+        "unidade_pf": unidade_pf if _filtro_ativo(unidade_pf, neutral={"Todos"}) else None,
+        "par_teia": par_teia if _filtro_ativo(par_teia) else None,
+        "socio_beneficio": socio_beneficio if _filtro_ativo(socio_beneficio) else None,
+        "socio_esocial": socio_esocial if _filtro_ativo(socio_esocial) else None,
+        "cnae_incompativel": cnae_incompativel,
+        "socio_idade_atipica": socio_idade_atipica,
+        "socio_falecido": socio_falecido,
+        "dispersao_uf_sem_fronteira": dispersao_uf_sem_fronteira,
+        "dispersao_uf_sem_fronteira_limite": dispersao_uf_sem_fronteira_limite if dispersao_uf_sem_fronteira else None,
+        "perc_min": perc_min if perc_min is not None and float(perc_min) != 0 else None,
+        "perc_max": perc_max if perc_max is not None and float(perc_max) != 100 else None,
+        "val_min": val_min if val_min is not None and float(val_min) > 0 else None,
+        "volume_atipico": volume_atipico,
+        "volume_atipico_limite": volume_atipico_limite if volume_atipico else None,
+    }
+    ativo = any(valor is not None and valor is not False for valor in filtros.values())
+    return ativo, filtros
+
+
 def ranking_agregado_escopo(
     *,
     inicio: date,
@@ -996,14 +1027,7 @@ def ranking_agregado_escopo(
     modulos por territorio, filtrados no nivel e id do escopo (o modulo ja traz
     cada nivel agregado).
     """
-    if id_ibge7 is not None:
-        scope_level, scope_identifier = "municipio", str(id_ibge7)
-    elif regiao_id is not None:
-        scope_level, scope_identifier = "regiao_saude", str(regiao_id)
-    elif uf and uf != "Todos":
-        scope_level, scope_identifier = "uf", uf
-    else:
-        scope_level, scope_identifier = "brasil", None
+    scope_level, scope_identifier = escopo_territorial(uf, regiao_id, id_ibge7)
     nacional = scope_level == "brasil"
 
     ranking_cache_key = _ranking_cache_key(
@@ -1127,7 +1151,7 @@ def get_crm_prescricoes_analise(
         raise HTTPException(status_code=422, detail="O mapa da região exige regiao_id.")
 
     inicio, fim = _period_bounds(data_inicio, data_fim)
-    if not _pode_usar_cache_gerencial(
+    filtro_farmacias_ativo, filtros_farmacia = montar_filtros_farmacia(
         perc_min=perc_min,
         perc_max=perc_max,
         val_min=val_min,
@@ -1146,40 +1170,10 @@ def get_crm_prescricoes_analise(
         socio_idade_atipica=socio_idade_atipica,
         socio_falecido=socio_falecido,
         volume_atipico=volume_atipico,
+        volume_atipico_limite=volume_atipico_limite,
         dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
-    ):
-        filtro_farmacias_ativo = True
-    else:
-        filtro_farmacias_ativo = False
-    if _filtro_ativo(razao_social):
-        raise HTTPException(
-            status_code=422,
-            detail="Filtro razao_social nao e usado na analise de CRMs; use 'estabelecimento'.",
-        )
-    # Com filtro de farmacia, o universo e o das farmacias filtradas (as mesmas de
-    # /estabelecimentos): ver crm_analysis_filtrado. Valores neutros viram None.
-    filtros_farmacia = {
-        "situacao_rf": situacao_rf if _filtro_ativo(situacao_rf, neutral={"Todos"}) else None,
-        "conexao_ms": conexao_ms if _filtro_ativo(conexao_ms, neutral={"Todos"}) else None,
-        "porte_empresa": porte_empresa if _filtro_ativo(porte_empresa, neutral={"Todos"}) else None,
-        "grande_rede": grande_rede if _filtro_ativo(grande_rede, neutral={"Todos"}) else None,
-        "cnpj_raiz": cnpj_raiz if _filtro_ativo(cnpj_raiz) else None,
-        "estabelecimento": estabelecimento if _filtro_ativo(estabelecimento) else None,
-        "unidade_pf": unidade_pf if _filtro_ativo(unidade_pf, neutral={"Todos"}) else None,
-        "par_teia": par_teia if _filtro_ativo(par_teia) else None,
-        "socio_beneficio": socio_beneficio if _filtro_ativo(socio_beneficio) else None,
-        "socio_esocial": socio_esocial if _filtro_ativo(socio_esocial) else None,
-        "cnae_incompativel": cnae_incompativel,
-        "socio_idade_atipica": socio_idade_atipica,
-        "socio_falecido": socio_falecido,
-        "dispersao_uf_sem_fronteira": dispersao_uf_sem_fronteira,
-        "dispersao_uf_sem_fronteira_limite": dispersao_uf_sem_fronteira_limite if dispersao_uf_sem_fronteira else None,
-        "perc_min": perc_min if perc_min is not None and float(perc_min) != 0 else None,
-        "perc_max": perc_max if perc_max is not None and float(perc_max) != 100 else None,
-        "val_min": val_min if val_min is not None and float(val_min) > 0 else None,
-        "volume_atipico": volume_atipico,
-        "volume_atipico_limite": volume_atipico_limite if volume_atipico else None,
-    }
+        dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
+    )
 
     try:
         if (include_map or map_only) and filtro_farmacias_ativo:
