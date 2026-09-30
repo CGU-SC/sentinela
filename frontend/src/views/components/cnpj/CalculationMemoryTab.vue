@@ -5,6 +5,8 @@ import { useFilterStore } from '@/stores/filters';
 import { useFormatting } from '@/composables/useFormatting';
 import { useStableTabState } from '@/composables/useStableTabState';
 import TabPlaceholder from './TabPlaceholder.vue';
+import { useThemeStore } from '@/stores/theme';
+import { DATA_NEUTRAL } from '@/config/colors';
 
 const props = defineProps({
   cnpj: { type: String, required: true },
@@ -13,6 +15,9 @@ const props = defineProps({
 });
 
 const cnpjDetailStore = useCnpjDetailStore();
+const themeStore = useThemeStore();
+// Cor de dados neutra (azul-aço), a mesma da barra "Participação no valor" do Perfil de CRMs.
+const dataColorVars = computed(() => ({ '--data-color': DATA_NEUTRAL[themeStore.isDark ? 'dark' : 'light'].strong }));
 const filterStore = useFilterStore();
 const { formatCurrencyFull: _fmt, formatarData, toLocalISO } = useFormatting();
 
@@ -320,7 +325,7 @@ const pctIrregular = (section) => {
 </script>
 
 <template>
-  <div class="mov-tab" :class="{ 'is-refreshing': isRefreshing }">
+  <div class="mov-tab" :class="{ 'is-refreshing': isRefreshing }" :style="dataColorVars">
 
     <!-- ── ESTADO: Erro ──────────────────────────────────────────────────── -->
     <TabPlaceholder
@@ -923,7 +928,7 @@ const pctIrregular = (section) => {
 .ranking-table-wrapper { overflow-x: auto; padding: 1.25rem 1.25rem 0.5rem; }
 .ranking-table { width: 100%; border-collapse: collapse; }
 .ranking-table th { 
-  background: color-mix(in srgb, var(--primary-color) 4%, var(--card-bg));
+  background: var(--sidebar-heading-tint); /* mesmo fundo do cabeçalho "Análises" da sidebar de /analises */
   padding: 0.75rem 0.5rem; 
   font-size: 0.72rem; 
   font-weight: 600;
@@ -931,7 +936,7 @@ const pctIrregular = (section) => {
   letter-spacing: 0.05em;
   color: var(--text-secondary); 
   text-align: left; 
-  border-bottom: 2px solid color-mix(in srgb, var(--primary-color) 15%, var(--tabs-border));
+  border-bottom: 1px solid var(--card-border); /* mesma borda do cabeçalho "Análises" */
   opacity: 0.85;
 }
 .ranking-table td { 
@@ -967,7 +972,7 @@ const pctIrregular = (section) => {
 
 .rank-peso-container { display: flex; align-items: center; gap: 0.6rem; }
 .rank-peso-track { flex: 1; height: 5px; background: color-mix(in srgb, var(--card-border) 80%, transparent); border-radius: 4px; overflow: hidden; }
-.rank-peso-bar { height: 100%; background: color-mix(in srgb, var(--primary-color) 70%, transparent); border-radius: 4px; transition: width 0.3s ease; }
+.rank-peso-bar { height: 100%; background: var(--data-color); border-radius: 4px; transition: width 0.3s ease; }
 .rank-peso-txt { font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); min-width: 42px; text-align: right; }
 
 .rank-goto-btn { 

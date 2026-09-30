@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { use, registerMap } from 'echarts/core';
+import { ensureBrasilUfMap } from '@/composables/echartsMaps';
 import { CanvasRenderer } from 'echarts/renderers';
 import { MapChart } from 'echarts/charts';
 import { TooltipComponent, VisualMapComponent } from 'echarts/components';
@@ -224,11 +225,7 @@ watch(
 );
 
 onMounted(async () => {
-  if (!window.__brasilUfRegistered) {
-    const geo = await fetch('/geo/brasil-uf.json').then((response) => response.json());
-    registerMap('brasil-uf', geo);
-    window.__brasilUfRegistered = true;
-  }
+  await ensureBrasilUfMap();
   nationalMapReady.value = true;
 });
 

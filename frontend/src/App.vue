@@ -30,7 +30,6 @@ const previewVisible = ref(false);
 const previewUrl = ref("");
 const previewPath = ref("");
 const previewTitle = ref("");
-let _bootTimer = null;
 let _pollTimer = null;
 
 const pollSyncStatus = async () => {
@@ -118,11 +117,9 @@ const initializeApp = async () => {
 
     await Promise.allSettled(fetchList);
 
-    if (!hasError.value) {
-      _bootTimer = setTimeout(() => {
-        isAppLoading.value = false;
-      }, TIMING.RELOAD_DELAY);
-    }
+    // Sem espera fixa: o overlay não tem animação de saída e o router-view só
+    // monta depois dele.
+    if (!hasError.value) isAppLoading.value = false;
 
   } catch (error) {
     console.error("Erro crítico na carga inicial:", error);
@@ -144,7 +141,6 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  clearTimeout(_bootTimer);
   clearInterval(_pollTimer);
 });
 

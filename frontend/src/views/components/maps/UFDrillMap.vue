@@ -8,7 +8,8 @@ import { useThemeStore } from "@/stores/theme";
 import { useFilterStore } from "@/stores/filters";
 import { MAP_VISUAL_SCALE } from "@/config/colors.js";
 import { storeToRefs } from "pinia";
-import { use, registerMap } from "echarts/core";
+import { use } from "echarts/core";
+import { ensureBrasilUfMap } from "@/composables/echartsMaps";
 import { CanvasRenderer } from "echarts/renderers";
 import { MapChart } from "echarts/charts";
 import { TooltipComponent, VisualMapComponent } from "echarts/components";
@@ -36,11 +37,7 @@ const mapReady = ref(false);
 const mapKey = ref(0);
 
 onMounted(async () => {
-  if (!window.__brasilUfRegistered) {
-    const geo = await fetch("/geo/brasil-uf.json").then((r) => r.json());
-    registerMap("brasil-uf", geo);
-    window.__brasilUfRegistered = true;
-  }
+  await ensureBrasilUfMap();
   mapReady.value = true;
   mapKey.value++;
 });

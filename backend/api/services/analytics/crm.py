@@ -12,6 +12,7 @@ import copy
 from decimal import Decimal, ROUND_HALF_UP
 from cache_files import (
     CRM_RAIOX_TX_PARQUET,
+    CRM_PRESCRITORES_CACHE_VERSION,
 )
 from data_cache import (
     get_df,
@@ -21,6 +22,9 @@ from data_cache import (
     get_cache_dir,
     scan_crm_medico_estabelecimento_mes,
     scan_crm_medico_brasil_mes,
+    scan_crm_limiar_p95_mes,
+    scan_crm_prescritores_global,
+    scan_dados_medico,
 )
 from ...schemas.analytics import (
     AnalyticsKPISchema,
@@ -454,16 +458,11 @@ def _build_alertas_crm_multiplos_por_medico(
 
 def _load_crm_prescription_days(cnpj: str, df: pl.DataFrame) -> pl.DataFrame:
     """Usa as bases mensais da análise, com Brasil nos meses do perfil local."""
-    perfil = get_df_perfil_estabelecimento()
-    if not {"cnpj", "id_cnpj"}.issubset(perfil.columns):
-        raise HTTPException(status_code=503, detail="Perfil de estabelecimentos sem cnpj/id_cnpj para calcular taxa diária CRM.")
-    ids = perfil.filter(pl.col("cnpj") == cnpj).select("id_cnpj").unique()
-    if ids.height != 1 or ids.item(0, "id_cnpj") is None:
-        raise HTTPException(status_code=503, detail=f"CNPJ {cnpj} sem id_cnpj único para calcular taxa diária CRM.")
-    id_cnpj = int(ids.item(0, "id_cnpj"))
+    id_cnpj = _resolve_crm_id_cnpj(cnpj)
     keys = ["id_medico", "competencia"]
     if df.select(keys).is_duplicated().any():
         raise HTTPException(status_code=503, detail=f"Perfil CRM de {cnpj} com registros mensais duplicados.")
+    id_medicos = df["id_medico"].unique().to_list()
     required = {*keys, "nu_prescricoes_mes", "qtd_dias_com_prescricao_mes"}
     try:
         local_scan = scan_crm_medico_estabelecimento_mes()
@@ -477,7 +476,7 @@ def _load_crm_prescription_days(cnpj: str, df: pl.DataFrame) -> pl.DataFrame:
                 raise RuntimeError(f"Base CRM {label} sem colunas obrigatórias: {', '.join(sorted(missing))}.")
         period = pl.col("competencia").is_between(df["competencia"].min(), df["competencia"].max())
         local = (
-            local_scan.filter((pl.col("id_cnpj") == id_cnpj) & period)
+            local_scan.filter((pl.col("id_cnpj") == id_cnpj) & period & pl.col("id_medico").is_in(id_medicos))
             .select([
                 pl.col("id_medico"), pl.col("competencia"),
                 pl.col("nu_prescricoes_mes").cast(pl.Int64).alias("_prescricoes_local_fonte"),
@@ -485,7 +484,7 @@ def _load_crm_prescription_days(cnpj: str, df: pl.DataFrame) -> pl.DataFrame:
             ]).collect()
         )
         brasil = (
-            brasil_scan.filter(period & pl.col("id_medico").is_in(df["id_medico"].unique().to_list()))
+            brasil_scan.filter(period & pl.col("id_medico").is_in(id_medicos))
             .select([
                 pl.col("id_medico"), pl.col("competencia"),
                 pl.col("nu_prescricoes_mes").cast(pl.Int64).alias("_prescricoes_brasil_fonte"),
@@ -534,6 +533,127 @@ def _load_crm_prescription_days(cnpj: str, df: pl.DataFrame) -> pl.DataFrame:
         pl.col("_prescricoes_local_fonte").alias("nu_prescricoes_mes"),
         pl.col("_prescricoes_brasil_fonte").alias("nu_prescricoes_total_brasil"),
     ]).drop("_prescricoes_local_fonte", "_prescricoes_brasil_fonte")
+
+
+def _resolve_crm_id_cnpj(cnpj: str) -> int:
+    perfil = get_df_perfil_estabelecimento()
+    if not {"cnpj", "id_cnpj"}.issubset(perfil.columns):
+        raise HTTPException(status_code=503, detail="Perfil de estabelecimentos sem cnpj/id_cnpj para calcular taxa diária CRM.")
+    ids = perfil.filter(pl.col("cnpj") == cnpj).select("id_cnpj").unique()
+    if ids.height != 1 or ids.item(0, "id_cnpj") is None:
+        raise HTTPException(status_code=503, detail=f"CNPJ {cnpj} sem id_cnpj único para calcular taxa diária CRM.")
+    id_cnpj = int(ids.item(0, "id_cnpj"))
+    return id_cnpj
+
+
+def _aggregate_crm_medico_mes(df: pl.DataFrame) -> pl.DataFrame:
+    """Agregação mensal comum ao Perfil de CRMs e à atuação individual."""
+    df_med_mes = (
+        df.group_by(["id_medico", "competencia"])
+        .agg([
+            pl.sum("vl_total_prescricoes").alias("vl_total_prescricoes"),
+            pl.sum("nu_prescricoes_mes").alias("nu_prescricoes"),
+            pl.max("nu_prescricoes_total_brasil").alias("nu_prescricoes_total_brasil"),
+            pl.sum("_dias_ativos").alias("_dias_ativos"),
+            pl.sum("_dias_ativos_brasil").alias("_dias_ativos_brasil"),
+            pl.col("no_medico").drop_nulls().first().alias("no_medico"),
+            pl.max("flag_crm_invalido").alias("flag_crm_invalido"),
+            pl.max("flag_prescricao_antes_registro").alias("flag_prescricao_antes_registro"),
+            pl.max("alerta_concentracao_multiplos_crms").alias("alerta_concentracao_multiplos_crms"),
+            pl.max("flag_concentracao_mesmo_crm").cast(pl.Int8).alias("alerta_concentracao_unico_crm"),
+            pl.max("flag_distancia_geografica").cast(pl.Int8).alias("alerta_distancia_geografica"),
+            pl.max("flag_distancia_geografica").cast(pl.Int8).alias("alerta5_geografico"),
+            pl.col("dt_inscricao_crm").first().alias("dt_inscricao_crm"),
+            pl.max("nu_estabelecimentos").alias("nu_estabelecimentos"),
+        ])
+        .with_columns([
+            # Taxa mensal nos dias com prescrição nesta farmácia.
+            (pl.col("nu_prescricoes").cast(pl.Float64) / pl.col("_dias_ativos")).round(2).alias("nu_prescricoes_dia"),
+        ])
+    )
+    missing_brasil = df_med_mes.filter(
+        pl.col("nu_prescricoes_total_brasil").is_null()
+        | (pl.col("nu_prescricoes_total_brasil") <= 0)
+        | pl.col("_dias_ativos").is_null()
+        | (pl.col("_dias_ativos") <= 0)
+    )
+    if not missing_brasil.is_empty():
+        ids = ", ".join(str(row["id_medico"]) for row in missing_brasil.select("id_medico").head(10).iter_rows(named=True))
+        raise RuntimeError(f"Cache CRM mensal sem cobertura Brasil para CRM(s): {ids}.")
+
+    return df_med_mes
+
+
+def _build_crm_medico_atuacao(df_med_mes: pl.DataFrame) -> pl.DataFrame:
+    """Série de atuação com a mesma taxa, P95 e flags nos dois pontos de abertura."""
+    # Período de atuação do CRM nesta farmácia (meses com prescrição) e série mensal
+    # para a coluna "Atuação na farmácia" da tabela de CRMs de interesse.
+    # Taxa do mês nesta farmácia (prescrições ÷ dias com prescrição nela)
+    # comparada ao P95 nacional do mês: mesma regra de "taxa elevada" do ranking
+    # e do histórico do CRM (taxa arredondada em 6 casas > P95).
+    limiar_p95 = scan_crm_limiar_p95_mes().select([
+        pl.col("competencia").cast(df_med_mes.schema["competencia"]),
+        pl.col("p95_taxa_dia").cast(pl.Float64),
+    ]).collect()
+    atuacao_mes = (
+        df_med_mes
+        .filter(pl.col("nu_prescricoes") > 0)
+        .join(limiar_p95, on="competencia", how="left", validate="m:1")
+        .with_columns((pl.col("nu_prescricoes").cast(pl.Float64) / pl.col("_dias_ativos")).alias("_taxa_mes"))
+    )
+    sem_p95 = atuacao_mes.filter(pl.col("p95_taxa_dia").is_null()).get_column("competencia").unique().sort().to_list()
+    if sem_p95:
+        raise RuntimeError(f"Limiar P95 nacional ausente para as competencias: {sem_p95[:5]}.")
+    df_med_atuacao = (
+        atuacao_mes
+        .sort(["id_medico", "competencia"])
+        .group_by("id_medico", maintain_order=True)
+        .agg([
+            pl.col("competencia").min().alias("competencia_inicio_atuacao"),
+            pl.col("competencia").max().alias("competencia_fim_atuacao"),
+            pl.col("competencia").n_unique().alias("qtd_meses_atuacao"),
+            pl.struct([
+                pl.col("competencia"),
+                pl.col("nu_prescricoes").alias("qtd"),
+                pl.col("vl_total_prescricoes").round(2).alias("valor"),
+                pl.col("nu_prescricoes_total_brasil").alias("qtd_brasil"),
+                pl.col("_dias_ativos").alias("dias"),
+                pl.col("_taxa_mes").alias("taxa_prescricoes_dia"),
+                pl.col("p95_taxa_dia"),
+                (pl.col("_taxa_mes") / pl.col("p95_taxa_dia")).alias("razao_p95"),
+                (pl.col("_taxa_mes").round(6) > pl.col("p95_taxa_dia")).alias("taxa_elevada"),
+                # Alertas do mês nesta farmácia (marcadores do modal de atuação).
+                (pl.col("alerta_concentracao_unico_crm") > 0).alias("alerta_sequencia_unico"),
+                (pl.col("alerta_concentracao_multiplos_crms") > 0).alias("alerta_sequencia_multiplos"),
+                (pl.col("alerta5_geografico") > 0).alias("alerta_distancia"),
+            ]).alias("serie_mensal_atuacao"),
+        ])
+    )
+    return df_med_atuacao
+
+
+def _build_crm_farmacia_series(df: pl.DataFrame) -> list[dict]:
+    """Totais mensais da farmácia usados no eixo e na participação do médico."""
+    invalid = df.filter(
+        pl.col("competencia").is_null()
+        | pl.col("nu_prescricoes_mes").is_null()
+        | pl.col("vl_total_prescricoes").is_null()
+        | ~pl.col("vl_total_prescricoes").is_finite()
+    )
+    if not invalid.is_empty():
+        raise RuntimeError("Base mensal da farmácia com competência, prescrições ou valor ausente/inválido.")
+    return [
+        {"competencia": _to_int(r["competencia"]), "qtd": _to_int(r["qtd"]), "valor": round(_to_float(r["valor"]), 2)}
+        for r in (
+            df.group_by("competencia")
+            .agg([
+                pl.col("nu_prescricoes_mes").sum().alias("qtd"),
+                pl.col("vl_total_prescricoes").sum().alias("valor"),
+            ])
+            .sort("competencia")
+            .iter_rows(named=True)
+        )
+    ]
 
 
 def get_crm_data(
@@ -600,38 +720,7 @@ def get_crm_data(
     df = _load_crm_prescription_days(cnpj, df)
     timing.mark("dias com prescrição local/Brasil")
 
-    df_med_mes = (
-        df.group_by(["id_medico", "competencia"])
-        .agg([
-            pl.sum("vl_total_prescricoes").alias("vl_total_prescricoes"),
-            pl.sum("nu_prescricoes_mes").alias("nu_prescricoes"),
-            pl.max("nu_prescricoes_total_brasil").alias("nu_prescricoes_total_brasil"),
-            pl.sum("_dias_ativos").alias("_dias_ativos"),
-            pl.sum("_dias_ativos_brasil").alias("_dias_ativos_brasil"),
-            pl.col("no_medico").drop_nulls().first().alias("no_medico"),
-            pl.max("flag_crm_invalido").alias("flag_crm_invalido"),
-            pl.max("flag_prescricao_antes_registro").alias("flag_prescricao_antes_registro"),
-            pl.max("alerta_concentracao_multiplos_crms").alias("alerta_concentracao_multiplos_crms"),
-            pl.max("flag_concentracao_mesmo_crm").cast(pl.Int8).alias("alerta_concentracao_unico_crm"),
-            pl.max("flag_distancia_geografica").cast(pl.Int8).alias("alerta_distancia_geografica"),
-            pl.max("flag_distancia_geografica").cast(pl.Int8).alias("alerta5_geografico"),
-            pl.col("dt_inscricao_crm").first().alias("dt_inscricao_crm"),
-            pl.max("nu_estabelecimentos").alias("nu_estabelecimentos"),
-        ])
-        .with_columns([
-            # Taxa mensal nos dias com prescrição nesta farmácia.
-            (pl.col("nu_prescricoes").cast(pl.Float64) / pl.col("_dias_ativos")).round(2).alias("nu_prescricoes_dia"),
-        ])
-    )
-    missing_brasil = df_med_mes.filter(
-        pl.col("nu_prescricoes_total_brasil").is_null()
-        | (pl.col("nu_prescricoes_total_brasil") <= 0)
-        | pl.col("_dias_ativos").is_null()
-        | (pl.col("_dias_ativos") <= 0)
-    )
-    if not missing_brasil.is_empty():
-        ids = ", ".join(str(row["id_medico"]) for row in missing_brasil.select("id_medico").head(10).iter_rows(named=True))
-        raise RuntimeError(f"Cache CRM mensal sem cobertura Brasil para CRM(s): {ids}.")
+    df_med_mes = _aggregate_crm_medico_mes(df)
 
     # Mantem a competencia correspondente ao maior numero mensal de estabelecimentos.
     # Em caso de empate, a competencia mais recente e usada como referencia.
@@ -673,25 +762,7 @@ def get_crm_data(
 
     df_med = df_med.join(df_med_estabelecimentos_ref, on="id_medico", how="left")
 
-    # Período de atuação do CRM nesta farmácia (meses com prescrição) e série mensal
-    # para a coluna "Atuação na farmácia" da tabela de CRMs de interesse.
-    df_med_atuacao = (
-        df_med_mes
-        .filter(pl.col("nu_prescricoes") > 0)
-        .sort(["id_medico", "competencia"])
-        .group_by("id_medico", maintain_order=True)
-        .agg([
-            pl.col("competencia").min().alias("competencia_inicio_atuacao"),
-            pl.col("competencia").max().alias("competencia_fim_atuacao"),
-            pl.col("competencia").n_unique().alias("qtd_meses_atuacao"),
-            pl.struct([
-                pl.col("competencia"),
-                pl.col("nu_prescricoes").alias("qtd"),
-                pl.col("vl_total_prescricoes").round(2).alias("valor"),
-                pl.col("nu_prescricoes_total_brasil").alias("qtd_brasil"),
-            ]).alias("serie_mensal_atuacao"),
-        ])
-    )
+    df_med_atuacao = _build_crm_medico_atuacao(df_med_mes)
     df_med = df_med.join(df_med_atuacao, on="id_medico", how="left")
     sem_atuacao = df_med.filter(pl.col("competencia_inicio_atuacao").is_null())
     if not sem_atuacao.is_empty():
@@ -794,18 +865,7 @@ def get_crm_data(
         "competencia_fim_periodo":        _to_int(df["competencia"].max()),
         # Totais mensais da farmácia (todos os CRMs), base do % de participação
         # mensal exibido no modal de atuação do CRM.
-        "serie_mensal_farmacia": [
-            {"competencia": _to_int(r["competencia"]), "qtd": _to_int(r["qtd"]), "valor": round(_to_float(r["valor"]), 2)}
-            for r in (
-                df.group_by("competencia")
-                .agg([
-                    pl.col("nu_prescricoes_mes").sum().alias("qtd"),
-                    pl.col("vl_total_prescricoes").sum().alias("valor"),
-                ])
-                .sort("competencia")
-                .iter_rows(named=True)
-            )
-        ],
+        "serie_mensal_farmacia": _build_crm_farmacia_series(df),
     }
 
     # â”€â”€ 7. Alertas diÃ¡rios â€” contadores por mÃ©dico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -945,33 +1005,70 @@ def get_crm_medico_atuacao(
     data_inicio: str | None = None,
     data_fim: str | None = None,
 ) -> CrmMedicoAtuacaoResponse:
-    """Atuação de um CRM numa farmácia, para o modal de atuação aberto fora da aba do CNPJ.
+    """Consulta apenas o CRM solicitado, sem gerar cache ou calcular o Perfil inteiro.
 
-    Reaproveita get_crm_data: mesmos números da coluna "Atuação na farmácia".
+    A agregação, a série e os totais mensais usam os mesmos builders de
+    get_crm_data. O item medico contém os dados consumidos pelo modal,
+    sem ranking ou contadores de evidências detalhadas do Perfil.
     """
     if not id_medico:
         raise HTTPException(status_code=400, detail="id_medico obrigatorio para consulta de atuacao CRM.")
-    dados = get_crm_data(cnpj, data_inicio=data_inicio, data_fim=data_fim)
-    medico = next((m for m in dados.crms_interesse if str(m.get("id_medico")) == id_medico), None)
-    if medico is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"CRM {id_medico} sem prescricoes na farmacia {cnpj} no periodo.",
+    id_cnpj = _resolve_crm_id_cnpj(cnpj)
+    comp_ini = _to_comp(data_inicio) if data_inicio else None
+    comp_fim = _to_comp(data_fim) if data_fim else None
+
+    try:
+        farmacia = scan_crm_prescritores_global().filter(pl.col("id_cnpj") == id_cnpj)
+        if comp_ini is not None:
+            farmacia = farmacia.filter(pl.col("competencia") >= comp_ini)
+        if comp_fim is not None:
+            farmacia = farmacia.filter(pl.col("competencia") <= comp_fim)
+
+        # Mantém valores e flags do mesmo export mensal usado pelo Perfil.
+        # Filtra o médico antes de materializar e projeta apenas os totais
+        # necessários dos demais CRMs para o gráfico da farmácia.
+        df, totais_farmacia = pl.collect_all([
+            farmacia.filter(pl.col("id_medico") == id_medico).drop("id_cnpj"),
+            farmacia.select(["competencia", "nu_prescricoes_mes", "vl_total_prescricoes"]),
+        ])
+        if df.is_empty():
+            raise HTTPException(
+                status_code=404,
+                detail=f"CRM {id_medico} sem prescricoes na farmacia {cnpj} no periodo.",
+            )
+        invalid_version = df.filter(
+            pl.col("_crm_prescritores_cache_version").is_null()
+            | (pl.col("_crm_prescritores_cache_version") < CRM_PRESCRITORES_CACHE_VERSION)
         )
-    summary = dados.summary
-    inicio = summary.get("competencia_inicio_periodo")
-    fim = summary.get("competencia_fim_periodo")
-    serie = summary.get("serie_mensal_farmacia")
-    if inicio is None or fim is None or not isinstance(serie, list):
-        raise HTTPException(
-            status_code=500,
-            detail="Contrato invalido em crm-data: summary sem periodo ou serie mensal da farmacia.",
+        if not invalid_version.is_empty():
+            raise RuntimeError("Cache global de prescritores com versão defasada. Execute a sincronização.")
+
+        cadastro = (
+            scan_dados_medico()
+            .filter(pl.col("id_medico") == id_medico)
+            .select(["id_medico", "no_medico"])
+            .collect()
         )
+        df = df.sort(["competencia", "id_medico"]).join(cadastro, on="id_medico", how="left", validate="m:1")
+        df = _load_crm_prescription_days(cnpj, df)
+        df_med_mes = _aggregate_crm_medico_mes(df)
+        medico = _build_crm_medico_atuacao(df_med_mes).row(0, named=True)
+        medico.update(
+            no_medico=df_med_mes["no_medico"].drop_nulls().first(),
+            dt_inscricao_crm=df_med_mes["dt_inscricao_crm"].drop_nulls().first(),
+            vl_total_prescricoes=df_med_mes["vl_total_prescricoes"].sum(),
+        )
+        serie = _build_crm_farmacia_series(totais_farmacia)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Base de atuação CRM indisponível: {exc}") from exc
+
     return CrmMedicoAtuacaoResponse(
         cnpj=cnpj,
         medico=medico,
-        competencia_inicio_periodo=int(inicio),
-        competencia_fim_periodo=int(fim),
+        competencia_inicio_periodo=serie[0]["competencia"],
+        competencia_fim_periodo=serie[-1]["competencia"],
         serie_mensal_farmacia=serie,
     )
 

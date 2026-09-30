@@ -9,7 +9,6 @@ import {
 } from "@/config/constants";
 import { useFilterStore } from "@/stores/filters";
 import { useGeoStore } from "@/stores/geo";
-import { useFormatting } from "@/composables/useFormatting";
 import { useSliderPeriodLogic } from "@/composables/useSliderPeriodLogic";
 import { FILTER_OPTIONS } from "@/config/filterOptions";
 import { filterActionTooltip, filterTooltip } from "@/config/filterTooltipConfig";
@@ -21,6 +20,7 @@ import InputText from "primevue/inputtext";
 import AutoComplete from "primevue/autocomplete";
 import DataIntegrityBanner from "@/layouts/components/DataIntegrityBanner.vue";
 import MonthRangePicker from "@/views/components/common/MonthRangePicker.vue";
+import NumberRangePicker from "@/views/components/common/NumberRangePicker.vue";
 
 const props = defineProps({
   activeModule: { type: String, required: true },
@@ -216,7 +216,6 @@ const lockTooltip = computed(() =>
   ),
 );
 
-const { formatBRL: formatCurrency } = useFormatting();
 
 // ── Autocomplete de Estabelecimento (CNPJ / Razão Social) ───────────────────
 const cnpjSuggestions = ref([]);
@@ -318,41 +317,39 @@ const applyPercentualNaoComprovacao = () => {
   ];
 };
 
-const stepPercStart = (delta) => {
-  const [s, e] = filterStore.percentualNaoComprovacaoRange;
-  const newS = Math.max(0, Math.min(e - 1, s + delta));
-  if (newS === s) return;
-  filterStore.percentualNaoComprovacaoRange = [newS, e];
+// Faixa do % de não comprovação (seletor com atalhos + faixa personalizada).
+const percentualAtalhos = [
+  { value: "todos", label: "Todos (0% a 100%)", faixa: [0, 100] },
+  ...[10, 20, 40, 60, 80].map((v) => ({ value: `min-${v}`, label: `≥ ${v}%`, faixa: [v, 100] })),
+];
+const percentualRotulo = computed(() => {
+  const [inicio, fim] = filterStore.percentualNaoComprovacaoRange;
+  if (fim === 100 && inicio > 0) return `≥ ${inicio}%`;
+  return `${inicio}% a ${fim}%`;
+});
+function aplicarFaixaPercentual(faixa) {
+  filterStore.percentualNaoComprovacaoRange = faixa;
   applyPercentualNaoComprovacao();
-};
-
-const stepPercEnd = (delta) => {
-  const [s, e] = filterStore.percentualNaoComprovacaoRange;
-  const newE = Math.max(s + 1, Math.min(100, e + delta));
-  if (newE === e) return;
-  filterStore.percentualNaoComprovacaoRange = [s, newE];
-  applyPercentualNaoComprovacao();
-};
+}
 
 const applyValorMinSemComp = () => {
   filterStore.valorMinSemCompFilter = filterStore.valorMinSemComp;
 };
 
-const valorMinQuickSelect = [100000, 300000, 500000];
-
-const formatValorChip = (v) =>
-  v >= 1000000 ? `R$${v / 1000000}M` : `R$${v / 1000}k`;
-
-const setValorMin = (v) => {
-  filterStore.valorMinSemComp = v;
+// Valor mínimo sem comprovação (seletor com atalhos + valor personalizado).
+const formatarReais = (valor) =>
+  valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const valorMinAtalhos = [
+  { value: "sem-minimo", label: "Sem valor mínimo", faixa: [0] },
+  ...[100000, 300000, 500000].map((v) => ({ value: `min-${v}`, label: `≥ ${formatarReais(v)}`, faixa: [v] })),
+];
+const valorMinRotulo = computed(() => (
+  filterStore.valorMinSemComp > 0 ? `≥ ${formatarReais(filterStore.valorMinSemComp)}` : "Sem valor mínimo"
+));
+function aplicarValorMin([valor]) {
+  filterStore.valorMinSemComp = valor;
   applyValorMinSemComp();
-};
-
-const stepValorMin = (delta) => {
-  const next = Math.max(0, Math.min(FILTER_DEFAULTS.VALOR_MAX, filterStore.valorMinSemComp + delta));
-  filterStore.valorMinSemComp = next;
-  applyValorMinSemComp();
-};
+}
 
 const volumeAtipicoQuickSelect = [50, 500, 1000, 1500];
 
@@ -1212,76 +1209,15 @@ const clearSearch = () => {
             ),
           }"
         >
-          <div class="perc-chips">
-            <button
-              v-for="v in [10, 20, 40, 60, 80]"
-              :key="v"
-              class="perc-chip"
-              :class="{
-                'perc-chip-active':
-                  filterStore.percentualNaoComprovacaoRange[0] === v,
-              }"
-              @click="
-                () => {
-                  filterStore.percentualNaoComprovacaoRange = [v, 100];
-                  applyPercentualNaoComprovacao();
-                }
-              "
-            >
-              {{ v }}%
-            </button>
-          </div>
-          <div class="period-steppers">
-            <div class="period-stepper-group">
-              <button
-                class="period-step-btn"
-                :disabled="filterStore.percentualNaoComprovacaoRange[0] === 0"
-                @click="stepPercStart(-1)"
-              >
-                <i class="pi pi-chevron-left" />
-              </button>
-              <span class="period-step-label"
-                >{{ filterStore.percentualNaoComprovacaoRange[0] }}%</span
-              >
-              <button
-                class="period-step-btn"
-                :disabled="
-                  filterStore.percentualNaoComprovacaoRange[0] >=
-                  filterStore.percentualNaoComprovacaoRange[1] - 1
-                "
-                @click="stepPercStart(1)"
-              >
-                <i class="pi pi-chevron-right" />
-              </button>
-            </div>
-            <div class="period-stepper-group">
-              <button
-                class="period-step-btn"
-                :disabled="
-                  filterStore.percentualNaoComprovacaoRange[1] <=
-                  filterStore.percentualNaoComprovacaoRange[0] + 1
-                "
-                @click="stepPercEnd(-1)"
-              >
-                <i class="pi pi-chevron-left" />
-              </button>
-              <span class="period-step-label"
-                >{{ filterStore.percentualNaoComprovacaoRange[1] }}%</span
-              >
-              <button
-                class="period-step-btn"
-                :disabled="filterStore.percentualNaoComprovacaoRange[1] === 100"
-                @click="stepPercEnd(1)"
-              >
-                <i class="pi pi-chevron-right" />
-              </button>
-            </div>
-          </div>
-          <Slider
-            v-model="filterStore.percentualNaoComprovacaoRange"
-            range
-            class="w-full"
-            @slideend="applyPercentualNaoComprovacao"
+          <NumberRangePicker
+            :valor="filterStore.percentualNaoComprovacaoRange"
+            :min="0"
+            :max="100"
+            sufixo="%"
+            :atalhos="percentualAtalhos"
+            :rotulo="percentualRotulo"
+            :disabled="allFiltersLocked"
+            @select-range="aplicarFaixaPercentual"
           />
         </div>
       </div>
@@ -1363,43 +1299,21 @@ const clearSearch = () => {
           class="slider-container"
           :class="{ 'filter-active-box': isFilterActive('valorMinSemComp') }"
         >
-          <div class="perc-chips" style="grid-template-columns: repeat(3, 1fr)">
-            <button
-              v-for="v in valorMinQuickSelect"
-              :key="v"
-              class="perc-chip"
-              :class="{ 'perc-chip-active': filterStore.valorMinSemComp === v }"
-              @click="setValorMin(v)"
-            >
-              {{ formatValorChip(v) }}
-            </button>
-          </div>
-          <div class="period-steppers">
-            <div class="period-stepper-group">
-              <button
-                class="period-step-btn"
-                :disabled="filterStore.valorMinSemComp <= 0"
-                @click="stepValorMin(-10000)"
-              >
-                <i class="pi pi-chevron-left" />
-              </button>
-              <span class="period-step-label">{{ formatCurrency(filterStore.valorMinSemComp) }}</span>
-              <button
-                class="period-step-btn"
-                :disabled="filterStore.valorMinSemComp >= FILTER_DEFAULTS.VALOR_MAX"
-                @click="stepValorMin(10000)"
-              >
-                <i class="pi pi-chevron-right" />
-              </button>
-            </div>
-          </div>
-          <Slider
-            v-model="filterStore.valorMinSemComp"
+          <NumberRangePicker
+            unico
+            :valor="[filterStore.valorMinSemComp]"
             :min="0"
             :max="FILTER_DEFAULTS.VALOR_MAX"
-            :step="1000"
-            class="w-full"
-            @slideend="applyValorMinSemComp"
+            :passo="10000"
+            prefixo="R$"
+            :formatar="formatarReais"
+            rotulo-personalizado="Valor personalizado"
+            rotulo-campo="A partir de"
+            icone="pi-dollar"
+            :atalhos="valorMinAtalhos"
+            :rotulo="valorMinRotulo"
+            :disabled="allFiltersLocked"
+            @select-range="aplicarValorMin"
           />
         </div>
       </div>
@@ -2613,7 +2527,7 @@ const clearSearch = () => {
 }
 
 /* Seletor do Período de Análise: mesmo padrão dos campos da sidebar. */
-.slider-container :deep(.mrp-gatilho) {
+.slider-container :deep(.rp-gatilho) {
   width: 100%;
   height: 32px;
   min-height: 32px;
@@ -2623,10 +2537,10 @@ const clearSearch = () => {
   color: var(--sidebar-text);
   font-size: 0.75rem;
 }
-.slider-container :deep(.mrp-gatilho:not(:disabled):hover) {
+.slider-container :deep(.rp-gatilho:not(:disabled):hover) {
   border-color: color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border));
 }
-.slider-container :deep(.mrp-gatilho-seta) {
+.slider-container :deep(.rp-gatilho-seta) {
   color: inherit;
   opacity: 0.7;
 }

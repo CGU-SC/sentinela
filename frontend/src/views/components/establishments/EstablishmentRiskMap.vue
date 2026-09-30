@@ -18,6 +18,7 @@ import { useStableMapSize } from '@/composables/useStableMapSize';
 import MapBackButton from '@/views/components/maps/MapBackButton.vue';
 import { useFormatting } from '@/composables/useFormatting';
 import { use, registerMap } from 'echarts/core';
+import { ensureBrasilUfMap } from '@/composables/echartsMaps';
 import { CanvasRenderer } from 'echarts/renderers';
 import { MapChart } from 'echarts/charts';
 import { TooltipComponent, VisualMapComponent } from 'echarts/components';
@@ -160,11 +161,7 @@ function handleZoom(delta) {
 }
 
 onMounted(async () => {
-  if (!window.__brasilUfRegistered) {
-    const geo = await fetch('/geo/brasil-uf.json').then(r => r.json());
-    registerMap('brasil-uf', geo);
-    window.__brasilUfRegistered = true;
-  }
+  await ensureBrasilUfMap();
   nationalMapReady.value = true;
 });
 

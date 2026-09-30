@@ -11,7 +11,6 @@ import { API_ENDPOINTS } from '@/config/api';
 import { downloadBlobFromResponse } from '@/utils/download';
 import { getApiErrorMessage } from '@/utils/apiErrors';
 import { useToast } from 'primevue/usetoast';
-import Menu from 'primevue/menu';
 import { CRM_RAIOX_INTERVALO_CURTO_SEGUNDOS } from '@/config/riskConfig';
 import { CRM_IDENTITY_PALETTE } from '@/config/colors';
 import TabPlaceholder from './TabPlaceholder.vue';
@@ -147,15 +146,23 @@ const RAIOX_EXPORT_FORMATS = Object.freeze({
   xlsx: { label: 'Excel', extension: 'xlsx', icon: 'pi-file-excel' },
   csv: { label: 'CSV', extension: 'csv', icon: 'pi-file' },
 });
-const exportMenu = ref(null);
-const exportMenuItems = [
-  { label: 'Excel (.xlsx) · planilha formatada', icon: 'pi pi-file-excel', command: () => exportRaiox('xlsx') },
-  { label: 'CSV (.csv) · texto simples', icon: 'pi pi-file', command: () => exportRaiox('csv') },
-];
+const exportMenuItems = [{
+  label: 'Dias alertados (Raio-X)',
+  items: [
+    { label: 'Excel (.xlsx) · planilha formatada', icon: 'pi pi-file-excel', command: () => exportRaiox('xlsx') },
+    { label: 'CSV (.csv) · texto simples', icon: 'pi pi-file', command: () => exportRaiox('csv') },
+  ],
+}];
 
-function toggleExportMenu(event) {
-  exportMenu.value?.toggle(event);
-}
+// Botão padrão de exportação (barra de abas, AuthTab.vue).
+const exportacao = computed(() => ({
+  itens: exportMenuItems,
+  carregando: exportLoading.value,
+  desabilitado: !canExportRaiox.value,
+  motivo: raioxExportState.value.reason,
+  tooltip: raioxExportTooltip.value,
+}));
+defineExpose({ exportacao });
 
 async function exportRaiox(formato) {
   if (!canExportRaiox.value || exportLoading.value) return;
@@ -646,7 +653,7 @@ const cronologiaInfoTooltips = Object.freeze({
     'Intervalo entre autorizações',
     'Tempo decorrido desde a autorização anterior na lista, em minutos e segundos (ou horas, minutos e segundos).',
     [['Destaque', `Intervalos abaixo de ${CRM_RAIOX_INTERVALO_CURTO_SEGUNDOS} segundos`], ['Primeira linha', 'Sem autorização anterior (—)']],
-    'Sequências de intervalos curtos indicam lançamentos em rajada, típicos das autorizações em sequência. Quando uma hora está selecionada, o intervalo considera apenas as autorizações daquela hora.'
+    'Sequências de intervalos curtos indicam lançamentos seguidos, típicos das autorizações em sequência. Quando uma hora está selecionada, o intervalo considera apenas as autorizações daquela hora.'
   ),
   raioxEvidencia: createCronologiaInfoTooltip(
     'Marcar como evidência',
@@ -1791,52 +1798,26 @@ const activeTransactionsLoading = computed(() =>
   <div v-else class="cronologia-flow animate-fade-in">
     
     <!-- Breadcrumb de Navegação Dinâmico -->
-    <div class="drill-navigation-row">
-      <div class="drill-breadcrumb">
-        <span class="crumb-item" :class="{ 'is-current': !selectedDay }">
-          <i class="pi pi-chart-bar crumb-icon" />
-          <span>Histórico Diário</span>
-        </span>
-        <template v-if="selectedDay">
-          <i class="pi pi-chevron-right crumb-arrow" />
-          <span class="crumb-item" :class="{ 'is-current': selectedDay && selectedHourlyHour === null }">
-            <i class="pi pi-calendar crumb-icon" />
-            <span>{{ formatarData(selectedDay.dt_janela) }}</span>
-            <span v-if="selectedDay.is_anomalo" class="crumb-anomaly-dot" />
-          </span>
-        </template>
-        <template v-if="selectedHourlyHour !== null">
-          <i class="pi pi-chevron-right crumb-arrow" />
-          <span class="crumb-item is-current">
-            <i class="pi pi-search crumb-icon" />
-            <span>Raio-X · {{ selectedHourlyHour === 'all' ? 'Dia Todo' : `${String(selectedHourlyHour).padStart(2, '0')}h` }}</span>
-          </span>
-        </template>
-      </div>
-      <span class="crm-export-wrapper">
-        <button
-          class="crm-export-button"
-          type="button"
-          :disabled="!canExportRaiox || exportLoading"
-          :aria-busy="exportLoading"
-          aria-haspopup="menu"
-          aria-controls="crm-export-menu"
-          :aria-label="`Exportar dias alertados. ${raioxExportState.reason}`"
-          @click="toggleExportMenu"
-        >
-          <i :class="exportLoading ? 'pi pi-spinner pi-spin' : 'pi pi-download'" aria-hidden="true" />
-          <span>{{ exportLoading ? 'Exportando…' : 'Exportar dias alertados' }}</span>
-          <i v-if="!exportLoading" class="pi pi-chevron-down crm-export-caret" aria-hidden="true" />
-        </button>
-        <Menu id="crm-export-menu" ref="exportMenu" :model="exportMenuItems" :popup="true" />
-        <i
-          class="pi pi-info-circle control-info-icon crm-export-info"
-          role="img"
-          tabindex="0"
-          aria-label="Informações sobre a exportação dos dias alertados"
-          v-tooltip.left="raioxExportTooltip"
-        />
+    <div class="drill-breadcrumb">
+      <span class="crumb-item" :class="{ 'is-current': !selectedDay }">
+        <i class="pi pi-chart-bar crumb-icon" />
+        <span>Histórico Diário</span>
       </span>
+      <template v-if="selectedDay">
+        <i class="pi pi-chevron-right crumb-arrow" />
+        <span class="crumb-item" :class="{ 'is-current': selectedDay && selectedHourlyHour === null }">
+          <i class="pi pi-calendar crumb-icon" />
+          <span>{{ formatarData(selectedDay.dt_janela) }}</span>
+          <span v-if="selectedDay.is_anomalo" class="crumb-anomaly-dot" />
+        </span>
+      </template>
+      <template v-if="selectedHourlyHour !== null">
+        <i class="pi pi-chevron-right crumb-arrow" />
+        <span class="crumb-item is-current">
+          <i class="pi pi-search crumb-icon" />
+          <span>Raio-X · {{ selectedHourlyHour === 'all' ? 'Dia Todo' : `${String(selectedHourlyHour).padStart(2, '0')}h` }}</span>
+        </span>
+      </template>
     </div>
 
     <!-- NÍVEL 1: Histórico Diário -->
@@ -2331,15 +2312,7 @@ const activeTransactionsLoading = computed(() =>
 }
 
 /* ── Breadcrumb Dinâmico ─────────────────────────────────────────────────── */
-.drill-navigation-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
 .drill-breadcrumb {
-  grid-column: 2;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -2347,66 +2320,11 @@ const activeTransactionsLoading = computed(() =>
   background: var(--surface-card);
   border: 1px solid var(--card-border);
   border-radius: 99px;
-  margin-bottom: 0;
+  margin-bottom: 1.5rem;
   width: fit-content;
   align-self: center;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   backdrop-filter: blur(8px);
-}
-.crm-export-wrapper {
-  grid-column: 3;
-  justify-self: end;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-.crm-export-info { font-size: 0.75rem; }
-.crm-export-caret { font-size: 0.6rem; opacity: 0.7; }
-.crm-export-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 0.8rem;
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
-  background: var(--surface-card);
-  color: var(--text-color);
-  font: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-.crm-export-button:hover:not(:disabled),
-.crm-export-button:focus-visible {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-}
-.crm-export-button:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-.crm-export-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-@media (max-width: 900px) {
-  .drill-navigation-row {
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: center;
-    gap: 0.75rem;
-  }
-  .drill-breadcrumb,
-  .crm-export-wrapper {
-    grid-column: 1;
-  }
-  .drill-breadcrumb {
-    max-width: 100%;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  .crm-export-wrapper {
-    justify-self: center;
-  }
 }
 .crumb-item {
   display: flex;

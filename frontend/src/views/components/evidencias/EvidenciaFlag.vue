@@ -151,7 +151,7 @@ function onKeydown(event) {
         class="evid-form-textarea"
         rows="3"
         maxlength="2000"
-        placeholder="Ex.: rajada de autorizações com 6 CRMs em 1 hora"
+        placeholder="Ex.: autorizações em sequência com 6 CRMs em 1 hora"
         @keydown="onKeydown"
       />
       <p v-if="marcado" class="evid-form-meta">Marcada em {{ dataHoraCurta(evidencia.criado_em) }}</p>

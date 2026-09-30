@@ -36,6 +36,13 @@ export const API_ENDPOINTS = {
   analyticsGeograficoBenchmarkLocal: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/geografico/benchmark-local`,
   analyticsIncompatibilidadePatologica: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/clinico/incompatibilidades`,
   analyticsFalecidos:   (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/falecidos`,
+  analyticsFalecidosExport: (cnpj, inicio, fim, formato, outroCnpj) => {
+    const params = new URLSearchParams({ formato });
+    if (inicio) params.set('data_inicio', inicio);
+    if (fim) params.set('data_fim', fim);
+    if (outroCnpj) params.set('outro_cnpj', outroCnpj);
+    return `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/falecidos/exportar?${params.toString()}`;
+  },
   analyticsCrmData: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm-data`,
   analyticsCrmPrescricoesAnalise: `${BASE_URL}/api/v1/analytics/crm-prescricoes-analise`,
   analyticsCrmMedicoHistorico: `${BASE_URL}/api/v1/analytics/crm-medico-historico`,
@@ -51,6 +58,7 @@ export const API_ENDPOINTS = {
     if (fim) params.set('data_fim', fim);
     return `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/raio-x/exportar?${params.toString()}`;
   },
+  analyticsCrmPrescritoresExport: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/prescritores/exportar`,
   analyticsCrmRaioX: (cnpj, dateStr, hour) => {
     let url = `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/raio-x?date_str=${dateStr}`;
     if (hour != null) url += `&hour=${hour}`;

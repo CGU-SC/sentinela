@@ -5,31 +5,36 @@
  */
 import { computed } from 'vue';
 import { crmAlertasTooltip } from '@/config/analysisTooltipConfig';
+import { CRM_ALERTA_BADGE_TONS } from '@/config/colors';
+import { useThemeStore } from '@/stores/theme';
 
 const props = defineProps({
   pontos: { type: Array, required: true },
   /** Texto do período dos alertas (ex.: "01/2020 a 12/2024"). */
   periodo: { type: String, required: true },
-  /** Aba "Por mês": competência da linha (marca os alertas que a incluem). */
+  /** Aba "Por mês": competência da linha (o tooltip marca os alertas que a incluem). */
   competencia: { type: Number, default: null },
   nomeMedico: { type: String, required: true },
 });
 const emit = defineEmits(['abrir']);
 
+const themeStore = useThemeStore();
+const coresVars = computed(() => {
+  const tons = CRM_ALERTA_BADGE_TONS[themeStore.isDark ? 'dark' : 'light'];
+  return { '--alerta-cor': tons.cor, '--alerta-numero': tons.numero };
+});
+
 const tooltip = computed(() => crmAlertasTooltip(props.pontos, {
   periodo: props.periodo,
   competencia: props.competencia,
 }));
-const incluiMes = computed(() => (
-  props.competencia != null && props.pontos.some((p) => (p.competencias ?? []).includes(props.competencia))
-));
 </script>
 
 <template>
   <button
     type="button"
     class="crm-alertas"
-    :class="{ 'is-mes': incluiMes }"
+    :style="coresVars"
     :aria-label="`${pontos.length} ${pontos.length === 1 ? 'ponto de atenção' : 'pontos de atenção'} de ${nomeMedico}. Abrir histórico.`"
     v-tooltip.right="tooltip"
     @click.stop="emit('abrir')"
@@ -42,7 +47,6 @@ const incluiMes = computed(() => (
 
 <style scoped>
 .crm-alertas {
-  --alerta-cor: var(--risk-high);
   position: relative;
   display: inline-flex;
   flex-shrink: 0;
@@ -79,11 +83,9 @@ const incluiMes = computed(() => (
   border: 2px solid var(--card-bg);
   border-radius: 999px;
   background: var(--alerta-cor);
-  color: var(--card-bg);
+  color: var(--alerta-numero);
   font-size: .58rem;
   font-weight: 600;
   line-height: 1;
 }
-/* Aba "Por mês": algum alerta envolve o mês da linha. */
-.crm-alertas.is-mes { background: color-mix(in srgb, var(--alerta-cor) 18%, transparent); border-color: color-mix(in srgb, var(--alerta-cor) 60%, transparent); }
 </style>

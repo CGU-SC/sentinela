@@ -168,18 +168,30 @@ const rankingIsStale = computed(() => Boolean(
   ),
 ));
 
+// Na aba "Por mês" a busca só alimenta a consulta mensal (watcher acima); o
+// ranking do Resumo é refeito com a busca ao voltar para as outras abas.
+function aplicarBusca(query) {
+  if (rankingTab.value === 'mes') {
+    analysisStore.setRankingSearch(query);
+    return;
+  }
+  fetchRankingPage(1, rankingPageSize.value, rankingSortField.value, rankingSortOrder.value, query);
+}
+watch(rankingTab, (tab) => {
+  if (tab === 'mes' || !rankingResponse.value || rankingResponseSearch.value === rankingSearch.value) return;
+  fetchRankingPage(1, rankingPageSize.value, rankingSortField.value, rankingSortOrder.value, rankingSearch.value);
+});
+
 function onRankingSearch(value) {
   searchInput.value = value;
   clearTimeout(searchTimer);
   const query = value.trim();
   if (query === rankingSearch.value) return;
   if (!query) {
-    fetchRankingPage(1, rankingPageSize.value, rankingSortField.value, rankingSortOrder.value, '');
+    aplicarBusca('');
     return;
   }
-  searchTimer = setTimeout(() => {
-    fetchRankingPage(1, rankingPageSize.value, rankingSortField.value, rankingSortOrder.value, query);
-  }, 350);
+  searchTimer = setTimeout(() => aplicarBusca(query), 350);
 }
 
 function onSelectUf(uf) {
@@ -310,6 +322,7 @@ function onRankingSort(event) {
       :medico="historicoMedico"
       :data-inicio="historicoPeriodo.inicio"
       :data-fim="historicoPeriodo.fim"
+      :cache-version="analysisStore.cacheVersion"
     />
   </div>
 </template>

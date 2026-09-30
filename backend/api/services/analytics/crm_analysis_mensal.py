@@ -132,7 +132,7 @@ def _com_taxa(linhas: pl.LazyFrame, limiares: pl.DataFrame) -> pl.LazyFrame:
 def get_crm_prescricoes_mensal(
     *,
     page: int = 1,
-    page_size: int = 25,
+    page_size: int = 15,
     medico_query: Optional[str] = None,
     sort_field: str = "razao_p95",
     sort_order: str = "desc",
@@ -234,16 +234,20 @@ def get_crm_prescricoes_mensal(
         raise HTTPException(status_code=503, detail=f"Cache de dados dos medicos indisponivel: {exc}") from exc
     base._require_columns(medicos, base.CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos medicos")
     # maintain_order="left": a pagina ja vem na ordem escolhida.
+    # Marcador do left join: medico ausente do cadastro do CFM fica com null.
     pagina = pagina.join(
-        medicos.select(["id_medico", "nu_crm", "sg_uf", "no_medico"]).unique(subset=["id_medico"], keep="first"),
+        medicos.select(["id_medico", "nu_crm", "sg_uf", "no_medico"])
+        .unique(subset=["id_medico"], keep="first")
+        .with_columns(pl.lit(True).alias("localizado_cfm")),
         on="id_medico", how="left", maintain_order="left",
-    )
+    ).with_columns(pl.col("localizado_cfm").is_not_null())
     return resposta([
         CrmPrescricoesMensalItemSchema(
             id_medico=str(row["id_medico"]),
             nu_crm=int(row["nu_crm"]) if row["nu_crm"] is not None else None,
             sg_uf=str(row["sg_uf"]) if row["sg_uf"] is not None else None,
             no_medico=str(row["no_medico"]) if row["no_medico"] is not None else None,
+            localizado_cfm=bool(row["localizado_cfm"]),
             competencia=int(row["competencia"]),
             nu_prescricoes=int(row["nu_prescricoes"]),
             qtd_dias_com_prescricao=int(row["qtd_dias_com_prescricao"]),

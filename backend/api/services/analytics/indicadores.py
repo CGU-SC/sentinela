@@ -614,11 +614,13 @@ def _build_indicador_scope_base(
         pl.col("total_vendas").sum().alias("total_vendas"),
         pl.col("total_sem_comprovacao").sum().alias("total_sem_comprovacao"),
     ]).join(perfil_df, on="id_cnpj", how="inner").with_columns([
+        # Percentual exato: o filtro compara este valor, como /estabelecimentos
+        # (4,9988% nao passa em ">= 5%"); o arredondado e so para exibicao.
         pl.when(pl.col("total_vendas") > 0)
-          .then((pl.col("total_sem_comprovacao") / pl.col("total_vendas") * 100).round(2))
+          .then(pl.col("total_sem_comprovacao") / pl.col("total_vendas") * 100)
           .otherwise(pl.lit(None))
-          .alias("perc_val_sem_comp")
-    ])
+          .alias("_perc_val_sem_comp_exato")
+    ]).with_columns(pl.col("_perc_val_sem_comp_exato").round(2).alias("perc_val_sem_comp"))
 
     mask = pl.lit(True)
     if uf and uf != 'Todos':
@@ -660,9 +662,10 @@ def _build_indicador_scope_base(
         volume_atipico_limite=volume_atipico_limite,
     )
     if perc_min is not None:
-        scope_base = scope_base.filter(pl.col("perc_val_sem_comp") >= perc_min)
+        scope_base = scope_base.filter(pl.col("_perc_val_sem_comp_exato") >= perc_min)
     if perc_max is not None:
-        scope_base = scope_base.filter(pl.col("perc_val_sem_comp") <= perc_max)
+        scope_base = scope_base.filter(pl.col("_perc_val_sem_comp_exato") <= perc_max)
+    scope_base = scope_base.drop("_perc_val_sem_comp_exato")
     if val_min is not None:
         scope_base = scope_base.filter(pl.col("total_sem_comprovacao") >= val_min)
 

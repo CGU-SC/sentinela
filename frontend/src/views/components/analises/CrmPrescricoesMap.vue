@@ -7,6 +7,7 @@ import { TooltipComponent, VisualMapComponent } from 'echarts/components';
 import VChart from 'vue-echarts';
 import MapBackButton from '@/views/components/maps/MapBackButton.vue';
 import { registerMap } from 'echarts/core';
+import { ensureBrasilUfMap } from '@/composables/echartsMaps';
 import { useGeoStore } from '@/stores/geo';
 import { useThemeStore } from '@/stores/theme';
 import { useChartTheme } from '@/config/chartTheme';
@@ -440,12 +441,7 @@ function onMapClick(params) {
 async function registerActiveMap() {
   let nomeRegistrado;
   if (isNational.value) {
-    if (!window.__brasilUfRegistered) {
-      const response = await fetch('/geo/brasil-uf.json');
-      if (!response.ok) throw new Error('GeoJSON nacional indisponível.');
-      registerMap('brasil-uf', await response.json());
-      window.__brasilUfRegistered = true;
-    }
+    await ensureBrasilUfMap();
     nomeRegistrado = 'brasil-uf';
   } else if (currentGeo.value) {
     nomeRegistrado = mapName.value;

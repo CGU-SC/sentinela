@@ -16,6 +16,7 @@ from .crm import (
     get_crm_timeline_dataset,
 )
 from .crm_export import export_crm_raiox_csv, export_crm_raiox_xlsx
+from .crm_prescritores_export import export_crm_perfil_csv, export_crm_perfil_xlsx
 from .crm_analysis import get_crm_prescricoes_analise
 from .crm_analysis_mensal import get_crm_prescricoes_mensal, get_crm_prescricoes_serie_mensal
 from .crm_medico_historico import get_crm_medico_historico, get_crm_medicos_alertas
@@ -26,6 +27,7 @@ from .dashboard import (
 )
 from .bootstrap import get_cnpj_bootstrap
 from .falecidos import get_falecidos_data, get_timeline_cpf
+from .falecidos_export import export_falecidos_csv, export_falecidos_xlsx
 from .farmacia import get_cnpj_access_status, get_dados_farmacia, get_movimentacao_data
 from .fator_risco import get_fator_risco_data
 from .socios import get_socios_farmacia
@@ -113,6 +115,10 @@ class AnalyticsService:
     get_crm_raio_x = staticmethod(get_crm_raio_x)
     export_crm_raiox_csv = staticmethod(export_crm_raiox_csv)
     export_crm_raiox_xlsx = staticmethod(export_crm_raiox_xlsx)
+    export_crm_perfil_csv = staticmethod(export_crm_perfil_csv)
+    export_crm_perfil_xlsx = staticmethod(export_crm_perfil_xlsx)
+    export_falecidos_csv = staticmethod(export_falecidos_csv)
+    export_falecidos_xlsx = staticmethod(export_falecidos_xlsx)
     get_dados_farmacia = staticmethod(get_dados_farmacia)
     get_cnpj_access_status = staticmethod(get_cnpj_access_status)
     get_movimentacao_data = staticmethod(get_movimentacao_data)

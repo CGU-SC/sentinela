@@ -1,9 +1,9 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import Dialog from 'primevue/dialog';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
-import { BarChart, LineChart } from 'echarts/charts';
+import { BarChart, LineChart, ScatterChart } from 'echarts/charts';
 import {
   GridComponent,
   LegendComponent,
@@ -11,44 +11,45 @@ import {
   TooltipComponent,
 } from 'echarts/components';
 import VChart from 'vue-echarts';
-import { useCnpjDetailStore } from '@/stores/cnpjDetail';
-import { useFilterParameters } from '@/composables/useFilterParameters';
 import { useFormatting } from '@/composables/useFormatting';
 import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
-import { DATA_NEUTRAL } from '@/config/colors';
+import { CRM_TAXA_P95_TONS, DATA_NEUTRAL } from '@/config/colors';
+import { crmFaixaP95 } from '@/config/analysisTooltipConfig';
 
-use([CanvasRenderer, BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, MarkLineComponent]);
+use([CanvasRenderer, BarChart, LineChart, ScatterChart, GridComponent, LegendComponent, TooltipComponent, MarkLineComponent]);
 
 /**
- * Detalhe mensal da atuação de um CRM na farmácia: volume do CRM, participação
- * no movimento mensal da farmácia, volume do mesmo CRM no Brasil, meses com
- * alertas e data da 1ª inscrição no CFM.
+ * Detalhe mensal da atuação de um CRM na farmácia: taxa diária do CRM na
+ * farmácia (padrão) ou volume/valor, participação no movimento mensal da
+ * farmácia, P95 nacional do mês, meses com alertas e 1ª inscrição no CFM.
+ * A cor da barra é sempre a faixa do ×P95 do mês (mesma regra da linha do
+ * tempo de /analises); meses com alerta ganham um marcador acima da barra.
  */
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   medico: { type: Object, default: null },
   cnpj: { type: String, required: true },
   periodo: { type: Object, default: null },
-  periodoConsulta: { type: Object, default: null },
   serieFarmacia: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['update:modelValue']);
 
-const cnpjDetailStore = useCnpjDetailStore();
 const themeStore = useThemeStore();
-const { getApiParams } = useFilterParameters();
 const { formatCurrencyFull, formatNumberFull, formatTitleCase, formatarData } = useFormatting();
 const { chartTheme } = useChartTheme();
 
-const COR_BARRA_ALERTA = '#ef4444';
 const COR_INSCRICAO = '#f59e0b';
-const coresDados = computed(() => DATA_NEUTRAL[themeStore.isDark ? 'dark' : 'light']);
+const tema = computed(() => (themeStore.isDark ? 'dark' : 'light'));
+const coresDados = computed(() => DATA_NEUTRAL[tema.value]);
+const tonsP95 = computed(() => CRM_TAXA_P95_TONS[tema.value]);
 
-const metrica = ref('qtd');
-const alertas = ref(null);
-const alertasLoading = ref(false);
-const alertasErro = ref(null);
+const METRICAS = Object.freeze({
+  taxa: { serie: 'Taxa diária do CRM', botao: 'Taxa diária' },
+  qtd: { serie: 'Autorizações do CRM', botao: 'Autorizações' },
+  valor: { serie: 'Valor do CRM', botao: 'Valor (R$)' },
+});
+const metrica = ref('taxa');
 
 function competenciaToIndex(comp) {
   return Math.floor(comp / 100) * 12 + (comp % 100) - 1;
@@ -66,32 +67,6 @@ function competenciaDeData(value) {
   return text.includes('/') ? Number(match[2]) * 100 + Number(match[1]) : Number(match[1]) * 100 + Number(match[2]);
 }
 
-function temAlertasDetalhados(m) {
-  return Number(m?.qtd_alertas_crm_unico || 0) > 0
-    || Number(m?.qtd_alertas_geograficos || 0) > 0
-    || Number(m?.qtd_alertas_crm_multiplos || 0) > 0;
-}
-
-watch(
-  () => [props.modelValue, props.medico?.id_medico],
-  async ([visible]) => {
-    alertas.value = null;
-    alertasErro.value = null;
-    if (!visible || !props.medico || !temAlertasDetalhados(props.medico)) return;
-    const { inicio, fim } = props.periodoConsulta ?? getApiParams();
-    alertasLoading.value = true;
-    try {
-      alertas.value = await cnpjDetailStore.fetchCrmMedicoAlertas(props.cnpj, props.medico.id_medico, inicio, fim);
-      if (!alertas.value) throw new Error('Alertas do CRM indisponíveis.');
-    } catch (error) {
-      alertasErro.value = error?.message || 'Não foi possível carregar os alertas do CRM.';
-    } finally {
-      alertasLoading.value = false;
-    }
-  },
-  { immediate: true },
-);
-
 const meses = computed(() => {
   if (!props.periodo || !props.medico) return [];
   const inicio = competenciaToIndex(props.periodo.inicio);
@@ -103,9 +78,18 @@ const meses = computed(() => {
     const comp = indexToCompetencia(idx);
     const crm = serieCrm.get(comp);
     const farm = serieFarm.get(comp);
+    if (crm && !(Number(crm.dias) > 0 && Number(crm.p95_taxa_dia) > 0)) {
+      throw new Error(`Contrato inválido na atuação do CRM: mês ${comp} sem dias ou P95.`);
+    }
     lista.push({
       comp,
       label: formatCompetencia(comp),
+      ativo: Boolean(crm),
+      dias: crm ? Number(crm.dias) : 0,
+      taxa: crm ? Number(crm.taxa_prescricoes_dia) : 0,
+      p95: crm ? Number(crm.p95_taxa_dia) : null,
+      razao: crm ? Number(crm.razao_p95) : null,
+      faixa: crm ? crmFaixaP95(crm) : null,
       qtd: crm ? Number(crm.qtd) : 0,
       valor: crm ? Number(crm.valor) : 0,
       qtdBrasil: crm ? Number(crm.qtd_brasil) : 0,
@@ -116,18 +100,17 @@ const meses = computed(() => {
   return lista;
 });
 
+// Tipos de alerta de cada mês nesta farmácia (vêm na própria série mensal).
 const alertasPorMes = computed(() => {
   const mapa = new Map();
-  if (!alertas.value) return mapa;
-  const add = (comp, tipo) => {
-    if (comp == null) return;
-    const atual = mapa.get(comp) ?? { unico: 0, multi: 0, geo: 0 };
-    atual[tipo] += 1;
-    mapa.set(comp, atual);
-  };
-  for (const a of alertas.value.alertas_crm_unico ?? []) add(competenciaDeData(a.dt), 'unico');
-  for (const a of alertas.value.alertas_crm_multiplos ?? []) add(competenciaDeData(a.dt), 'multi');
-  for (const g of alertas.value.alertas_geograficos ?? []) add(competenciaDeData(g.dt_ini_a), 'geo');
+  for (const p of props.medico?.serie_mensal_atuacao ?? []) {
+    const tipos = {
+      unico: Boolean(p.alerta_sequencia_unico),
+      multi: Boolean(p.alerta_sequencia_multiplos),
+      geo: Boolean(p.alerta_distancia),
+    };
+    if (tipos.unico || tipos.multi || tipos.geo) mapa.set(Number(p.competencia), tipos);
+  }
   return mapa;
 });
 
@@ -144,6 +127,7 @@ const kpis = computed(() => {
     { label: 'Meses com movimento', value: formatNumberFull(Number(m.qtd_meses_atuacao)) },
     { label: 'Mês de pico', value: pico ? `${pico.label} · ${formatNumberFull(pico.qtd)} autorizações` : '—' },
     { label: 'Média nos meses ativos', value: ativos.length ? `${formatNumberFull(Math.round(totalQtd / ativos.length))} autorizações` : '—' },
+    { label: 'Meses com taxa elevada', value: `${formatNumberFull(ativos.filter(x => x.faixa).length)} de ${formatNumberFull(ativos.length)}` },
     { label: 'Valor total', value: formatCurrencyFull(m.vl_total_prescricoes) },
   ];
 });
@@ -154,13 +138,28 @@ const titulo = computed(() => {
   return m.no_medico ? `${m.id_medico} · ${formatTitleCase(m.no_medico)}` : `${m.id_medico} · Não localizado na base do CFM`;
 });
 
+function corDaBarra(d) {
+  return d.faixa ? tonsP95.value[d.faixa.chave] : coresDados.value.strong;
+}
+
+function formatTaxa(v) {
+  return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 const chartOption = computed(() => {
   const c = chartTheme.value;
   const dados = meses.value;
-  const porValor = metrica.value === 'valor';
+  const modo = metrica.value;
+  const porTaxa = modo === 'taxa';
+  const porValor = modo === 'valor';
+  const valorDe = (d) => (porTaxa ? d.taxa : porValor ? d.valor : d.qtd);
+  const nomeBarra = METRICAS[modo].serie;
+  const nomeLinha = porTaxa ? 'P95 nacional do mês' : '% da farmácia no mês';
+  const nomeAlerta = 'Mês com alerta de sequência ou distância';
   const inscricao = props.medico?.dt_inscricao_crm ? competenciaDeData(props.medico.dt_inscricao_crm) : null;
   const labelInscricao = inscricao != null ? formatCompetencia(inscricao) : null;
   const inscricaoNoEixo = labelInscricao && dados.some(d => d.label === labelInscricao);
+  const alertaMes = dados.filter(d => d.ativo && alertasPorMes.value.has(d.comp));
 
   return {
     backgroundColor: 'transparent',
@@ -173,11 +172,12 @@ const chartOption = computed(() => {
       itemWidth: 12,
       itemHeight: 8,
       data: [
-        { name: porValor ? 'Valor do CRM' : 'Autorizações do CRM' },
-        { name: '% da farmácia no mês' },
+        { name: nomeBarra, itemStyle: { color: coresDados.value.strong } },
+        { name: nomeLinha },
+        ...(alertaMes.length ? [{ name: nomeAlerta }] : []),
       ],
     },
-    grid: { top: 36, right: 56, bottom: 36, left: 64 },
+    grid: { top: 36, right: porTaxa ? 24 : 56, bottom: 36, left: 64 },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow', shadowStyle: { color: c.axisShadow } },
@@ -187,23 +187,31 @@ const chartOption = computed(() => {
       formatter: (params) => {
         const d = dados[params[0]?.dataIndex];
         if (!d) return '';
+        if (!d.ativo) {
+          return `<div style="min-width:200px"><div style="font-weight:600;margin-bottom:6px">${d.label}</div><div style="opacity:.7">Sem prescrições do CRM nesta farmácia.</div></div>`;
+        }
         const pct = d.farmQtd > 0 ? (d.qtd / d.farmQtd) * 100 : 0;
         const al = alertasPorMes.value.get(d.comp);
         const linhas = [
+          ['Taxa diária na farmácia', `${formatTaxa(d.taxa)}/dia em ${d.dias} ${d.dias === 1 ? 'dia' : 'dias'}`],
+          ['×P95 nacional do mês', `${d.razao.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× (P95 ${formatTaxa(d.p95)})`],
           ['Autorizações do CRM', formatNumberFull(d.qtd)],
           ['Valor do CRM', formatCurrencyFull(d.valor)],
           ['% das autorizações da farmácia', `${pct.toFixed(1).replace('.', ',')}%`],
           ['Autorizações do CRM no Brasil', formatNumberFull(d.qtdBrasil)],
         ];
+        const faixaHtml = d.faixa
+          ? ` · <span style="color:${tonsP95.value[d.faixa.chave]}">taxa elevada (${d.faixa.rotulo})</span>`
+          : '';
         const alertasHtml = al
           ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid ${c.tooltipBorder};font-size:11px;">
-               ${al.unico ? `<div>● Sequência · Único CRM: ${al.unico}</div>` : ''}
-               ${al.multi ? `<div>● Sequência · Múltiplos CRMs: ${al.multi}</div>` : ''}
-               ${al.geo ? `<div>● Distância &gt; 400 km: ${al.geo}</div>` : ''}
+               ${al.unico ? '<div>▼ Autorizações em sequência · Único CRM</div>' : ''}
+               ${al.multi ? '<div>▼ Autorizações em sequência · Múltiplos CRMs</div>' : ''}
+               ${al.geo ? '<div>▼ Distância &gt; 400 km</div>' : ''}
              </div>`
           : '';
-        return `<div style="min-width:240px">
-          <div style="font-weight:600;margin-bottom:6px">${d.label}</div>
+        return `<div style="min-width:260px">
+          <div style="font-weight:600;margin-bottom:6px">${d.label}${faixaHtml}</div>
           ${linhas.map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:16px"><span style="opacity:.7">${k}</span><span style="font-weight:600">${v}</span></div>`).join('')}
           ${alertasHtml}
         </div>`;
@@ -222,12 +230,13 @@ const chartOption = computed(() => {
         axisLabel: {
           color: c.muted,
           fontSize: 10,
-          formatter: (v) => (porValor ? `R$ ${formatNumberFull(v)}` : formatNumberFull(v)),
+          formatter: (v) => (porValor ? `R$ ${formatNumberFull(v)}` : porTaxa ? `${formatNumberFull(v)}/dia` : formatNumberFull(v)),
         },
         splitLine: { lineStyle: { color: c.grid } },
       },
       {
         type: 'value',
+        show: !porTaxa,
         min: 0,
         max: 100,
         axisLabel: { color: c.muted, fontSize: 10, formatter: '{value}%' },
@@ -236,14 +245,11 @@ const chartOption = computed(() => {
     ],
     series: [
       {
-        name: porValor ? 'Valor do CRM' : 'Autorizações do CRM',
+        name: nomeBarra,
         type: 'bar',
         barMaxWidth: 28,
         itemStyle: { color: coresDados.value.strong, borderRadius: [3, 3, 0, 0] },
-        data: dados.map(d => ({
-          value: porValor ? d.valor : d.qtd,
-          itemStyle: alertasPorMes.value.has(d.comp) ? { color: COR_BARRA_ALERTA } : undefined,
-        })),
+        data: dados.map(d => ({ value: valorDe(d), itemStyle: { color: corDaBarra(d) } })),
         markLine: inscricaoNoEixo
           ? {
               symbol: 'none',
@@ -254,19 +260,43 @@ const chartOption = computed(() => {
             }
           : undefined,
       },
+      porTaxa
+        ? {
+            name: nomeLinha,
+            type: 'line',
+            step: 'middle',
+            connectNulls: true,
+            symbol: 'none',
+            lineStyle: { color: coresDados.value.line, width: 1.5, type: 'dashed' },
+            itemStyle: { color: coresDados.value.line },
+            data: dados.map(d => (d.p95 != null ? Number(d.p95.toFixed(2)) : null)),
+          }
+        : {
+            name: nomeLinha,
+            type: 'line',
+            yAxisIndex: 1,
+            smooth: 0.25,
+            symbol: 'none',
+            lineStyle: { color: coresDados.value.line, width: 2, type: 'dashed' },
+            itemStyle: { color: coresDados.value.line },
+            data: dados.map(d => {
+              const base = porValor ? d.farmValor : d.farmQtd;
+              const parte = porValor ? d.valor : d.qtd;
+              return base > 0 ? Number(((parte / base) * 100).toFixed(2)) : 0;
+            }),
+          },
       {
-        name: '% da farmácia no mês',
-        type: 'line',
-        yAxisIndex: 1,
-        smooth: 0.25,
-        symbol: 'none',
-        lineStyle: { color: coresDados.value.line, width: 2, type: 'dashed' },
-        itemStyle: { color: coresDados.value.line },
-        data: dados.map(d => {
-          const base = porValor ? d.farmValor : d.farmQtd;
-          const parte = porValor ? d.valor : d.qtd;
-          return base > 0 ? Number(((parte / base) * 100).toFixed(2)) : 0;
-        }),
+        // Marcador (triângulo para baixo) acima da barra dos meses com alerta.
+        name: nomeAlerta,
+        type: 'scatter',
+        symbol: 'triangle',
+        symbolRotate: 180,
+        symbolSize: 9,
+        symbolOffset: [0, -9],
+        silent: true,
+        z: 5,
+        itemStyle: { color: c.text },
+        data: alertaMes.map(d => [d.label, valorDe(d)]),
       },
     ],
   };
@@ -304,33 +334,37 @@ function fechar() {
       <div class="atuacao-toolbar">
         <div class="atuacao-metrica" role="radiogroup" aria-label="Métrica do gráfico">
           <button
+            v-for="(m, chave) in METRICAS"
+            :key="chave"
             type="button"
             role="radio"
-            :aria-checked="metrica === 'qtd'"
-            :class="{ 'is-active': metrica === 'qtd' }"
-            @click="metrica = 'qtd'"
-          >Autorizações</button>
-          <button
-            type="button"
-            role="radio"
-            :aria-checked="metrica === 'valor'"
-            :class="{ 'is-active': metrica === 'valor' }"
-            @click="metrica = 'valor'"
-          >Valor (R$)</button>
+            :aria-checked="metrica === chave"
+            :class="{ 'is-active': metrica === chave }"
+            @click="metrica = chave"
+          >{{ m.botao }}</button>
         </div>
         <div class="atuacao-legenda">
-          <span><i class="legenda-cor is-alerta" /> Mês com alerta de sequência ou distância</span>
+          <span class="legenda-tons">
+            <i class="legenda-cor" :style="{ background: tonsP95.leve }" />
+            <i class="legenda-cor" :style="{ background: tonsP95.media }" />
+            <i class="legenda-cor" :style="{ background: tonsP95.forte }" />
+            Taxa acima do P95 do mês (1–2×, 2–3×, &gt; 3×)
+          </span>
+          <span><i class="legenda-marcador" aria-hidden="true">▼</i> Mês com alerta de sequência ou distância</span>
           <span v-if="medico.dt_inscricao_crm"><i class="legenda-cor is-inscricao" /> 1ª inscrição: {{ formatarData(medico.dt_inscricao_crm) }}</span>
-          <span v-if="alertasLoading" class="legenda-status"><i class="pi pi-spinner pi-spin" /> Carregando alertas…</span>
-          <span v-else-if="alertasErro" class="legenda-status is-erro"><i class="pi pi-exclamation-triangle" /> {{ alertasErro }}</span>
         </div>
       </div>
 
       <VChart class="atuacao-chart" :option="chartOption" autoresize />
 
       <p class="atuacao-nota">
-        A linha mostra a parcela das autorizações (ou do valor) da farmácia no mês que foi atribuída a este CRM.
-        O tooltip de cada mês traz também o volume do mesmo CRM no Brasil.
+        <template v-if="metrica === 'taxa'">
+          Taxa diária = prescrições do CRM nesta farmácia ÷ dias com prescrição nela no mês. A linha tracejada é o P95 nacional do mês.
+        </template>
+        <template v-else>
+          A linha mostra a parcela das autorizações (ou do valor) da farmácia no mês que foi atribuída a este CRM.
+        </template>
+        A cor da barra segue a taxa diária em todas as métricas. O tooltip de cada mês traz também o volume do mesmo CRM no Brasil.
       </p>
     </div>
 
@@ -353,7 +387,7 @@ function fechar() {
 .atuacao-dialog-body { display: flex; flex-direction: column; gap: 1rem; }
 .atuacao-kpis {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.75rem;
 }
 .atuacao-kpi {
@@ -416,10 +450,10 @@ function fechar() {
 }
 .atuacao-legenda span { display: inline-flex; align-items: center; gap: 0.4rem; }
 .legenda-cor { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-.legenda-cor.is-alerta { background: var(--risk-critical); }
+.atuacao-legenda .legenda-tons { gap: 0.2rem; }
+.legenda-tons .legenda-cor:last-of-type { margin-right: 0.25rem; }
+.legenda-marcador { font-style: normal; font-size: 0.62rem; color: var(--text-color); }
 .legenda-cor.is-inscricao { background: var(--risk-medium); height: 2px; }
-.legenda-status { color: var(--text-muted); }
-.legenda-status.is-erro { color: var(--risk-critical); }
 .atuacao-chart { width: 100%; height: 360px; }
 .atuacao-nota { margin: 0; font-size: 0.72rem; color: var(--text-muted); }
 .atuacao-fechar {

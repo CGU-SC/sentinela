@@ -5,8 +5,13 @@ import { useCnpjDetailStore } from '@/stores/cnpjDetail';
 import { useFilterParameters } from "@/composables/useFilterParameters";
 import CrmAtuacaoDialog from './CrmAtuacaoDialog.vue';
 import { useThemeStore } from '@/stores/theme';
-import { DATA_NEUTRAL } from '@/config/colors';
+import { DATA_NEUTRAL, CRM_TAXA_P95_TONS } from '@/config/colors';
+import { crmAlturaAtuacao, crmFaixaP95 } from '@/config/analysisTooltipConfig';
 import { CRM_EXCLUSIVIDADE_THRESHOLDS, CRM_DAILY_RATE_ALERT_THRESHOLD } from '@/config/riskConfig';
+import { API_ENDPOINTS } from '@/config/api';
+import { downloadBlobFromResponse } from '@/utils/download';
+import { getApiErrorMessage } from '@/utils/apiErrors';
+import { useToast } from 'primevue/usetoast';
 
 const cnpjDetailStore = useCnpjDetailStore();
 const { getApiParams } = useFilterParameters();
@@ -35,8 +40,16 @@ const PARETO_LIMITE = 80;
 const themeStore = useThemeStore();
 // Cor de dados neutra (azul-aço) exposta como variáveis CSS para barras e mini gráficos.
 const dataColorVars = computed(() => {
-  const cores = DATA_NEUTRAL[themeStore.isDark ? 'dark' : 'light'];
-  return { '--data-color': cores.strong, '--data-color-soft': cores.soft };
+  const tema = themeStore.isDark ? 'dark' : 'light';
+  const cores = DATA_NEUTRAL[tema];
+  const tons = CRM_TAXA_P95_TONS[tema];
+  return {
+    '--data-color': cores.strong,
+    '--data-color-soft': cores.soft,
+    '--p95-leve': tons.leve,
+    '--p95-media': tons.media,
+    '--p95-forte': tons.forte,
+  };
 });
 
 function getExclusividadeNivel(m) {
@@ -98,6 +111,12 @@ const crmTableTooltips = Object.freeze({
     'A seleção de “Apenas com Alertas / Anomalias” permanece independente.',
     'pi-times'
   ),
+  exportar: createCrmTableTooltip(
+    'Exportar CRMs',
+    'Gera um arquivo com a lista de CRMs de interesse do período: alertas, atuação, prescrições, valores, participação e exclusividade.',
+    'Excel traz três abas (CRMs, Atuação mensal e Critérios); CSV traz só a lista. Com filtro ativo, escolha entre todos os CRMs ou apenas os exibidos — o filtro fica registrado no cabeçalho.',
+    'pi-download'
+  ),
   columns: Object.freeze({
     rank: createCrmTableTooltip(
       'Classificação',
@@ -138,7 +157,7 @@ const crmTableTooltips = Object.freeze({
     atuacao: createCrmTableTooltip(
       'Atuação na farmácia',
       'Primeiro e último mês em que o CRM teve prescrições neste estabelecimento, dentro do período filtrado, e a quantidade de meses com movimento.',
-      'O mini gráfico mostra as autorizações mês a mês, uma barra por mês, na mesma linha do tempo para todos os médicos: do primeiro ao último mês com prescrições na farmácia dentro do período filtrado. Barras alinhadas indicam atuação simultânea; a altura é relativa ao maior mês do próprio CRM.',
+      'O mini gráfico mostra a taxa diária do CRM nesta farmácia mês a mês (prescrições ÷ dias com prescrição), uma barra por mês, na mesma linha do tempo e na mesma escala para todos os médicos: a altura é o ×P95 nacional do mês, até 4× (acima disso, barra cheia com uma marca escura no topo). Tons de vermelho marcam meses acima do P95 (1× a 2×, 2× a 3×, acima de 3×).',
       'pi-calendar'
     ),
     exclusive: createCrmTableTooltip(
@@ -271,12 +290,19 @@ function buildAtuacao(m) {
   const inicio = Number(m.competencia_inicio_atuacao);
   const fim = Number(m.competencia_fim_atuacao);
   const meses = Number(m.qtd_meses_atuacao);
-  const maximo = Math.max(1, ...m.serie_mensal_atuacao.map(p => Number(p.qtd)));
+  // Altura: ×P95 nacional do mês da taxa diária nesta farmácia, na mesma escala
+  // para todos os médicos (teto em crmAlturaAtuacao); cor: faixa do ×P95
+  // (mesma regra da linha do tempo de /analises).
   const barras = m.serie_mensal_atuacao
-    .map(p => ({
-      x: competenciaToIndex(Number(p.competencia)) - eixo.inicio,
-      h: Math.max(1.5, (Number(p.qtd) / maximo) * 16),
-    }))
+    .map(p => {
+      const altura = crmAlturaAtuacao(p.razao_p95);
+      return {
+        x: competenciaToIndex(Number(p.competencia)) - eixo.inicio,
+        h: Math.max(1.5, altura.fracao * 16),
+        cortada: altura.cortada,
+        faixa: crmFaixaP95(p)?.chave ?? null,
+      };
+    })
     .filter(b => b.x >= 0 && b.x < eixo.total);
   return {
     periodo: inicio === fim ? formatCompetencia(inicio) : `${formatCompetencia(inicio)} – ${formatCompetencia(fim)}`,
@@ -354,6 +380,95 @@ const filteredCrmsInteresse = computed(() => {
   }
   return list;
 });
+
+// ── Exportação da lista ─────────────────────────────────────────────────────
+const toast = useToast();
+const exportLoading = ref(false);
+const EXPORT_FORMATS = Object.freeze({
+  xlsx: { label: 'Excel', extension: 'xlsx', icon: 'pi-file-excel' },
+  csv: { label: 'CSV', extension: 'csv', icon: 'pi-file' },
+});
+
+// Descrição dos filtros da tela; vai para o cabeçalho do arquivo quando só os exibidos são exportados.
+const descricaoFiltro = computed(() => {
+  const partes = [];
+  if (props.activeKpiFilter) {
+    const rotulo = props.kpiFilterLabels[props.activeKpiFilter];
+    if (!rotulo) throw new Error(`Rótulo ausente para o filtro de KPI: ${props.activeKpiFilter}.`);
+    partes.push(rotulo);
+  }
+  if (filterOnlyIssues.value) partes.push('Apenas com alertas / anomalias');
+  return partes.join(' + ');
+});
+const exportFiltrado = computed(() =>
+  Boolean(descricaoFiltro.value) && filteredCrmsInteresse.value.length < props.crmsInteresse.length
+);
+
+const formatoItens = (escopo) => [
+  { label: 'Excel (.xlsx) · planilha formatada', icon: 'pi pi-file-excel', command: () => exportCrms('xlsx', escopo) },
+  { label: 'CSV (.csv) · texto simples', icon: 'pi pi-file', command: () => exportCrms('csv', escopo) },
+];
+const exportMenuItems = computed(() => {
+  const total = formatNumberFull(props.crmsInteresse.length);
+  if (!exportFiltrado.value) return [{ label: `CRMs de interesse (${total})`, items: formatoItens('todos') }];
+  const exibidos = filteredCrmsInteresse.value.length;
+  return [
+    { label: `CRMs de interesse · só os exibidos (${formatNumberFull(exibidos)})`, items: formatoItens('exibidos') },
+    { label: `CRMs de interesse · todos (${total})`, items: formatoItens('todos') },
+  ];
+});
+
+// Botão padrão de exportação (barra de abas, AuthTab.vue).
+const exportacao = computed(() => ({
+  itens: exportMenuItems.value,
+  carregando: exportLoading.value,
+  desabilitado: !props.crmsInteresse.length,
+  motivo: props.crmsInteresse.length ? 'Lista de CRMs de interesse do período.' : 'Nenhum CRM no período.',
+  tooltip: crmTableTooltips.exportar,
+}));
+defineExpose({ exportacao });
+
+async function exportCrms(formato, escopo) {
+  if (exportLoading.value) return;
+  const format = EXPORT_FORMATS[formato];
+  if (!format) throw new Error(`Formato de exportação desconhecido: ${formato}`);
+  const cnpj = props.currentCnpj.replace(/\D/g, '').padStart(14, '0');
+  const { inicio, fim } = getApiParams();
+  const body = { formato, data_inicio: inicio ?? null, data_fim: fim ?? null };
+  if (escopo === 'exibidos') {
+    body.ids = filteredCrmsInteresse.value.map((m) => String(m.id_medico));
+    body.filtro = descricaoFiltro.value;
+  }
+  exportLoading.value = true;
+  try {
+    const response = await fetch(API_ENDPOINTS.analyticsCrmPrescritoresExport(cnpj), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(
+        await getApiErrorMessage(response, `Falha HTTP ${response.status} ao gerar o ${format.label} dos CRMs.`),
+      );
+    }
+    const downloadResult = await downloadBlobFromResponse(response, `crm_perfil_${cnpj}.${format.extension}`);
+    if (downloadResult?.desktop) {
+      toast.add({
+        group: 'download',
+        severity: 'success',
+        summary: `${format.label} dos CRMs salvo`,
+        detail: `Arquivo salvo em notas_tecnicas\\${downloadResult.filename}.`,
+        data: { path: downloadResult.path, icon: format.icon },
+      });
+    } else {
+      toast.add({ severity: 'success', summary: `${format.label} dos CRMs baixado`, detail: downloadResult?.filename, life: 4000 });
+    }
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Falha na exportação', detail: error.message || `Não foi possível salvar o ${format.label}.`, life: 7000 });
+  } finally {
+    exportLoading.value = false;
+  }
+}
 
 const visibleCrms = computed(() =>
   showAllCrms.value ? filteredCrmsInteresse.value : filteredCrmsInteresse.value.slice(0, 10)
@@ -584,17 +699,27 @@ const maxPDOverall = computed(() => {
                     :viewBox="`0 0 ${atuacaoByMedico.get(m.id_medico).total} 16`"
                     preserveAspectRatio="none"
                     role="img"
-                    :aria-label="`Autorizações mensais de ${m.id_medico}: ${atuacaoByMedico.get(m.id_medico).periodo}, ${atuacaoByMedico.get(m.id_medico).meses}`"
+                    :aria-label="`Taxa diária mensal de ${m.id_medico}: ${atuacaoByMedico.get(m.id_medico).periodo}, ${atuacaoByMedico.get(m.id_medico).meses}`"
                   >
                     <line class="atuacao-base" x1="0" y1="15.75" :x2="atuacaoByMedico.get(m.id_medico).total" y2="15.75" />
                     <rect
                       v-for="barra in atuacaoByMedico.get(m.id_medico).barras"
                       :key="barra.x"
                       class="atuacao-bar"
+                      :class="barra.faixa ? `is-p95-${barra.faixa}` : null"
                       :x="barra.x + 0.1"
                       :y="16 - barra.h"
                       width="0.8"
                       :height="barra.h"
+                    />
+                    <rect
+                      v-for="barra in atuacaoByMedico.get(m.id_medico).barras.filter(b => b.cortada)"
+                      :key="`corte-${barra.x}`"
+                      class="atuacao-corte"
+                      :x="barra.x + 0.1"
+                      y="0"
+                      width="0.8"
+                      height="1.4"
                     />
                   </svg>
                 </button>
@@ -1174,6 +1299,11 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
 .atuacao-spark { display: block; width: 100%; height: 35px; overflow: visible; }
 .atuacao-base { stroke: var(--card-border); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
 .atuacao-bar { fill: var(--data-color); }
+.atuacao-bar.is-p95-leve { fill: var(--p95-leve); }
+.atuacao-bar.is-p95-media { fill: var(--p95-media); }
+.atuacao-bar.is-p95-forte { fill: var(--p95-forte); }
+/* Mês acima do teto de altura (4× o P95): barra cheia com marca no topo. */
+.atuacao-corte { fill: var(--text-color); opacity: 0.55; }
 .row-expandable { cursor: pointer; user-select: none; }
 .excl-valor {
   display: inline-block;

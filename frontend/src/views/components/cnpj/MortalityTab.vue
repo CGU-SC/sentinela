@@ -10,6 +10,10 @@ import { useFarmaciaListsStore } from '@/stores/farmaciaLists';
 import { useToggleInteresse } from '@/composables/useToggleInteresse';
 import Tag from 'primevue/tag';
 import Button from 'primevue/button';
+import { useToast } from 'primevue/usetoast';
+import { API_ENDPOINTS } from '@/config/api';
+import { downloadBlobFromResponse } from '@/utils/download';
+import { getApiErrorMessage } from '@/utils/apiErrors';
 import MortalityTimelineOverlay from './MortalityTimelineOverlay.vue';
 import TabPlaceholder from './TabPlaceholder.vue';
 
@@ -98,8 +102,8 @@ const mortalityTooltips = Object.freeze({
     ),
     pctFaturamento: createMortalityTooltip(
       'Percentual do faturamento',
-      'Percentual obtido pela relação entre o valor total das autorizações pós-óbito e o faturamento PFPB registrado para este CNPJ na base de movimentação. Indica a participação financeira dessas ocorrências no faturamento do estabelecimento.',
-      'Valor das autorizações pós-óbito dividido pelo faturamento PFPB total registrado na base de movimentação.'
+      'Percentual obtido pela relação entre o valor total das autorizações pós-óbito e o faturamento PFPB registrado para este CNPJ na base de movimentação, no mesmo período selecionado. Indica a participação financeira dessas ocorrências no faturamento do estabelecimento.',
+      'Valor das autorizações pós-óbito dividido pelo faturamento PFPB do estabelecimento no período selecionado.'
     ),
     cpfsMultiCnpj: createMortalityTooltip(
       'CPFs Multi-CNPJ',
@@ -316,12 +320,6 @@ const falecidosAgrupados = computed(() => {
 
 const timelineOverlay = ref(null);
 
-defineExpose({
-  getSummary:  () => cachedFalecidosData.value?.summary ?? null,
-  getAgrupados: () => falecidosAgrupados.value ?? [],
-  getRanking:  () => cachedFalecidosData.value?.ranking ?? [],
-  hasData:     () => !!(falecidosLoaded.value && cachedFalecidosData.value?.transacoes?.length),
-});
 
 const toggleMultiCnpj = (event, grupo) => {
   timelineOverlay.value?.open(event, grupo);
@@ -345,6 +343,83 @@ const filteredRankingCnpj = ref(null);
 const toggleRankingFilter = (cleanCnpj) => {
   filteredRankingCnpj.value = filteredRankingCnpj.value === cleanCnpj ? null : cleanCnpj;
 };
+
+// ── Exportação ─────────────────────────────────────────────────────────────
+const toast = useToast();
+const exportLoading = ref(false);
+const EXPORT_FORMATS = Object.freeze({
+  xlsx: { label: 'Excel', extension: 'xlsx', icon: 'pi-file-excel' },
+  csv: { label: 'CSV', extension: 'csv', icon: 'pi-file' },
+});
+const exportTooltip = createMortalityTooltip(
+  'Exportar falecidos',
+  'Gera um arquivo com todas as autorizações feitas após o óbito nesta farmácia, no período selecionado. O Excel traz quatro abas: Autorizações (com os indicadores dos cards), Resumo por CPF, Outras farmácias (rede de coincidência completa) e Critérios. O CSV traz só as autorizações.',
+  'Com o filtro da rede de coincidência ativo, escolha entre todos os CPFs ou apenas os exibidos; o filtro fica registrado no cabeçalho do arquivo.'
+);
+const formatoItens = (outroCnpj) => [
+  { label: 'Excel (.xlsx) · planilha formatada', icon: 'pi pi-file-excel', command: () => exportFalecidos('xlsx', outroCnpj) },
+  { label: 'CSV (.csv) · texto simples', icon: 'pi pi-file', command: () => exportFalecidos('csv', outroCnpj) },
+];
+const exportMenuItems = computed(() => {
+  const total = falecidosAgrupados.value.length;
+  if (!filteredRankingCnpj.value) return [{ label: `Autorizações após o óbito (${total} CPFs)`, items: formatoItens(null) }];
+  const exibidos = falecidosAgrupadosFiltrados.value.length;
+  return [
+    { label: `Autorizações após o óbito · só os exibidos (${exibidos} ${exibidos === 1 ? 'CPF' : 'CPFs'})`, items: formatoItens(filteredRankingCnpj.value) },
+    { label: `Autorizações após o óbito · todos (${total} CPFs)`, items: formatoItens(null) },
+  ];
+});
+
+// Botão padrão de exportação (barra de abas, AuthTab.vue).
+const temFalecidos = computed(() => Boolean(falecidosLoaded.value && cachedFalecidosData.value?.transacoes?.length));
+const exportacao = computed(() => ({
+  itens: exportMenuItems.value,
+  carregando: exportLoading.value,
+  desabilitado: !temFalecidos.value,
+  motivo: temFalecidos.value ? 'Autorizações após o óbito do período.' : 'Nenhuma autorização após o óbito no período.',
+  tooltip: exportTooltip,
+}));
+
+defineExpose({
+  getSummary:  () => cachedFalecidosData.value?.summary ?? null,
+  getAgrupados: () => falecidosAgrupados.value ?? [],
+  getRanking:  () => cachedFalecidosData.value?.ranking ?? [],
+  hasData:     () => temFalecidos.value,
+  exportacao,
+});
+
+async function exportFalecidos(formato, outroCnpj) {
+  if (exportLoading.value) return;
+  const format = EXPORT_FORMATS[formato];
+  if (!format) throw new Error(`Formato de exportação desconhecido: ${formato}`);
+  const { inicio, fim } = filterStore.apiParams;
+  const cnpj = props.cnpj.replace(/\D/g, '').padStart(14, '0');
+  exportLoading.value = true;
+  try {
+    const response = await fetch(API_ENDPOINTS.analyticsFalecidosExport(cnpj, inicio, fim, formato, outroCnpj));
+    if (!response.ok) {
+      throw new Error(
+        await getApiErrorMessage(response, `Falha HTTP ${response.status} ao gerar o ${format.label} de falecidos.`),
+      );
+    }
+    const downloadResult = await downloadBlobFromResponse(response, `falecidos_${cnpj}.${format.extension}`);
+    if (downloadResult?.desktop) {
+      toast.add({
+        group: 'download',
+        severity: 'success',
+        summary: `${format.label} de falecidos salvo`,
+        detail: `Arquivo salvo em notas_tecnicas\\${downloadResult.filename}.`,
+        data: { path: downloadResult.path, icon: format.icon },
+      });
+    } else {
+      toast.add({ severity: 'success', summary: `${format.label} de falecidos baixado`, detail: downloadResult?.filename, life: 4000 });
+    }
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Falha na exportação', detail: error.message || `Não foi possível salvar o ${format.label}.`, life: 7000 });
+  } finally {
+    exportLoading.value = false;
+  }
+}
 
 const falecidosAgrupadosFiltrados = computed(() => {
   if (!filteredRankingCnpj.value) return falecidosAgrupados.value;

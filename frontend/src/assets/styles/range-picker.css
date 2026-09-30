@@ -1,0 +1,28 @@
+/*
+ * Seletores de intervalo (MonthRangePicker, NumberRangePicker): botão que abre
+ * um painel com atalhos à esquerda e a escolha personalizada à direita.
+ * Global porque o painel (OverlayPanel) é teleportado para o body.
+ */
+
+/* Botão */
+.rp-gatilho { display: inline-flex; align-items: center; gap: .5rem; min-height: 2.1rem; max-width: 100%; padding: 0 .7rem; border: 1px solid var(--card-border); border-radius: 6px; background: var(--card-bg); color: var(--text-color); font: inherit; font-size: .76rem; cursor: pointer; transition: border-color .15s ease; }
+.rp-gatilho:hover:not(:disabled) { border-color: var(--primary-color); }
+.rp-gatilho:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent); outline-offset: 1px; }
+.rp-gatilho:disabled { opacity: .6; cursor: default; }
+.rp-gatilho-icone { color: var(--primary-color); font-size: .8rem; }
+/* Texto ocupa o espaço livre: a seta fica na borda direita (padrão de dropdown). */
+.rp-gatilho-texto { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.rp-gatilho-seta { flex-shrink: 0; margin-left: .35rem; color: var(--text-muted); font-size: .65rem; }
+
+/* Painel */
+.rp-painel .p-overlaypanel-content { padding: 0; }
+.rp-corpo { display: flex; color: var(--text-color); font-size: .76rem; }
+.rp-atalhos { display: flex; flex-direction: column; gap: .15rem; min-width: 11.5rem; margin: 0; padding: .6rem; border-right: 1px solid var(--card-border); list-style: none; }
+.rp-atalho { display: flex; align-items: center; justify-content: space-between; gap: .5rem; width: 100%; padding: .45rem .6rem; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; cursor: pointer; }
+.rp-atalho:hover, .rp-atalho:focus-visible { background: color-mix(in srgb, var(--text-color) 6%, transparent); color: var(--text-color); outline: none; }
+.rp-atalho.is-ativo { background: color-mix(in srgb, var(--primary-color) 14%, transparent); color: var(--primary-color); font-weight: 600; }
+.rp-atalho-seta { font-size: .7rem; opacity: .6; }
+.rp-conteudo { display: flex; flex-direction: column; gap: .5rem; padding: .75rem .9rem .6rem; }
+.rp-dica { margin: 0; min-height: 1.1rem; color: var(--text-muted); font-size: .7rem; text-align: center; }
+.rp-dica strong { color: var(--text-color); font-weight: 600; }
+.rp-dica.is-erro { color: var(--risk-critical); }

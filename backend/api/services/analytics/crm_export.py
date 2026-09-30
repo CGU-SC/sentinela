@@ -304,16 +304,17 @@ def _formats(wb: xlsxwriter.Workbook) -> dict:
     }
 
 
-def _write_header(ws, f: dict, titulo: str, farmacia: _Farmacia, export: _RaioxExport,
+def _write_header(ws, f: dict, titulo: str, farmacia: _Farmacia, cnpj: str, inicio: str, fim: str,
                   gerado_em: datetime, ultima_coluna: int) -> None:
+    """Cabeçalho padrão das planilhas CRM (linhas 0 a 4): título, farmácia e período."""
     ws.set_row(0, 6)
     ws.merge_range(0, 0, 0, ultima_coluna, "", f["faixa"])
     ws.set_row(1, 30)
     ws.merge_range(1, 0, 1, ultima_coluna, titulo, f["titulo"])
     ws.merge_range(2, 0, 2, ultima_coluna, farmacia.razao_social, f["subtitulo"])
-    periodo = f"{_iso_to_date(export.inicio):%d/%m/%Y} a {_iso_to_date(export.fim):%d/%m/%Y}"
+    periodo = f"{_iso_to_date(inicio):%d/%m/%Y} a {_iso_to_date(fim):%d/%m/%Y}"
     ws.merge_range(3, 0, 3, ultima_coluna,
-                   f"CNPJ {_format_cnpj(export.cnpj)}  ·  {farmacia.municipio}/{farmacia.uf}", f["meta"])
+                   f"CNPJ {_format_cnpj(cnpj)}  ·  {farmacia.municipio}/{farmacia.uf}", f["meta"])
     ws.merge_range(4, 0, 4, ultima_coluna,
                    f"Período: {periodo}  ·  Gerado em {gerado_em:%d/%m/%Y %H:%M} pelo Sentinela", f["meta"])
 
@@ -337,15 +338,16 @@ def _write_total_row(ws, f: dict, row: int, first_data: int, last_data: int, spe
             )
 
 
-def _setup_page(ws, farmacia_cnpj: str, header_row: int) -> None:
+def _setup_page(ws, farmacia_cnpj: str, header_row: int,
+                secao: str = "Raio-X CRM", rodape: str = "Autorizações dos dias alertados") -> None:
     ws.hide_gridlines(2)
     ws.set_landscape()
     ws.set_paper(9)  # A4
     ws.fit_to_pages(1, 0)
     ws.set_margins(left=0.4, right=0.4, top=0.6, bottom=0.6)
     ws.repeat_rows(header_row)
-    ws.set_header(f"&L&8Sentinela · Raio-X CRM&R&8CNPJ {farmacia_cnpj}")
-    ws.set_footer("&L&8Autorizações dos dias alertados&R&8Página &P de &N")
+    ws.set_header(f"&L&8Sentinela · {secao}&R&8CNPJ {farmacia_cnpj}")
+    ws.set_footer(f"&L&8{rodape}&R&8Página &P de &N")
 
 
 def _sheet_autorizacoes(wb, f, export: _RaioxExport, farmacia: _Farmacia, gerado_em: datetime) -> None:
@@ -362,7 +364,7 @@ def _sheet_autorizacoes(wb, f, export: _RaioxExport, farmacia: _Farmacia, gerado
     ultima = len(colunas) - 1
     for idx, (_, largura, _) in enumerate(colunas):
         ws.set_column(idx, idx, largura)
-    _write_header(ws, f, "Raio-X CRM · Autorizações dos dias alertados", farmacia, export, gerado_em, ultima)
+    _write_header(ws, f, "Raio-X CRM · Autorizações dos dias alertados", farmacia, export.cnpj, export.inicio, export.fim, gerado_em, ultima)
 
     rows = export.rows
     ids = rows["id_medico"].cast(pl.Utf8)
@@ -440,7 +442,7 @@ def _sheet_por_dia(wb, f, export: _RaioxExport, farmacia: _Farmacia, gerado_em: 
     for idx, largura in enumerate(larguras):
         ws.set_column(idx, idx, largura)
     ultima = len(larguras) - 1
-    _write_header(ws, f, "Resumo por dia alertado", farmacia, export, gerado_em, ultima)
+    _write_header(ws, f, "Resumo por dia alertado", farmacia, export.cnpj, export.inicio, export.fim, gerado_em, ultima)
 
     resumo = (
         export.rows
@@ -495,7 +497,7 @@ def _sheet_por_medico(wb, f, export: _RaioxExport, farmacia: _Farmacia, gerado_e
     for idx, largura in enumerate(larguras):
         ws.set_column(idx, idx, largura)
     ultima = len(larguras) - 1
-    _write_header(ws, f, "Resumo por médico prescritor", farmacia, export, gerado_em, ultima)
+    _write_header(ws, f, "Resumo por médico prescritor", farmacia, export.cnpj, export.inicio, export.fim, gerado_em, ultima)
 
     resumo = (
         export.rows

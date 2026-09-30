@@ -8,7 +8,7 @@ Fontes (todas ja sincronizadas; nenhuma consulta ao banco):
 * crm_limiar_p95_mes: P95 nacional do mes (mesma regra de alta intensidade do
   mapa e do ranking);
 * perfil_estabelecimento e dados_medico: cadastro da farmacia e do medico;
-* crm_concentracao_unico_alertas_global: dias com rajada de prescricoes do
+* crm_concentracao_unico_alertas_global: dias com autorizacoes em sequencia do
   CRM numa farmacia (ponto "rajadas");
 * geografico_global: pares de farmacias distantes com prescricao do CRM no
   mesmo mes (ponto "distancia").
@@ -105,6 +105,51 @@ def _ler_pares_distantes(filtro: pl.Expr) -> pl.DataFrame:
     )
 
 
+def _cadastro_farmacias(id_cnpjs: pl.Series) -> pl.DataFrame:
+    """Cadastro (perfil) das farmacias pedidas, completo e sem duplicidade.
+
+    UF e municipio entram nos indicadores e pontos de atencao (UFs no mes, fora
+    da UF do CRM, municipios): farmacia sem cadastro, sem UF/municipio ou com
+    mais de uma linha responde 503, em vez de sumir da contagem.
+    """
+    pedidos = id_cnpjs.cast(pl.Int32).unique()
+    cadastro = (
+        get_df_perfil_estabelecimento()
+        .select([
+            pl.col("id_cnpj").cast(pl.Int32),
+            pl.col("cnpj").cast(pl.Utf8),
+            pl.col("razao_social").cast(pl.Utf8),
+            pl.col("no_municipio").cast(pl.Utf8).alias("municipio"),
+            pl.col("uf").cast(pl.Utf8),
+            pl.col("situacao_rf").cast(pl.Utf8),
+            pl.col("is_conexao_ativa").alias("conexao_ativa"),
+        ])
+        .filter(pl.col("id_cnpj").is_in(pedidos.implode()))
+    )
+    duplicadas = cadastro.filter(pl.col("id_cnpj").is_duplicated()).get_column("id_cnpj").unique().to_list()
+    if duplicadas:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Perfil de estabelecimentos com mais de uma linha para as farmacias {sorted(duplicadas)[:5]}.",
+        )
+    ausentes = sorted(set(pedidos.to_list()) - set(cadastro.get_column("id_cnpj").to_list()))
+    if ausentes:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Farmacias com prescricao do CRM sem cadastro no perfil de estabelecimentos: {ausentes[:5]}.",
+        )
+    sem_local = cadastro.filter(
+        pl.col("uf").is_null() | (pl.col("uf").str.strip_chars() == "")
+        | pl.col("municipio").is_null() | (pl.col("municipio").str.strip_chars() == "")
+    ).get_column("id_cnpj").to_list()
+    if sem_local:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Farmacias sem UF ou municipio no perfil de estabelecimentos: {sorted(sem_local)[:5]}.",
+        )
+    return cadastro
+
+
 def _maior_sequencia(competencias: list[int]) -> list[int]:
     """Maior trecho de meses consecutivos (calendario) da lista ordenada."""
     melhor: list[int] = []
@@ -132,14 +177,14 @@ def pontos_de_atencao(
 ) -> list[CrmHistoricoAtencaoSchema]:
     """Pontos de atencao de um CRM no periodo (regra unica: modal e ranking).
 
-    meses_periodo: um mes por linha, com competencia, qtd_ufs (UFs distintas
-    das farmacias no mes) e alta (taxa do mes acima do P95 do mes).
+    meses_periodo: um mes por linha, com competencia e alta (taxa do mes
+    acima do P95 do mes).
     principal: (% da farmacia principal no total do medico, nome dela).
     rajadas: dias com rajada do CRM no periodo (id_cnpj, competencia,
     dt_alerta, id_severidade); com filtro, so os da farmacia filtrada.
     pares_distantes: pares de farmacias distantes no periodo (competencia,
     municipios/UFs e distancia_km).
-    avaliar_farmacias: False com filtro de farmacia (UFs, distancia e
+    avaliar_farmacias: False com filtro de farmacia (distancia e
     concentracao precisam de todas as farmacias).
     """
     pontos: list[CrmHistoricoAtencaoSchema] = []
@@ -175,7 +220,7 @@ def pontos_de_atencao(
             raise HTTPException(status_code=503, detail=f"Severidade de rajada desconhecida: {pior}.")
         pontos.append(CrmHistoricoAtencaoSchema(
             codigo="rajadas_unico",
-            titulo="Rajadas de prescrição do mesmo CRM",
+            titulo="Autorizações em sequência (único CRM)",
             detalhe=(
                 f"{dias} {'dia' if dias == 1 else 'dias'} com muitas prescrições do CRM em poucos minutos, "
                 f"em {farmacias_rajada} {'farmácia' if farmacias_rajada == 1 else 'farmácias'}; "
@@ -196,14 +241,6 @@ def pontos_de_atencao(
                 f"{maior['no_municipio_b']}/{maior['sg_uf_b']}, {_fmt_comp(maior['competencia'])})."
             ),
             competencias=meses_distantes,
-        ))
-    multi = meses_periodo.filter(pl.col("qtd_ufs") > 1).get_column("competencia").to_list()
-    if multi and avaliar_farmacias:
-        pontos.append(CrmHistoricoAtencaoSchema(
-            codigo="multiplas_ufs",
-            titulo="Prescrições em mais de uma UF no mesmo mês",
-            detalhe=f"{len(multi)} {'mês' if len(multi) == 1 else 'meses'} com farmácias de UFs diferentes.",
-            competencias=multi,
         ))
     sequencia = _maior_sequencia(meses_periodo.filter(pl.col("alta")).get_column("competencia").to_list())
     if len(sequencia) >= 2:
@@ -292,22 +329,11 @@ def get_crm_medico_historico(
             ),
         )
 
-    # Cadastro das farmacias
-    perfil = get_df_perfil_estabelecimento()
-    cadastro = (
-        perfil.select([
-            pl.col("id_cnpj").cast(pl.Int32),
-            pl.col("cnpj").cast(pl.Utf8),
-            pl.col("razao_social").cast(pl.Utf8),
-            pl.col("no_municipio").cast(pl.Utf8).alias("municipio"),
-            pl.col("uf").cast(pl.Utf8),
-            pl.col("situacao_rf").cast(pl.Utf8),
-            pl.col("is_conexao_ativa").alias("conexao_ativa"),
-        ])
-        .filter(pl.col("id_cnpj").is_in(por_farmacia.get_column("id_cnpj").unique().implode()))
-        .unique("id_cnpj", keep="first")
+    # Cadastro das farmacias (completo: validado em _cadastro_farmacias)
+    cadastro = _cadastro_farmacias(por_farmacia.get_column("id_cnpj"))
+    por_farmacia = por_farmacia.join(
+        cadastro.select(["id_cnpj", "uf", "municipio"]), on="id_cnpj", how="inner", validate="m:1",
     )
-    por_farmacia = por_farmacia.join(cadastro.select(["id_cnpj", "uf", "municipio"]), on="id_cnpj", how="left")
     por_farmacia_todas = por_farmacia
 
     # Cadastro do medico
@@ -326,7 +352,7 @@ def get_crm_medico_historico(
         por_farmacia.group_by("competencia")
         .agg([
             pl.col("id_cnpj").n_unique().alias("qtd_farmacias"),
-            pl.col("uf").drop_nulls().n_unique().alias("qtd_ufs"),
+            pl.col("uf").n_unique().alias("qtd_ufs"),
         ])
     )
     meses_df = (
@@ -393,7 +419,7 @@ def get_crm_medico_historico(
             pl.col("competencia").min().alias("primeira"),
             pl.col("competencia").max().alias("ultima"),
         ])
-        .join(cadastro, on="id_cnpj", how="left")
+        .join(cadastro, on="id_cnpj", how="inner", validate="1:1")
         .sort(["nu_prescricoes", "id_cnpj"], descending=[True, False])
     )
     farmacias = [
@@ -432,8 +458,9 @@ def get_crm_medico_historico(
         qtd_meses_alta_intensidade=qtd_alta,
         percentual_meses_alta_intensidade=(qtd_alta / meses_periodo.height * 100) if meses_periodo.height else None,
         qtd_farmacias=farm_periodo.get_column("id_cnpj").n_unique(),
-        qtd_municipios=farm_periodo.select(pl.col("municipio").drop_nulls().n_unique()).item(),
-        qtd_ufs=farm_periodo.select(pl.col("uf").drop_nulls().n_unique()).item(),
+        # Par UF + municipio: homonimos em UFs diferentes (Bom Jesus/RS e /PI) sao municipios distintos.
+        qtd_municipios=farm_periodo.select(pl.struct(["uf", "municipio"]).n_unique()).item(),
+        qtd_ufs=farm_periodo.select(pl.col("uf").n_unique()).item(),
         percentual_farmacia_principal=pcts[0] if pcts else None,
         percentual_top3_farmacias=sum(pcts[:3]) if pcts and id_cnpj is None else None,
         pior_mes_competencia=int(pior.item(0, "competencia")) if pior.height else None,
@@ -562,18 +589,8 @@ def get_crm_medicos_alertas(
             ),
         )
 
-    cadastro = (
-        get_df_perfil_estabelecimento()
-        .select([
-            pl.col("id_cnpj").cast(pl.Int32),
-            pl.col("cnpj").cast(pl.Utf8),
-            pl.col("razao_social").cast(pl.Utf8),
-            pl.col("uf").cast(pl.Utf8),
-        ])
-        .filter(pl.col("id_cnpj").is_in(por_farmacia.get_column("id_cnpj").unique().implode()))
-        .unique("id_cnpj", keep="first")
-    )
-    por_farmacia = por_farmacia.join(cadastro, on="id_cnpj", how="left")
+    cadastro = _cadastro_farmacias(por_farmacia.get_column("id_cnpj")).select(["id_cnpj", "cnpj", "razao_social"])
+    por_farmacia = por_farmacia.join(cadastro, on="id_cnpj", how="inner", validate="m:1")
     medicos = (
         get_dados_medico_df().lazy()
         .filter(pl.col("id_medico").cast(pl.Utf8).is_in(id_medicos))
@@ -582,12 +599,8 @@ def get_crm_medicos_alertas(
     )
     cadastro_medico = {str(r["id_medico"]): r for r in medicos.iter_rows(named=True)}
 
-    ufs_mes = por_farmacia.group_by(["id_medico", "competencia"]).agg(
-        pl.col("uf").drop_nulls().n_unique().alias("qtd_ufs")
-    )
     meses = (
         brasil.join(limiar, on="competencia", how="left")
-        .join(ufs_mes, on=["id_medico", "competencia"], how="left")
         .with_columns((pl.col("nu_prescricoes") / pl.col("qtd_dias")).alias("taxa"))
         .with_columns((pl.col("taxa").round(6) > pl.col("p95_taxa_dia")).fill_null(False).alias("alta"))
         .sort(["id_medico", "competencia"])

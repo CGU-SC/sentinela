@@ -1,5 +1,4 @@
 import { nextTick, reactive } from 'vue';
-import { registerMap } from 'echarts/core';
 import { useAnalyticsStore, buildAnalyticsParams } from '@/stores/analytics';
 import { useCrmPrescricoesAnalysisStore } from '@/stores/crmPrescricoesAnalysis';
 import { useFilterStore } from '@/stores/filters';
@@ -8,6 +7,7 @@ import { useMunicipalMapStore } from '@/stores/municipalMap';
 import { useRiskIndicatorsStore } from '@/stores/riskIndicators';
 import { getCrmMapLevel } from '@/composables/useCrmPrescricoesAnalysis';
 import { TIMING } from '@/config/constants';
+import { ensureBrasilUfMap } from '@/composables/echartsMaps';
 
 export const ANALYSIS_PAGE_PATHS = ['/municipios', '/estabelecimentos', '/analises'];
 
@@ -18,7 +18,6 @@ export const analysisPageEntry = reactive({
   errorMessage: null,
 });
 
-let nationalGeoPromise = null;
 let preparationSequence = 0;
 let sidebarPromise = null;
 let sidebarPath = null;
@@ -78,24 +77,6 @@ async function settleSidebarBeforeReveal(filterStore) {
     main.addEventListener('transitionend', onTransitionEnd);
     timeoutId = window.setTimeout(finish, TIMING.SIDEBAR_MOTION_MS * 1.25);
   });
-}
-
-async function ensureNationalGeo() {
-  if (window.__brasilUfRegistered) return;
-  if (!nationalGeoPromise) {
-    nationalGeoPromise = fetch('/geo/brasil-uf.json')
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Não foi possível carregar o mapa do Brasil.');
-        const geo = await response.json();
-        if (geo?.type !== 'FeatureCollection' || !Array.isArray(geo.features) || !geo.features.length) {
-          throw new Error('GeoJSON nacional sem territórios válidos.');
-        }
-        registerMap('brasil-uf', geo);
-        window.__brasilUfRegistered = true;
-      })
-      .finally(() => { nationalGeoPromise = null; });
-  }
-  await nationalGeoPromise;
 }
 
 async function ensureGeo() {
@@ -211,12 +192,16 @@ export async function prepareAnalysisPage(path) {
 
   try {
     if (!filterStore.isPeriodoValido) throw new Error('Selecione um período válido para abrir esta análise.');
-    const common = [ensureGeo(), ensureNationalGeo(), ensureDashboard(filterStore)];
+    const common = [ensureGeo(), ensureBrasilUfMap(), ensureDashboard(filterStore)];
     if (path !== '/analises') common.push(useRiskIndicatorsStore().loadPreferences());
-    const [, , dashboardKey] = await Promise.all(common);
+    // /analises: mapa e ranking de CRMs não dependem do resumo nem dos mapas
+    // gerais, então correm em paralelo com eles.
+    const [[, , dashboardKey]] = await Promise.all([
+      Promise.all(common),
+      path === '/analises' ? ensureAnalysesPage(filterStore) : null,
+    ]);
     if (path === '/municipios') await ensureMunicipalPage(filterStore, dashboardKey);
     if (path === '/estabelecimentos') await ensureEstablishmentsPage(filterStore);
-    if (path === '/analises') await ensureAnalysesPage(filterStore);
     if (filterStore.apiParamsKey !== filterKey) {
       throw new Error('Os filtros mudaram durante a navegação. Abra a página novamente.');
     }

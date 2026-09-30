@@ -1,5 +1,6 @@
 """Dados agregados para a análise geográfica de prescrições por médico."""
 
+import re
 import threading
 import unicodedata
 from collections import OrderedDict
@@ -722,6 +723,35 @@ def _normalizar_busca_medico(value: str) -> str:
     return " ".join(sem_acentos.casefold().split())
 
 
+_UFS_CRM = frozenset({
+    "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA",
+    "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+})
+# Termo ja normalizado (minusculo, sem acento). Aceita "800", "crm 800",
+# "800/sc", "800-sc", "800 sc", "crm-sc 800", "sc/800" etc.
+_BUSCA_CRM_RE = re.compile(
+    r"^(?:crm[\s/-]*)?(?:(?P<n1>\d+)[\s/-]*(?P<u1>[a-z]{2})|(?P<u2>[a-z]{2})[\s/-]*(?P<n2>\d+)|(?P<n3>\d+))$"
+)
+
+
+def _parse_busca_crm(termo: str) -> Optional[tuple[str, Optional[str]]]:
+    """Interpreta o termo normalizado como CRM: (digitos, UF ou None).
+
+    None quando o termo nao tem forma de CRM ou a UF nao e uma das 27 siglas
+    validas; nesse caso a busca segue por nome.
+    """
+    match = _BUSCA_CRM_RE.match(termo)
+    if not match:
+        return None
+    if match["n3"]:
+        return match["n3"], None
+    numero = match["n1"] or match["n2"]
+    uf = (match["u1"] or match["u2"]).upper()
+    if uf not in _UFS_CRM:
+        return None
+    return numero, uf
+
+
 def _get_medico_name_index(
     medicos: pl.DataFrame,
     signature: tuple[str, int, int],
@@ -764,9 +794,16 @@ def ids_busca_medico(query: Optional[str]) -> Optional[pl.Series]:
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Cache de dados dos medicos indisponivel: {exc}") from exc
     _require_columns(medicos, CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos medicos")
-    if termo.isdecimal():
+    crm = _parse_busca_crm(termo)
+    if crm is not None and crm[1] is not None:
+        # CRM + UF identifica um registro: numero exato na UF informada.
+        numero, uf = crm
         ids = medicos.filter(
-            pl.col("nu_crm").cast(pl.String).str.starts_with(termo)
+            (pl.col("nu_crm") == int(numero)) & (pl.col("sg_uf") == uf)
+        ).get_column("id_medico")
+    elif crm is not None:
+        ids = medicos.filter(
+            pl.col("nu_crm").cast(pl.String).str.starts_with(crm[0])
         ).get_column("id_medico")
     else:
         ids = _get_medico_name_index(medicos, signature).filter(
@@ -881,11 +918,16 @@ def _montar_resposta_ranking(
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Cache de dados dos medicos indisponivel: {exc}") from exc
     _require_columns(medico_df, CRM_ANALYSIS_REQUIRED_MEDICO_COLUMNS, "Dados dos medicos")
-    medico_df = medico_df.unique(subset=["id_medico"], keep="first")
+    # Marcador do left join: medico ausente do cadastro do CFM fica com null.
+    medico_df = medico_df.unique(subset=["id_medico"], keep="first").with_columns(
+        pl.lit(True).alias("localizado_cfm")
+    )
     if sort_field == "no_medico":
         ranking_scope = ranking_scope.drop("no_medico")
     # maintain_order="left": a pagina ja vem na ordem do ranking.
-    ranking_scope = ranking_scope.join(medico_df, on="id_medico", how="left", maintain_order="left")
+    ranking_scope = ranking_scope.join(medico_df, on="id_medico", how="left", maintain_order="left").with_columns(
+        pl.col("localizado_cfm").is_not_null()
+    )
     if prescricoes_filtradas is not None and sort_field not in RANKING_FILTERED_SORT_FIELDS:
         filtradas = prescricoes_filtradas(ranking_scope.get_column("id_medico").to_list())
         ranking_scope = ranking_scope.join(filtradas, on="id_medico", how="left", maintain_order="left")
@@ -904,6 +946,7 @@ def _montar_resposta_ranking(
             nu_crm=int(row["nu_crm"]) if row["nu_crm"] is not None else None,
             sg_uf=str(row["sg_uf"]) if row["sg_uf"] is not None else None,
             no_medico=str(row["no_medico"]) if row["no_medico"] is not None else None,
+            localizado_cfm=bool(row["localizado_cfm"]),
             taxa_prescricoes_dia=float(row["taxa_prescricoes_dia"]),
             nu_prescricoes=int(row["nu_prescricoes"]),
             qtd_dias_com_prescricao=int(row["qtd_dias_com_prescricao"]),
@@ -962,7 +1005,6 @@ def montar_filtros_farmacia(
     grande_rede: Optional[str],
     cnpj_raiz: Optional[str],
     unidade_pf: Optional[str],
-    razao_social: Optional[str],
     estabelecimento: Optional[str],
     par_teia: Optional[str],
     socio_beneficio: Optional[str],
@@ -980,11 +1022,6 @@ def montar_filtros_farmacia(
     Com filtro de farmacia, o universo e o das farmacias filtradas (as mesmas de
     /estabelecimentos): ver crm_analysis_filtrado. Valores neutros viram None.
     """
-    if _filtro_ativo(razao_social):
-        raise HTTPException(
-            status_code=422,
-            detail="Filtro razao_social nao e usado na analise de CRMs; use 'estabelecimento'.",
-        )
     filtros: dict[str, object] = {
         "situacao_rf": situacao_rf if _filtro_ativo(situacao_rf, neutral={"Todos"}) else None,
         "conexao_ms": conexao_ms if _filtro_ativo(conexao_ms, neutral={"Todos"}) else None,
@@ -1098,7 +1135,7 @@ def get_crm_prescricoes_analise(
     *,
     map_level: str = "uf",
     page: int = 1,
-    page_size: int = 25,
+    page_size: int = 15,
     medico_query: Optional[str] = None,
     sort_field: str = "taxa_prescricoes_dia",
     sort_order: str = "desc",
@@ -1118,7 +1155,6 @@ def get_crm_prescricoes_analise(
     grande_rede: Optional[str] = None,
     cnpj_raiz: Optional[str] = None,
     unidade_pf: Optional[str] = None,
-    razao_social: Optional[str] = None,
     estabelecimento: Optional[str] = None,
     par_teia: Optional[str] = None,
     socio_beneficio: Optional[str] = None,
@@ -1159,7 +1195,6 @@ def get_crm_prescricoes_analise(
         grande_rede=grande_rede,
         cnpj_raiz=cnpj_raiz,
         unidade_pf=unidade_pf,
-        razao_social=razao_social,
         estabelecimento=estabelecimento,
         par_teia=par_teia,
         socio_beneficio=socio_beneficio,

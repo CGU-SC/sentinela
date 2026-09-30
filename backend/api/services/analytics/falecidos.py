@@ -1,223 +1,229 @@
-from typing import List, Optional
+"""Vendas para falecidos (aba Falecidos do CNPJ).
+
+Fonte: cache global `falecidos` (uma linha por autorizacao feita apos o obito
+do beneficiario). O cadastro das farmacias vem do perfil de estabelecimentos e
+o faturamento, da movimentacao mensal. Dado ausente ou inconsistente responde
+503 em vez de virar zero ou lista vazia.
+"""
+
+from dataclasses import dataclass
 from datetime import date
-import calendar
+from typing import Optional
+
 import polars as pl
-from sqlalchemy.orm import Session
 from fastapi import HTTPException
-import zlib
-import json
-import copy
-from decimal import Decimal, ROUND_HALF_UP
-from data_cache import get_df, get_rede_df, get_localidades_df, get_df_bench_crm_regiao, get_df_bench_crm_br, get_df_dados_farmacia, get_df_perfil_estabelecimento, get_cache_dir, get_df_falecidos
+
+from data_cache import get_df, get_df_falecidos, get_df_perfil_estabelecimento
 from ...schemas.analytics import (
-    AnalyticsKPISchema,
-    ResultadoSentinelaUFSchema,
-    AnalyticsResponse,
-    ResultadoSentinelaMunicipioSchema,
-    ResultadoSentinelaCnpjSchema,
-    RedeEstabelecimentoSchema,
-    FatorRiscoResponseSchema,
-    FatorRiscoBucketSchema,
-    EvolucaoSemestreSchema,
-    EvolucaoFinanceiraResponse,
-    IndicadorDataSchema,
-    IndicadoresResponse,
     FalecidoTransactionSchema,
     FalecidosRankingSchema,
-    FalecidosSummarySchema,
     FalecidosResponse,
-    TimelineEventSchema,
+    FalecidosSummarySchema,
     MultiCnpjTimelineResponse,
-    RegionalMunicipioSchema,
-    RegionalFarmaciaSchema,
-    RegionalResponse,
-    RegionalAnimationQuarterSchema,
-    RegionalAnimationResponse,
-    PrescritoresResponse,
-    DadosFarmaciaSchema,
-    MovimentacaoRowSchema,
-    MovimentacaoSummarySchema,
-    MovimentacaoResponse,
-    IndicadorKpiSummarySchema,
-    IndicadorCnpjRowSchema,
-    IndicadorMunicipioRowSchema,
-    IndicadorAnaliseResponse,
-    MesMensalGtinItem,
-    EvolucaoMensalGtinResponse,
-    GtinDetalhamentoMensalResponse,
-    GtinDetalhamentoMensalSummary,
-    GtinDetalhamentoMensalItem,
+    TimelineEventSchema,
 )
 
-def _safe_float(value: object, default: float = 0.0) -> float:
-    if value is None:
-        return default
-    if isinstance(value, (int, float, Decimal, str, bytes)):
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return default
-    return default
+# Quantas farmacias da rede de coincidencia aparecem na tela (o arquivo
+# exportado traz todas).
+RANKING_TELA = 20
+
+_COLUNAS = {
+    "cnpj", "cpf", "nome_falecido", "municipio_falecido", "uf_falecido", "dt_nascimento",
+    "dt_obito", "fonte_obito", "num_autorizacao", "data_autorizacao",
+    "qtd_itens_na_autorizacao", "valor_total_autorizacao", "dias_apos_obito",
+}
+# Campos sem os quais a autorizacao nao pode ser exibida nem somada.
+_OBRIGATORIOS = (
+    "cpf", "num_autorizacao", "data_autorizacao", "dt_obito",
+    "qtd_itens_na_autorizacao", "valor_total_autorizacao", "dias_apos_obito",
+)
 
 
-def _safe_int(value: object, default: int = 0) -> int:
-    if value is None:
-        return default
-    if isinstance(value, (int, float, Decimal, str, bytes)):
-        try:
-            return int(float(value))
-        except (TypeError, ValueError):
-            return default
-    return default
+def _indisponivel(detalhe: str) -> HTTPException:
+    return HTTPException(status_code=503, detail=detalhe)
+
+
+def _base_falecidos() -> pl.DataFrame:
+    try:
+        df = get_df_falecidos()
+    except RuntimeError as exc:
+        raise _indisponivel(f"Base de obitos indisponivel: {exc}") from exc
+    faltando = _COLUNAS - set(df.columns)
+    if faltando:
+        raise _indisponivel(f"Base de obitos sem colunas obrigatorias: {', '.join(sorted(faltando))}.")
+    return df
+
+
+def _sem_nulos(df: pl.DataFrame, contexto: str) -> None:
+    nulos = [c for c in _OBRIGATORIOS if df.get_column(c).null_count()]
+    if nulos:
+        raise _indisponivel(f"Autorizacoes de falecidos ({contexto}) sem {', '.join(nulos)}.")
+
+
+def _cadastro(cnpjs: list[str]) -> pl.DataFrame:
+    """cnpj, id_cnpj, razao_social, municipio e uf das farmacias pedidas (todas, sem duplicidade)."""
+    cadastro = (
+        get_df_perfil_estabelecimento()
+        .select([
+            pl.col("cnpj").cast(pl.Utf8),
+            pl.col("id_cnpj").cast(pl.Int32),
+            pl.col("razao_social").cast(pl.Utf8),
+            pl.col("no_municipio").cast(pl.Utf8).alias("municipio"),
+            pl.col("uf").cast(pl.Utf8),
+        ])
+        .filter(pl.col("cnpj").is_in(cnpjs))
+    )
+    duplicados = cadastro.filter(pl.col("cnpj").is_duplicated()).get_column("cnpj").unique().sort().to_list()
+    if duplicados:
+        raise _indisponivel(f"Perfil de estabelecimentos com mais de uma linha para: {', '.join(duplicados[:5])}.")
+    ausentes = sorted(set(cnpjs) - set(cadastro.get_column("cnpj").to_list()))
+    if ausentes:
+        raise _indisponivel(f"Farmacias sem cadastro no perfil de estabelecimentos: {', '.join(ausentes[:5])}.")
+    incompletos = cadastro.filter(
+        pl.any_horizontal([pl.col(c).is_null() | (pl.col(c).str.strip_chars() == "") for c in ("razao_social", "municipio", "uf")])
+    ).get_column("cnpj").to_list()
+    if incompletos:
+        raise _indisponivel(f"Farmacias sem razao social, municipio ou UF no perfil: {', '.join(sorted(incompletos)[:5])}.")
+    return cadastro
+
+
+def _faturamento(id_cnpj: int, data_inicio: Optional[date], data_fim: Optional[date]) -> float:
+    """Faturamento PFPB da farmacia no mesmo periodo das autorizacoes."""
+    mov = get_df().filter(pl.col("id_cnpj") == id_cnpj)
+    if data_inicio:
+        mov = mov.filter(pl.col("periodo") >= data_inicio.replace(day=1))
+    if data_fim:
+        mov = mov.filter(pl.col("periodo") <= data_fim)
+    return float(mov.select(pl.col("total_vendas").sum()).item() or 0.0)
+
+
+@dataclass(frozen=True)
+class FalecidosDados:
+    """Tudo o que a aba e a exportacao usam, calculado uma unica vez."""
+    cnpj: str
+    tem_historico: bool
+    summary: FalecidosSummarySchema
+    # Autorizacoes desta farmacia, ordenadas por CPF e data, com a coluna
+    # "outros" (outras farmacias do CPF: "cnpj | municipio/UF; ...").
+    transacoes: pl.DataFrame
+    # Autorizacoes desses CPFs em outras farmacias, com o cadastro delas.
+    outras: pl.DataFrame
+    # Rede de coincidencia completa: cnpj, razao_social, municipio, uf,
+    # qtd_cpfs, pct_total, estabelecimento; ordenada por qtd_cpfs.
+    ranking: pl.DataFrame
+    faturamento_periodo: Optional[float]
+
+
+def _resumo_vazio() -> FalecidosSummarySchema:
+    return FalecidosSummarySchema(
+        cpfs_distintos=0, total_autorizacoes=0, valor_total=0.0, media_dias=0.0,
+        max_dias=0, pct_faturamento=0.0, cpfs_multi_cnpj=0, pct_multi_cnpj=0.0,
+    )
+
+
+_RANKING_VAZIO = pl.DataFrame(schema={
+    "cnpj": pl.Utf8, "razao_social": pl.Utf8, "municipio": pl.Utf8, "uf": pl.Utf8,
+    "qtd_cpfs": pl.UInt32, "pct_total": pl.Float64, "estabelecimento": pl.Utf8,
+})
+
+
+def ranking_outras_farmacias(outras: pl.DataFrame) -> pl.DataFrame:
+    """Rede de coincidencia: CPFs em comum por farmacia (pct sobre a soma das coincidencias)."""
+    if outras.is_empty():
+        return _RANKING_VAZIO
+    return (
+        outras.group_by(["cnpj", "razao_social", "municipio", "uf"])
+        .agg(pl.col("cpf").n_unique().alias("qtd_cpfs"))
+        .with_columns((pl.col("qtd_cpfs") / pl.col("qtd_cpfs").sum()).alias("pct_total"))
+        .with_columns(pl.format("{} - {} | {}/{}", "cnpj", "razao_social", "municipio", "uf").alias("estabelecimento"))
+        .sort(["qtd_cpfs", "cnpj"], descending=[True, False])
+    )
+
+
+def carregar_falecidos(cnpj: str, data_inicio: Optional[date] = None, data_fim: Optional[date] = None) -> FalecidosDados:
+    cnpj_norm = "".join(ch for ch in str(cnpj or "") if ch.isdigit())
+    if len(cnpj_norm) != 14:
+        raise HTTPException(status_code=422, detail="CNPJ invalido.")
+    base = _base_falecidos()
+    tem_historico = not base.filter(pl.col("cnpj") == cnpj_norm).is_empty()
+
+    periodo = base
+    if data_inicio:
+        periodo = periodo.filter(pl.col("data_autorizacao") >= data_inicio)
+    if data_fim:
+        periodo = periodo.filter(pl.col("data_autorizacao") <= data_fim)
+
+    alvo = periodo.filter(pl.col("cnpj") == cnpj_norm)
+    if alvo.is_empty():
+        return FalecidosDados(
+            cnpj=cnpj_norm, tem_historico=tem_historico, summary=_resumo_vazio(),
+            transacoes=alvo.with_columns(pl.lit(None, dtype=pl.Utf8).alias("outros")),
+            outras=alvo.clear().with_columns([pl.lit(None, dtype=pl.Utf8).alias(c) for c in ("razao_social", "municipio", "uf")]),
+            ranking=_RANKING_VAZIO, faturamento_periodo=None,
+        )
+    _sem_nulos(alvo, "desta farmacia")
+
+    # Mesmos CPFs em outras farmacias, no mesmo periodo.
+    outras = periodo.filter(
+        (pl.col("cnpj") != cnpj_norm) & pl.col("cpf").is_in(alvo.get_column("cpf").unique().implode())
+    )
+    cadastro = _cadastro(sorted({cnpj_norm, *outras.get_column("cnpj").unique().to_list()}))
+    outras = outras.join(cadastro.drop("id_cnpj"), on="cnpj", how="inner", validate="m:1")
+
+    total_cpfs_outras = outras.get_column("cpf").n_unique()
+
+    outros_por_cpf = (
+        outras.select(["cpf", pl.format("{} | {}/{}", "cnpj", "municipio", "uf").alias("info")])
+        .unique()
+        .sort(["cpf", "info"])
+        .group_by("cpf", maintain_order=True)
+        .agg(pl.col("info").str.join("; ").alias("outros"))
+    )
+    transacoes = (
+        alvo.join(outros_por_cpf, on="cpf", how="left", validate="m:1")
+        .sort(["cpf", "data_autorizacao", "num_autorizacao"])
+    )
+
+    id_cnpj = cadastro.filter(pl.col("cnpj") == cnpj_norm).item(0, "id_cnpj")
+    valor_total = float(alvo.get_column("valor_total_autorizacao").sum())
+    faturamento = _faturamento(id_cnpj, data_inicio, data_fim)
+    if faturamento <= 0:
+        raise _indisponivel(
+            "Farmacia com autorizacoes para falecidos, mas sem faturamento na movimentacao do periodo."
+        )
+    cpfs_distintos = alvo.get_column("cpf").n_unique()
+    summary = FalecidosSummarySchema(
+        cpfs_distintos=cpfs_distintos,
+        total_autorizacoes=alvo.height,
+        valor_total=valor_total,
+        media_dias=float(alvo.select(pl.col("dias_apos_obito").mean()).item()),
+        max_dias=int(alvo.select(pl.col("dias_apos_obito").max()).item()),
+        pct_faturamento=valor_total / faturamento,
+        cpfs_multi_cnpj=total_cpfs_outras,
+        pct_multi_cnpj=total_cpfs_outras / cpfs_distintos,
+    )
+    return FalecidosDados(
+        cnpj=cnpj_norm, tem_historico=tem_historico, summary=summary,
+        transacoes=transacoes, outras=outras, ranking=ranking_outras_farmacias(outras),
+        faturamento_periodo=faturamento,
+    )
 
 
 def get_falecidos_data(
     cnpj: str,
     data_inicio: date | None = None,
-    data_fim:    date | None = None,
+    data_fim: date | None = None,
 ) -> FalecidosResponse:
     """Retorna os dados detalhados de vendas para falecidos de um CNPJ."""
-    cnpj_norm = "".join(ch for ch in str(cnpj or "") if ch.isdigit())
-    try:
-        df_global = get_df_falecidos()
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Base de obitos indisponivel: {exc}",
-        ) from exc
-
-    df_all = df_global
-    from_cache = True
-    query_time_ms = None
-    save_time_ms = None
-    read_time_ms = None
-    _empty_response = FalecidosResponse(
-        cnpj=cnpj_norm,
-        summary=FalecidosSummarySchema(
-            cpfs_distintos=0, total_autorizacoes=0, valor_total=0.0,
-            media_dias=0.0, max_dias=0, pct_faturamento=0.0,
-            cpfs_multi_cnpj=0, pct_multi_cnpj=0.0,
-        ),
-        ranking=[],
-        transacoes=[],
-        from_cache=from_cache,
-        query_time_ms=query_time_ms,
-        save_time_ms=save_time_ms,
-        read_time_ms=read_time_ms,
-    )
-
-    # ── 3. Validação de Disponibilidade e Histórico ──────────────────────
-    if df_all is None or len(df_all.columns) == 0:
-        raise HTTPException(
-            status_code=503, 
-            detail="Base global de obitos indisponivel no momento. Execute a sincronizacao do cache de falecidos."
-        )
-
-    # Verifica se o estabelecimento tem histórico na base completa (antes dos filtros de data)
-    tem_historico = not df_all.filter(pl.col("cnpj") == cnpj_norm).is_empty()
-
-    if df_all.is_empty():
-        _empty_response.tem_historico = tem_historico
-        return _empty_response
-
-    if data_inicio:
-        df_all = df_all.filter(pl.col("data_autorizacao") >= pl.lit(data_inicio).cast(pl.Date))
-    if data_fim:
-        df_all = df_all.filter(pl.col("data_autorizacao") <= pl.lit(data_fim).cast(pl.Date))
-
-    try:
-        df_target = df_all.filter(pl.col("cnpj") == cnpj_norm)
-
-        if df_target.is_empty():
-            res = _empty_response.model_copy()
-            res.tem_historico = tem_historico
-            return res
-
-        # 1. KPIs Básicos
-        cpfs_alvo = df_target["cpf"].unique()
-        df_all = df_all.filter(pl.col("cpf").is_in(cpfs_alvo))
-        cpfs_distintos = df_target["cpf"].n_unique()
-        total_autorizacoes = df_target.height
-        valor_total = _safe_float(df_target["valor_total_autorizacao"].sum())
-        media_dias = _safe_float(df_target["dias_apos_obito"].mean())
-        max_dias = _safe_int(df_target["dias_apos_obito"].max())
-
-        # 2. Lógica Multi-CNPJ (Inteligência Cross-Pharmacy)
-        # Encontra outros estabelecimentos onde ESSES CPFs compraram
-        df_outros = df_all.filter(pl.col("cnpj") != cnpj_norm)
-        
-        # Mapeia quais CPFs são Multi-CNPJ
-        cpfs_multi = df_outros["cpf"].unique().to_list()
-        cpfs_multi_cnpj = len(cpfs_multi)
-        pct_multi_cnpj = cpfs_multi_cnpj / cpfs_distintos if cpfs_distintos > 0 else 0.0
-
-        # 3. Ranking de Outros Estabelecimentos
-        # Precisamos dos nomes das farmácias. Vamos usar a rede_df se possível.
-        df_outros_nomes = df_outros.with_columns([
-            pl.lit(None).cast(pl.Utf8).alias("razao_social"),
-            pl.lit(None).cast(pl.Utf8).alias("municipio"),
-            pl.lit(None).cast(pl.Utf8).alias("uf"),
-        ])
-        try:
-            rede_df = get_rede_df().select(["cnpj", "razao_social", "municipio", "uf"])
-            df_outros_nomes = df_outros.join(rede_df, on="cnpj", how="left")
-            
-            ranking_df = (
-                df_outros_nomes
-                .with_columns([
-                    pl.concat_str([
-                        pl.col("cnpj"), pl.lit(" - "), 
-                        pl.col("razao_social").fill_null("DESCONHECIDO"),
-                        pl.lit(" | "), 
-                        pl.col("municipio").fill_null(""),
-                        pl.lit("/"),
-                        pl.col("uf").fill_null("")
-                    ]).alias("estab")
-                ])
-                .group_by("estab")
-                .agg([pl.col("cpf").n_unique().alias("qtd")])
-                .with_columns([
-                    (pl.col("qtd") / pl.when(pl.col("qtd").sum() > 0).then(pl.col("qtd").sum()).otherwise(1)).alias("pct")
-                ])
-                .sort("qtd", descending=True)
-                .head(20)
-            )
-            ranking = [
-                FalecidosRankingSchema(estabelecimento=r["estab"], qtd_cpfs=r["qtd"], pct_total=r["pct"])
-                for r in ranking_df.iter_rows(named=True)
-            ]
-        except:
-            ranking = []
-
-        # 4. Cálculo do % de faturamento (usando o faturamento total cacheado)
-        pct_faturamento = 0.0
-        try:
-            perfil = get_df_perfil_estabelecimento().filter(pl.col("cnpj") == cnpj_norm).select("id_cnpj")
-            if perfil.is_empty():
-                raise RuntimeError(f"CNPJ {cnpj} sem id_cnpj no perfil_estabelecimento.")
-            mov_df = get_df().filter(pl.col("id_cnpj") == perfil.item(0, 0))
-            total_faturamento = _safe_float(mov_df["total_vendas"].sum(), 1.0)
-            pct_faturamento = valor_total / total_faturamento if total_faturamento > 0 else 0.0
-        except: pass
-
-        # 5. Lista de Transações (com flag de multi-cnpj)
-        # Vamos gerar a string de 'outros_estabelecimentos' para cada CPF
-        try:
-            outros_info = (
-                df_outros_nomes
-                .with_columns([
-                    pl.concat_str([
-                        pl.col("cnpj"), pl.lit(" | "), pl.col("municipio"), pl.lit("/"), pl.col("uf")
-                    ]).alias("info")
-                ])
-                .group_by("cpf")
-                .agg([pl.col("info").unique().str.join("; ").alias("outros")])
-            )
-            df_final = df_target.join(outros_info, on="cpf", how="left")
-        except:
-            df_final = df_target.with_columns(pl.lit(None).alias("outros"))
-
-        transacoes = [
+    dados = carregar_falecidos(cnpj, data_inicio, data_fim)
+    return FalecidosResponse(
+        cnpj=dados.cnpj,
+        summary=dados.summary,
+        ranking=[
+            FalecidosRankingSchema(estabelecimento=r["estabelecimento"], qtd_cpfs=r["qtd_cpfs"], pct_total=r["pct_total"])
+            for r in dados.ranking.head(RANKING_TELA).iter_rows(named=True)
+        ],
+        transacoes=[
             FalecidoTransactionSchema(
                 cpf=str(r["cpf"]).zfill(11),
                 nome_falecido=r["nome_falecido"],
@@ -228,119 +234,53 @@ def get_falecidos_data(
                 fonte_obito=r["fonte_obito"],
                 num_autorizacao=str(r["num_autorizacao"]),
                 data_autorizacao=r["data_autorizacao"],
-                qtd_itens_na_autorizacao=_safe_int(r["qtd_itens_na_autorizacao"]),
-                valor_total_autorizacao=_safe_float(r["valor_total_autorizacao"]),
-                dias_apos_obito=_safe_int(r["dias_apos_obito"]),
-                outros_estabelecimentos=r["outros"]
+                qtd_itens_na_autorizacao=int(r["qtd_itens_na_autorizacao"]),
+                valor_total_autorizacao=float(r["valor_total_autorizacao"]),
+                dias_apos_obito=int(r["dias_apos_obito"]),
+                outros_estabelecimentos=r["outros"],
             )
-            for r in df_final.sort(["cpf", "data_autorizacao"]).iter_rows(named=True)
-        ]
+            for r in dados.transacoes.iter_rows(named=True)
+        ],
+        from_cache=True,
+        tem_historico=dados.tem_historico,
+    )
 
-        return FalecidosResponse(
-            cnpj=cnpj_norm,
-            summary=FalecidosSummarySchema(
-                cpfs_distintos=cpfs_distintos,
-                total_autorizacoes=total_autorizacoes,
-                valor_total=valor_total,
-                media_dias=media_dias,
-                max_dias=max_dias,
-                pct_faturamento=pct_faturamento,
-                cpfs_multi_cnpj=cpfs_multi_cnpj,
-                pct_multi_cnpj=pct_multi_cnpj,
-            ),
-            ranking=ranking,
-            transacoes=transacoes,
-            from_cache=from_cache,
-            tem_historico=tem_historico,
-            query_time_ms=query_time_ms,
-            save_time_ms=save_time_ms,
-            read_time_ms=read_time_ms,
-        )
-
-    except Exception as e:
-        import traceback
-        print(f"❌ ERRO AO CALCULAR DADOS DE FALECIDOS: {e}")
-        print(traceback.format_exc())
-        return _empty_response
 
 def get_timeline_cpf(cnpj_referencia: str, cpf: str) -> MultiCnpjTimelineResponse:
-    """
-    Retorna TODAS as transações de um CPF em TODOS os estabelecimentos
-    presentes no dataset de falecidos. Permite montar o Mapa de Trilhas
-    Temporais com dados 100% reais.
+    """Todas as autorizacoes de um CPF falecido, em todas as farmacias (Mapa de Trilhas Temporais).
 
     Args:
-        cnpj_referencia: O CNPJ do estabelecimento que originou a consulta
-                         (usado para marcar `is_this_cnpj`).
-        cpf: O CPF do paciente falecido a ser pesquisado.
+        cnpj_referencia: CNPJ que originou a consulta (marca `is_this_cnpj`).
+        cpf: CPF do falecido.
     """
-    try:
-        cnpj_ref_norm = "".join(ch for ch in str(cnpj_referencia or "") if ch.isdigit())
-        try:
-            df_all = get_df_falecidos()
-        except RuntimeError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Base de obitos indisponivel: {exc}",
-            ) from exc
+    cnpj_ref_norm = "".join(ch for ch in str(cnpj_referencia or "") if ch.isdigit())
+    cpf_clean = "".join(ch for ch in str(cpf or "") if ch.isdigit()).zfill(11)
+    if len(cpf_clean) != 11:
+        raise HTTPException(status_code=422, detail="CPF invalido.")
+    df_cpf = _base_falecidos().filter(pl.col("cpf").cast(pl.Utf8).str.zfill(11) == cpf_clean)
+    if df_cpf.is_empty():
+        return MultiCnpjTimelineResponse(cpf=cpf, nome_falecido=None, dt_obito=None, events=[], cnpjs_envolvidos=[])
+    _sem_nulos(df_cpf, f"CPF {cpf_clean}")
 
-        # Normaliza o CPF (remove zeros à esquerda para comparação segura)
-        cpf_clean = cpf.strip().lstrip('0').zfill(11)
-        df_cpf = df_all.filter(pl.col("cpf").cast(pl.Utf8).str.zfill(11) == cpf_clean)
-
-        if df_cpf.is_empty():
-            return MultiCnpjTimelineResponse(
-                cpf=cpf, nome_falecido=None, dt_obito=None,
-                events=[], cnpjs_envolvidos=[]
-            )
-
-        # Dados biográficos do falecido (primeira ocorrência)
-        row0 = df_cpf.row(0, named=True)
-        nome_falecido = row0.get("nome_falecido")
-        dt_obito = row0.get("dt_obito")
-
-        # Enriquece com razão social via rede_df
-        try:
-            rede_df = get_rede_df().select(["cnpj", "razao_social", "municipio", "uf"])
-            df_enrich = df_cpf.join(rede_df, on="cnpj", how="left")
-        except Exception:
-            df_enrich = df_cpf.with_columns([
-                pl.lit(None).cast(pl.Utf8).alias("razao_social"),
-                pl.lit(None).cast(pl.Utf8).alias("municipio"),
-                pl.lit(None).cast(pl.Utf8).alias("uf"),
-            ])
-
-        # Monta os eventos
-        events = []
-        for r in df_enrich.sort("data_autorizacao").iter_rows(named=True):
-            events.append(TimelineEventSchema(
+    cnpjs = sorted(df_cpf.get_column("cnpj").unique().to_list())
+    eventos = df_cpf.join(_cadastro(cnpjs).drop("id_cnpj"), on="cnpj", how="inner", validate="m:1")
+    row0 = df_cpf.row(0, named=True)
+    return MultiCnpjTimelineResponse(
+        cpf=cpf,
+        nome_falecido=row0["nome_falecido"],
+        dt_obito=row0["dt_obito"],
+        events=[
+            TimelineEventSchema(
                 cnpj=str(r["cnpj"]),
-                razao_social=r.get("razao_social"),
-                municipio=r.get("municipio"),
-                uf=r.get("uf"),
-                data_autorizacao=r.get("data_autorizacao"),
-                valor_total_autorizacao=_safe_float(r.get("valor_total_autorizacao")),
-                num_autorizacao=str(r.get("num_autorizacao") or ""),
+                razao_social=r["razao_social"],
+                municipio=r["municipio"],
+                uf=r["uf"],
+                data_autorizacao=r["data_autorizacao"],
+                valor_total_autorizacao=float(r["valor_total_autorizacao"]),
+                num_autorizacao=str(r["num_autorizacao"]),
                 is_this_cnpj=(str(r["cnpj"]) == cnpj_ref_norm),
-            ))
-
-        cnpjs_envolvidos = df_cpf["cnpj"].unique().to_list()
-
-        return MultiCnpjTimelineResponse(
-            cpf=cpf,
-            nome_falecido=nome_falecido,
-            dt_obito=dt_obito,
-            events=events,
-            cnpjs_envolvidos=cnpjs_envolvidos,
-        )
-
-    except Exception as e:
-        import traceback
-        print(f"❌ ERRO AO BUSCAR TIMELINE DO CPF: {e}")
-        print(traceback.format_exc())
-        return MultiCnpjTimelineResponse(
-            cpf=cpf, nome_falecido=None, dt_obito=None,
-            events=[], cnpjs_envolvidos=[]
-        )
-
-
+            )
+            for r in eventos.sort(["data_autorizacao", "num_autorizacao"]).iter_rows(named=True)
+        ],
+        cnpjs_envolvidos=cnpjs,
+    )

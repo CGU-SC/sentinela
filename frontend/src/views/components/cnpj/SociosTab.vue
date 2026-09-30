@@ -4,8 +4,13 @@ import { storeToRefs } from "pinia";
 import { useCnpjDetailStore } from "@/stores/cnpjDetail";
 import { useFormatting } from "@/composables/useFormatting";
 import TabPlaceholder from "./TabPlaceholder.vue";
+import { useThemeStore } from "@/stores/theme";
+import { DATA_NEUTRAL } from "@/config/colors";
 
 const cnpjDetailStore = useCnpjDetailStore();
+const themeStore = useThemeStore();
+// Cor de dados neutra (azul-aço), a mesma da barra "Participação no valor" do Perfil de CRMs.
+const dataColorVars = computed(() => ({ "--data-color": DATA_NEUTRAL[themeStore.isDark ? "dark" : "light"].strong }));
 const { sociosData, sociosLoading, sociosError, dadosCadastro } = storeToRefs(cnpjDetailStore);
 const { formatarData, formatPercent, formatTitleCase, formatCurrencyFull } = useFormatting();
 
@@ -69,7 +74,7 @@ const copyAndSignal = (text, key) => {
 </script>
 
 <template>
-  <div class="socios-tab tab-content">
+  <div class="socios-tab tab-content" :style="dataColorVars">
 
     <!-- ── Estados sem dados: fora do card ──────────────────────────────── -->
     <div
@@ -569,15 +574,15 @@ const copyAndSignal = (text, key) => {
 
 .pct-bar-fill {
   height: 100%;
-  background: var(--primary-color);
+  background: var(--data-color);
   border-radius: 2px;
   transition: width 1s ease-out;
 }
 
 .pct-val {
   font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--primary-color);
+  font-weight: 500;
+  color: var(--text-color-85);
 }
 
 /* Badges de Status */

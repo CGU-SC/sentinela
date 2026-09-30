@@ -184,6 +184,23 @@ export const DATA_NEUTRAL = {
   },
 };
 
+// ── Taxa do mês × P95 nacional (linha do tempo do ranking de CRMs) ─────────
+// Tons pastéis de vermelho, do mais claro (pouco acima do P95) ao mais marcado
+// (acima de 3× o P95). No tema escuro o tom mais marcado é o mais claro.
+export const CRM_TAXA_P95_TONS = {
+  dark: { leve: "#7D5358", media: "#B06E72", forte: "#E39696" },
+  light: { leve: "#F3C4C4", media: "#E9A0A0", forte: "#DB7B7B" },
+};
+
+// ── Ícone de alertas do ranking de CRMs (/analises) ─────────────────────────
+// Vermelho pastel, mais leve que --risk-high, para a coluna ALERTAS não pesar.
+// cor: triângulo, borda/fundo (via color-mix) e bolinha do número;
+// numero: texto do número sobre a bolinha (contraste com `cor`).
+export const CRM_ALERTA_BADGE_TONS = {
+  dark: { cor: "#D98E8E", numero: "#2A1B1D" },
+  light: { cor: "#D98080", numero: "#FFFFFF" },
+};
+
 // ── Identidade de médicos no Raio-X CRM ────────────────────────────────────
 // Paleta categórica fixa (6 cores bem distintas) para identificar os médicos que
 // se repetem numa janela. Evita vermelho, laranja/âmbar e roxo, reservados aos

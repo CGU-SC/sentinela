@@ -4,6 +4,7 @@ from typing import List, Literal, Optional
 from datetime import date
 from database import get_db, engine
 from ..schemas.analytics import (
+    CrmPerfilExportRequest,
     AnalyticsResponse, FatorRiscoResponseSchema,
     RedeEstabelecimentoSchema, EvolucaoFinanceiraResponse, IndicadoresResponse,
     ProducaoSemestralResponse,
@@ -44,7 +45,7 @@ router = APIRouter()
 @router.get("/crm-prescricoes-analise", response_model=CrmPrescricoesAnaliseResponse)
 def get_crm_prescricoes_analise(
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=100),
+    page_size: int = Query(15, ge=1, le=100),
     medico_query: Optional[str] = Query(None, max_length=120),
     sort_field: str = Query("taxa_prescricoes_dia"),
     sort_order: Literal["asc", "desc"] = Query("desc"),
@@ -65,7 +66,6 @@ def get_crm_prescricoes_analise(
     grande_rede: Optional[str] = Query(None),
     cnpj_raiz: Optional[str] = Query(None),
     unidade_pf: Optional[str] = Query(None),
-    razao_social: Optional[str] = Query(None),
     estabelecimento: Optional[str] = Query(None),
     par_teia: Optional[str] = Query(None),
     socio_beneficio: Optional[str] = Query(None),
@@ -102,7 +102,6 @@ def get_crm_prescricoes_analise(
         grande_rede=grande_rede,
         cnpj_raiz=cnpj_raiz,
         unidade_pf=unidade_pf,
-        razao_social=razao_social,
         estabelecimento=estabelecimento,
         par_teia=par_teia,
         socio_beneficio=socio_beneficio,
@@ -127,7 +126,6 @@ def _crm_filtros_farmacia(
     grande_rede: Optional[str] = Query(None),
     cnpj_raiz: Optional[str] = Query(None),
     unidade_pf: Optional[str] = Query(None),
-    razao_social: Optional[str] = Query(None),
     estabelecimento: Optional[str] = Query(None),
     par_teia: Optional[str] = Query(None),
     socio_beneficio: Optional[str] = Query(None),
@@ -151,7 +149,6 @@ def _crm_filtros_farmacia(
         "grande_rede": grande_rede,
         "cnpj_raiz": cnpj_raiz,
         "unidade_pf": unidade_pf,
-        "razao_social": razao_social,
         "estabelecimento": estabelecimento,
         "par_teia": par_teia,
         "socio_beneficio": socio_beneficio,
@@ -169,7 +166,7 @@ def _crm_filtros_farmacia(
 @router.get("/crm-prescricoes-mensal", response_model=CrmPrescricoesMensalResponse)
 def get_crm_prescricoes_mensal(
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=100),
+    page_size: int = Query(15, ge=1, le=100),
     medico_query: Optional[str] = Query(None, max_length=120),
     sort_field: str = Query("razao_p95"),
     sort_order: Literal["asc", "desc"] = Query("desc"),
@@ -440,7 +437,6 @@ def get_analytics_summary(
     grande_rede: Optional[str] = Query(None),
     cnpj_raiz: Optional[str] = Query(None),
     unidade_pf: Optional[str] = Query(None),
-    razao_social: Optional[str] = Query(None),
     estabelecimento: Optional[str] = Query(None),
     cnpjs: Optional[List[str]] = Query(None),
     regiao_id: Optional[int] = Query(None),
@@ -460,7 +456,7 @@ def get_analytics_summary(
         raise HTTPException(status_code=400, detail="Use regiao_id para filtros regionais; regiao_saude textual e apenas label.")
     if municipio and municipio != "Todos":
         raise HTTPException(status_code=400, detail="Use id_ibge7 para filtros municipais; municipio textual e apenas label.")
-    return AnalyticsService.get_dashboard_data(db, data_inicio, data_fim, perc_min, perc_max, val_min, uf, regiao_saude, municipio, situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, unidade_pf, razao_social, cnpjs, regiao_id=regiao_id, id_ibge7=id_ibge7, volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, estabelecimento=estabelecimento)
+    return AnalyticsService.get_dashboard_data(db, data_inicio, data_fim, perc_min, perc_max, val_min, uf, regiao_saude, municipio, situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, unidade_pf, cnpjs, regiao_id=regiao_id, id_ibge7=id_ibge7, volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, estabelecimento=estabelecimento)
 
 
 @router.get("/producao-semestral", response_model=ProducaoSemestralResponse)
@@ -480,7 +476,6 @@ def get_producao_semestral(
     grande_rede: Optional[str] = Query(None),
     cnpj_raiz: Optional[str] = Query(None),
     unidade_pf: Optional[str] = Query(None),
-    razao_social: Optional[str] = Query(None),
     estabelecimento: Optional[str] = Query(None),
     cnpjs: Optional[List[str]] = Query(None),
     regiao_id: Optional[int] = Query(None),
@@ -515,7 +510,6 @@ def get_producao_semestral(
         grande_rede,
         cnpj_raiz,
         unidade_pf,
-        razao_social,
         cnpjs,
         regiao_id=regiao_id,
         id_ibge7=id_ibge7,
@@ -548,7 +542,6 @@ def get_resultado_faixas_risco(
     grande_rede: Optional[str] = Query(None),
     cnpj_raiz: Optional[str] = Query(None),
     unidade_pf: Optional[str] = Query(None),
-    razao_social: Optional[str] = Query(None),
     estabelecimento: Optional[str] = Query(None),
     regiao_id: Optional[int] = Query(None),
     volume_atipico: bool = Query(False),
@@ -567,7 +560,7 @@ def get_resultado_faixas_risco(
         raise HTTPException(status_code=400, detail="Use regiao_id para filtros regionais; regiao_saude textual e apenas label.")
     if municipio and municipio != "Todos":
         raise HTTPException(status_code=400, detail="Use id_ibge7 para filtros municipais; municipio textual e apenas label.")
-    return AnalyticsService.get_fator_risco_data(db, data_inicio, data_fim, perc_min, perc_max, val_min, uf, regiao_saude, municipio, situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, unidade_pf, razao_social, regiao_id=regiao_id, id_ibge7=id_ibge7, volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, estabelecimento=estabelecimento)
+    return AnalyticsService.get_fator_risco_data(db, data_inicio, data_fim, perc_min, perc_max, val_min, uf, regiao_saude, municipio, situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, unidade_pf, regiao_id=regiao_id, id_ibge7=id_ibge7, volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, estabelecimento=estabelecimento)
 
 @router.get("/cnpj/{cnpj}/evolucao", response_model=EvolucaoFinanceiraResponse)
 def get_evolucao_financeira(
@@ -689,6 +682,31 @@ def get_falecidos(
 ):
     """Retorna os dados detalhados de vendas para falecidos de um CNPJ."""
     return AnalyticsService.get_falecidos_data(cnpj, data_inicio, data_fim)
+
+
+@router.get("/cnpj/{cnpj}/falecidos/exportar")
+def export_falecidos(
+    cnpj: str,
+    formato: Literal["csv", "xlsx"] = Query(..., description="Formato do arquivo: 'csv' ou 'xlsx'."),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+    outro_cnpj: Optional[str] = Query(None, description="Filtro da rede de coincidência: só CPFs que também compraram nesta farmácia."),
+):
+    """Baixa as autorizações após o óbito da aba Falecidos em CSV ou Excel."""
+    headers_base = {"Cache-Control": "no-store"}
+    if formato == "xlsx":
+        filename, content = AnalyticsService.export_falecidos_xlsx(cnpj, data_inicio, data_fim, outro_cnpj)
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={**headers_base, "Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    filename, chunks = AnalyticsService.export_falecidos_csv(cnpj, data_inicio, data_fim, outro_cnpj)
+    return StreamingResponse(
+        chunks,
+        media_type="text/csv; charset=utf-8",
+        headers={**headers_base, "Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 @router.get("/rede/{cnpj_raiz}", response_model=List[RedeEstabelecimentoSchema])
 def get_rede_estabelecimentos(cnpj_raiz: str):
@@ -815,6 +833,33 @@ def export_crm_raio_x(
             },
         )
     filename, chunks = AnalyticsService.export_crm_raiox_csv(cnpj, data_inicio, data_fim)
+    return StreamingResponse(
+        chunks,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+@router.post("/cnpj/{cnpj}/crm/prescritores/exportar")
+def export_crm_prescritores(cnpj: str, body: CrmPerfilExportRequest):
+    """Baixa a lista "CRMs de interesse" (aba Perfil de CRMs) em CSV ou Excel."""
+    if body.formato == "xlsx":
+        filename, content = AnalyticsService.export_crm_perfil_xlsx(
+            cnpj, body.data_inicio, body.data_fim, body.ids, body.filtro
+        )
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
+        )
+    filename, chunks = AnalyticsService.export_crm_perfil_csv(
+        cnpj, body.data_inicio, body.data_fim, body.ids, body.filtro
+    )
     return StreamingResponse(
         chunks,
         media_type="text/csv; charset=utf-8",

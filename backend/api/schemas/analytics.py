@@ -545,6 +545,8 @@ class CrmPrescricoesRankingItemSchema(BaseModel):
     nu_crm: Optional[int] = None
     sg_uf: Optional[str] = None
     no_medico: Optional[str] = None
+    # True quando o id_medico consta no cadastro do CFM (dados dos medicos).
+    localizado_cfm: bool
     # prescricoes / dias com prescricao no periodo e no escopo consultado
     taxa_prescricoes_dia: float
     nu_prescricoes: int
@@ -585,6 +587,8 @@ class CrmPrescricoesMensalItemSchema(BaseModel):
     nu_crm: Optional[int] = None
     sg_uf: Optional[str] = None
     no_medico: Optional[str] = None
+    # True quando o id_medico consta no cadastro do CFM (dados dos medicos).
+    localizado_cfm: bool
     competencia: int
     nu_prescricoes: int
     qtd_dias_com_prescricao: int
@@ -704,7 +708,7 @@ class CrmHistoricoAtencaoSchema(BaseModel):
     """Fato calculado que merece atencao do auditor (sem juizo de valor)."""
     codigo: Literal[
         "nao_localizado_cfm", "antes_inscricao", "rajadas_unico", "distancia",
-        "multiplas_ufs", "sequencia_alta", "concentracao",
+        "sequencia_alta", "concentracao",
     ]
     titulo: str
     detalhe: str
@@ -715,6 +719,15 @@ class CrmRankingAlertasMedicoSchema(BaseModel):
     id_medico: str
     # Mesmos pontos de atencao do modal do historico (periodo, sem filtro de farmacia).
     pontos_atencao: List[CrmHistoricoAtencaoSchema]
+
+
+class CrmPerfilExportRequest(BaseModel):
+    """Pedido de exportação da lista "CRMs de interesse" (aba Perfil de CRMs)."""
+    formato: Literal["csv", "xlsx"]
+    data_inicio: Optional[date] = None
+    data_fim: Optional[date] = None
+    ids: Optional[List[str]] = Field(None, max_length=20000, description="CRMs exibidos na tela (id_medico); ausente = todos.")
+    filtro: Optional[str] = Field(None, max_length=300, description="Descrição do filtro da tela; obrigatória com ids.")
 
 
 class CrmRankingAlertasResponse(BaseModel):

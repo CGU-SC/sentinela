@@ -69,7 +69,7 @@ A irregularidade mais comum ocorre quando uma farmácia **registra mais vendas d
 #### 2.2.2. Padrões Atípicos de Prescrição
 
 - Concentração excessiva de vendas em **poucos médicos prescritores**
-- Médicos com volume de prescrições **fora do comum** (>30/dia)
+- Médicos com volume de prescrições **fora do comum** (>20/dia)
 - Uso de **CRMs não localizados ou cancelados**
 - Prescrições emitidas **antes da data de registro** do médico no CFM
 
@@ -159,7 +159,7 @@ Desenvolver e operacionalizar um **sistema automatizado de auditoria** capaz de 
 - Identificar **padrões anômalos** de prescrição médica
 - Validar **regularidade dos CRMs** junto ao Conselho Federal de Medicina
 - Detectar **concentração** em poucos prescritores
-- Flagrar médicos com comportamento de **"robô"** (volume impossível)
+- Flagrar médicos com **volume diário atípico** (mais de 20 prescrições por dia com prescrição)
 
 #### 4.2.4. Relatórios e Documentação
 

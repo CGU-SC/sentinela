@@ -30,7 +30,6 @@ def get_fator_risco_data(
     grande_rede=None,
     cnpj_raiz=None,
     unidade_pf=None,
-    razao_social=None,
     regiao_id: Optional[int] = None,
     id_ibge7: Optional[int] = None,
     volume_atipico: bool = False,
@@ -85,7 +84,7 @@ def get_fator_risco_data(
 
         perfil_filtrado = apply_token_search(
             perfil_df.filter(perfil_mask),
-            estabelecimento or razao_social,
+            estabelecimento,
             ("cnpj", "razao_social", "nome_fantasia"),
         )
         perfil_filtrado = build_perfil_filtrado(

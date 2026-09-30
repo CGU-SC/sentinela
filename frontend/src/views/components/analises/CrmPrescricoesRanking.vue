@@ -4,11 +4,15 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { useFormatting } from '@/composables/useFormatting';
 import { useFrozenData } from '@/composables/useFrozenData';
-import { analysisTooltip, crmMesTooltip } from '@/config/analysisTooltipConfig';
-import { DATA_NEUTRAL } from '@/config/colors';
+import {
+  analysisTooltip, crmMesTooltip, crmFaixaP95, CRM_ALERTA_ICONES, CRM_NAO_LOCALIZADO_TOOLTIP,
+} from '@/config/analysisTooltipConfig';
+import { DATA_NEUTRAL, CRM_TAXA_P95_TONS, CRM_ALERTA_BADGE_TONS } from '@/config/colors';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
+import { CRM_RANKING_PAGE_SIZE_OPTIONS, CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
 import { useThemeStore } from '@/stores/theme';
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
+import { destaqueBuscaMedico } from '@/utils/crmBusca';
 import CrmPrescricoesMensalTable from './CrmPrescricoesMensalTable.vue';
 import CrmAlertasBadge from './CrmAlertasBadge.vue';
 
@@ -21,7 +25,7 @@ const props = defineProps({
   pageError: { type: String, default: null },
   totalRecords: { type: Number, default: 0 },
   first: { type: Number, default: 0 },
-  pageSize: { type: Number, default: 25 },
+  pageSize: { type: Number, default: CRM_RANKING_DEFAULT_PAGE_SIZE },
   sortField: { type: String, default: 'taxa_prescricoes_dia' },
   sortOrder: { type: String, default: 'desc' },
   isRefreshing: { type: Boolean, default: false },
@@ -48,9 +52,22 @@ const TABS = [
 ];
 const themeStore = useThemeStore();
 const dataColorVars = computed(() => {
-  const cores = DATA_NEUTRAL[themeStore.isDark ? 'dark' : 'light'];
-  return { '--data-color': cores.strong, '--data-color-soft': cores.soft };
+  const tema = themeStore.isDark ? 'dark' : 'light';
+  const cores = DATA_NEUTRAL[tema];
+  const tons = CRM_TAXA_P95_TONS[tema];
+  return {
+    '--data-color': cores.strong,
+    '--data-color-soft': cores.soft,
+    '--p95-leve': tons.leve,
+    '--p95-media': tons.media,
+    '--p95-forte': tons.forte,
+  };
 });
+// Mesmo vermelho pastel da coluna ALERTAS, usado no selo "Não localizado no CFM"
+// e no destaque da TAXA / DIA (também na aba "Por mês", componente filho).
+const alertaCorVars = computed(() => ({
+  '--alerta-cor': CRM_ALERTA_BADGE_TONS[themeStore.isDark ? 'dark' : 'light'].cor,
+}));
 const snapshot = useFrozenData(
   () => ({
     rows: props.rows,
@@ -118,6 +135,7 @@ const barrasPorMedico = computed(() => {
       celulas[i].ponto = ponto;
       celulas[i].altura = `${(Number(ponto.taxa_prescricoes_dia) / maximo) * 100}%`;
       celulas[i].tooltip = crmMesTooltip(ponto, e.meses[i].p95_taxa_dia);
+      celulas[i].faixa = crmFaixaP95(ponto)?.chave ?? null;
     }
     mapa.set(medico.id_medico, celulas);
   }
@@ -133,8 +151,15 @@ function formatPercent(value) {
   return value == null ? '—' : `${Number(value).toFixed(1).replace('.', ',')}%`;
 }
 
+// "800 sc" ou "CRM-SC 800" destacam "800/SC" na linha do CRM.
+const destaque = computed(() => destaqueBuscaMedico(props.appliedQuery));
+const naoLocalizadoTooltip = CRM_NAO_LOCALIZADO_TOOLTIP;
+const naoLocalizadoIcone = CRM_ALERTA_ICONES.nao_localizado_cfm;
+
 function doctorLabel(row) {
-  return row.no_medico ? formatTitleCase(row.no_medico) : 'Médico não localizado';
+  if (!row.localizado_cfm) return 'Não localizado no CFM';
+  if (!row.no_medico) throw new Error(`Contrato inválido: médico ${row.id_medico} localizado no CFM sem nome.`);
+  return formatTitleCase(row.no_medico);
 }
 
 function crmLabel(row) {
@@ -180,7 +205,7 @@ const subtitulo = computed(() => {
   <section
     class="crm-ranking-panel"
     :class="{ 'is-refreshing': isRefreshing }"
-    :style="{ '--ranking-page-size': snapshot.pageSize }"
+    :style="[{ '--ranking-page-size': snapshot.pageSize }, alertaCorVars]"
   >
     <header class="ranking-header">
       <div class="ranking-heading">
@@ -218,8 +243,8 @@ const subtitulo = computed(() => {
           role="searchbox"
           :value="searchQuery"
           maxlength="120"
-          placeholder="Nome ou nº do CRM"
-          aria-label="Buscar médico por nome ou CRM no ranking"
+          placeholder="Nome, CRM ou CRM/UF"
+          aria-label="Buscar médico por nome, CRM ou CRM/UF no ranking"
           :disabled="isLoading"
           @input="emit('search', $event.target.value)"
         />
@@ -311,7 +336,7 @@ const subtitulo = computed(() => {
         :first="snapshot.first"
         :rows="snapshot.pageSize"
         :total-records="snapshot.totalRecords"
-        :rows-per-page-options="[25, 50, 100]"
+        :rows-per-page-options="CRM_RANKING_PAGE_SIZE_OPTIONS"
         :sort-field="snapshot.sortField"
         :sort-order="snapshot.sortOrder === 'asc' ? 1 : -1"
         :class="['enterprise-table', 'crm-ranking-table', 'clickable-rows', { 'is-stale': isStale, 'is-linha': tab === 'linha' }]"
@@ -339,8 +364,11 @@ const subtitulo = computed(() => {
         </Column>
         <Column field="no_medico" header="MÉDICO / CRM" sortable header-class="col-doctor" body-class="col-doctor">
           <template #body="{ data }">
-            <span class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="appliedQuery" /></span>
-            <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="appliedQuery" /></span>
+            <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
+              <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
+            </span>
+            <span v-else class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
+            <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
           </template>
         </Column>
         <Column v-if="tab === 'resumo'" field="taxa_prescricoes_dia" header="TAXA / DIA" sortable header-class="col-number col-rate" body-class="col-number col-rate rate-cell">
@@ -387,7 +415,7 @@ const subtitulo = computed(() => {
                 <span
                   v-if="celula.ponto"
                   class="lt-bar"
-                  :class="{ 'is-elevada': celula.ponto.taxa_elevada }"
+                  :class="celula.faixa ? `is-p95-${celula.faixa}` : null"
                   :style="{ height: celula.altura }"
                 />
               </span>
@@ -488,6 +516,9 @@ const subtitulo = computed(() => {
 .crm-ranking-panel :deep(.doctor-name), .crm-ranking-panel :deep(.doctor-crm) { display: block; white-space: nowrap; }
 .crm-ranking-panel :deep(.doctor-name) { color: var(--text-color-85); font-weight: 500; }
 .crm-ranking-panel :deep(.doctor-crm) { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
+/* CRM fora do cadastro do CFM: selo no lugar do nome (também na aba "Por mês"). */
+.crm-ranking-panel :deep(.doctor-nao-localizado) { display: inline-flex; align-items: center; gap: .3rem; max-width: 100%; padding: .12rem .45rem; border-radius: 5px; background: color-mix(in srgb, var(--alerta-cor) 12%, var(--card-bg)); color: var(--alerta-cor); font-size: .7rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crm-ranking-panel :deep(.doctor-nao-localizado .pi) { font-size: .72rem; }
 
 /* Coluna de alertas (também na aba "Por mês"). */
 .crm-ranking-panel :deep(.col-alertas) { width: 4.75rem; text-align: center; }
@@ -517,13 +548,15 @@ const subtitulo = computed(() => {
 .lt-mes.is-ano:not(:first-child) { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--card-border) 70%, transparent); }
 .lt-mes:hover { background: color-mix(in srgb, var(--text-color) 6%, transparent); }
 .lt-bar { width: 72%; max-width: 10px; min-height: 1.5px; border-radius: 1px 1px 0 0; background: var(--data-color); }
-.lt-bar.is-elevada { background: var(--risk-high); }
+.lt-bar.is-p95-leve { background: var(--p95-leve); }
+.lt-bar.is-p95-media { background: var(--p95-media); }
+.lt-bar.is-p95-forte { background: var(--p95-forte); }
 .lt-placeholder { height: 34px; border-bottom: 1px solid var(--card-border); }
 .lt-placeholder.is-loading { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text-color) 6%, transparent), transparent); background-size: 200% 100%; animation: lt-shimmer 1.2s linear infinite; }
 @keyframes lt-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 /* :deep: também vale para a aba "Por mês" (componente filho). */
 .crm-ranking-panel :deep(.rate-value) { display: inline-block; color: var(--text-color-85); font-weight: 500; }
-.crm-ranking-panel :deep(.rate-value--high) { padding: .18rem .38rem; margin: -.18rem -.38rem; border-radius: 5px; background: color-mix(in srgb, var(--risk-high) 12%, var(--card-bg)); color: var(--risk-high); font-weight: 600; }
+.crm-ranking-panel :deep(.rate-value--high) { padding: .18rem .38rem; margin: -.18rem -.38rem; border-radius: 5px; background: color-mix(in srgb, var(--alerta-cor) 12%, var(--card-bg)); color: var(--alerta-cor); font-weight: 600; }
 .ranking-table-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--card-bg) 72%, transparent); color: var(--text-muted); font-size: .9rem; pointer-events: none; }
 .ranking-page-error { display: flex; align-items: center; gap: .45rem; padding: .55rem 1rem; border-top: 1px solid color-mix(in srgb, var(--risk-high) 25%, var(--tabs-border)); color: var(--risk-high); font-size: .7rem; }
 </style>

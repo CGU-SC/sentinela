@@ -74,7 +74,7 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
     sections: [
       {
         label: 'Cor',
-        text: 'Vermelho: mês com taxa elevada (acima do P95 nacional do mês). Azul: demais meses.',
+        text: 'Tons de vermelho: mês com taxa elevada (acima do P95 nacional do mês), do mais claro ao mais marcado conforme o ×P95 — de 1× a 2×, de 2× a 3× e acima de 3×. Azul: demais meses.',
       },
       {
         label: 'Comparação entre médicos',
@@ -108,7 +108,11 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
     sections: [
       {
         label: 'Mini gráfico',
-        text: 'Prescrições mês a mês, uma barra por mês, na mesma linha do tempo para todas as farmácias: do primeiro ao último mês com prescrição do CRM no período. Barras alinhadas indicam atuação simultânea; a altura é relativa ao maior mês do CRM naquela farmácia.',
+        text: 'Taxa diária do CRM na farmácia mês a mês (prescrições ÷ dias com prescrição nela), uma barra por mês, na mesma linha do tempo para todas as farmácias. Barras alinhadas indicam atuação simultânea. A altura usa a mesma escala em todas as linhas, em vezes o P95 nacional do mês, até 4× o P95: acima disso a barra fica cheia com uma marca escura no topo (valor exato no detalhe).',
+      },
+      {
+        label: 'Cor',
+        text: 'Tons de vermelho: mês com taxa elevada (acima do P95 nacional do mês), do mais claro ao mais marcado conforme o ×P95 — de 1× a 2×, de 2× a 3× e acima de 3×. Azul: demais meses.',
       },
       {
         label: 'Detalhe',
@@ -157,9 +161,8 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
     sections: [
       { label: 'CRM não localizado no CFM', text: 'O CRM não consta no cadastro do CFM. Sem a data de 1ª inscrição, o ponto "antes da inscrição" não pode ser avaliado.' },
       { label: 'Antes da inscrição no CFM', text: 'Meses com prescrição anteriores à data da 1ª inscrição do médico no CFM.' },
-      { label: 'Rajadas de prescrição do mesmo CRM', text: 'Dias em que o CRM teve muitas prescrições em poucos minutos numa farmácia (mesmos alertas da aba Autorizações do estabelecimento). Mostra quantos dias, em quantas farmácias e a pior severidade.' },
+      { label: 'Autorizações em sequência (único CRM)', text: 'Dias em que o CRM teve muitas prescrições em poucos minutos numa farmácia (mesmos alertas da aba Autorizações do estabelecimento). Mostra quantos dias, em quantas farmácias e a pior severidade.' },
       { label: 'Farmácias distantes no mesmo mês', text: 'Meses em que o CRM prescreveu, no mesmo mês, em farmácias muito distantes entre si. Mostra a maior distância encontrada. Com farmácia filtrada, não é avaliado.' },
-      { label: 'Mais de uma UF no mesmo mês', text: 'Meses em que o CRM aparece em farmácias de UFs diferentes.' },
       { label: 'Meses consecutivos com taxa elevada', text: 'A maior sequência de meses seguidos com taxa elevada (a partir de 2 meses).' },
       { label: 'Concentração em uma farmácia', text: 'A farmácia principal concentra ao menos o limite definido (50%) das prescrições do período.' },
     ],
@@ -230,17 +233,56 @@ function formatTooltipDecimal(value, casas = 2) {
  *   taxa_prescricoes_dia:number, razao_p95:number, taxa_elevada:boolean}} ponto
  * @param {number} p95 - P95 nacional do mês
  */
+/**
+ * Faixa da taxa do mês em relação ao P95 nacional do mês (tons de vermelho da
+ * linha do tempo). Só meses de taxa elevada (acima do P95) têm faixa.
+ */
+export function crmFaixaP95(ponto) {
+  if (!ponto.taxa_elevada) return null;
+  const razao = Number(ponto.razao_p95);
+  if (razao > 3) return { chave: 'forte', rotulo: 'acima de 3× o P95' };
+  if (razao > 2) return { chave: 'media', rotulo: '2× a 3× o P95' };
+  return { chave: 'leve', rotulo: '1× a 2× o P95' };
+}
+
+/**
+ * Altura das barras de "Atuação na farmácia" (Perfil de CRMs e histórico do
+ * CRM): escala comum a todas as linhas, em ×P95 do mês, com teto. Acima do teto
+ * a barra fica cheia e marcada como cortada (valor real no tooltip/detalhe).
+ */
+export const CRM_ATUACAO_TETO_P95 = 4;
+export function crmAlturaAtuacao(razaoP95) {
+  const razao = Number(razaoP95);
+  if (!(razao >= 0)) throw new Error(`×P95 inválido: ${razaoP95}.`);
+  return {
+    fracao: Math.min(razao, CRM_ATUACAO_TETO_P95) / CRM_ATUACAO_TETO_P95,
+    cortada: razao > CRM_ATUACAO_TETO_P95,
+  };
+}
+
+/**
+ * Mesma faixa a partir da taxa e do P95 do mês (quando a resposta não traz o
+ * ×P95 pronto). Taxa elevada: taxa arredondada em 6 casas > P95, como no backend.
+ */
+export function crmFaixaPorTaxa(taxa, p95) {
+  const t = Number(taxa);
+  const limite = Number(p95);
+  if (!(limite > 0)) throw new Error(`P95 do mês inválido: ${p95}.`);
+  return crmFaixaP95({ taxa_elevada: Number(t.toFixed(6)) > limite, razao_p95: t / limite });
+}
+
 export function crmMesTooltip(ponto, p95) {
   const comp = Number(ponto.competencia);
   const mes = `${String(comp % 100).padStart(2, '0')}/${Math.floor(comp / 100)}`;
   const dias = Number(ponto.qtd_dias_com_prescricao);
+  const faixa = crmFaixaP95(ponto);
   return {
     value: `
       <div class="analysis-tooltip-content analysis-tooltip-content--mes">
         <div class="analysis-tooltip-heading">
           <i class="pi pi-calendar" aria-hidden="true"></i>
           <span>${escapeTooltipHtml(mes)}</span>
-          ${ponto.taxa_elevada ? '<span class="analysis-tooltip-flag">Taxa elevada</span>' : ''}
+          ${faixa ? `<span class="analysis-tooltip-flag">Taxa elevada · ${escapeTooltipHtml(faixa.rotulo)}</span>` : ''}
         </div>
         <dl class="analysis-tooltip-metrics">
           <dt>Taxa diária</dt><dd>${formatTooltipDecimal(ponto.taxa_prescricoes_dia)}/dia</dd>
@@ -262,10 +304,12 @@ export const CRM_ALERTA_ICONES = Object.freeze({
   antes_inscricao: 'pi-calendar-times',
   rajadas_unico: 'pi-bolt',
   distancia: 'pi-directions',
-  multiplas_ufs: 'pi-map-marker',
   sequencia_alta: 'pi-chart-line',
   concentracao: 'pi-building',
 });
+
+/** Selo da coluna MÉDICO / CRM do ranking quando o CRM não consta no cadastro do CFM. */
+export const CRM_NAO_LOCALIZADO_TOOLTIP = 'CRM não consta no cadastro do CFM. Sem a data de 1ª inscrição, não é possível conferir prescrições anteriores à inscrição.';
 
 /**
  * Tooltip do ícone de alertas do ranking de CRMs: todos os pontos de atenção

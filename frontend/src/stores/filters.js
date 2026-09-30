@@ -180,7 +180,8 @@ export const useFilterStore = defineStore('filters', () => {
     const trimmedSearch = rawSearch.trim();
     const numericOnly = rawSearch.replace(/\D/g, '');
     const cnpjRaiz = numericOnly.length >= 8 ? extractCnpjFilter(rawSearch) : null;
-    const razaoSocial = numericOnly.length < 8 && trimmedSearch.length >= 2 ? trimmedSearch : null;
+    // Texto (nome ou CNPJ incompleto): busca em CNPJ, razão social e nome fantasia.
+    const estabelecimento = numericOnly.length < 8 && trimmedSearch.length >= 2 ? trimmedSearch : null;
 
     return {
       inicio,
@@ -196,8 +197,7 @@ export const useFilterStore = defineStore('filters', () => {
       porteEmpresa: selectedPorte.value !== FILTER_ALL_VALUE ? selectedPorte.value : null,
       grandeRede: selectedGrandeRede.value !== FILTER_ALL_VALUE ? selectedGrandeRede.value : null,
       cnpjRaiz,
-      razaoSocial,
-      estabelecimento: razaoSocial,
+      estabelecimento,
       unidadePf: selectedUnidadePf.value !== FILTER_ALL_VALUE ? selectedUnidadePf.value : null,
       volumeAtipicoEnabled: volumeAtipicoActive,
       volumeAtipicoPercentual,
@@ -257,8 +257,8 @@ export const useFilterStore = defineStore('filters', () => {
   });
 
   const estabelecimentoFilterKey = computed(() => {
-    const { cnpjRaiz, razaoSocial, estabelecimento } = apiParams.value;
-    return stableStringify({ cnpjRaiz, razaoSocial, estabelecimento });
+    const { cnpjRaiz, estabelecimento } = apiParams.value;
+    return stableStringify({ cnpjRaiz, estabelecimento });
   });
 
   const indicadoresApiParams = computed(() => {

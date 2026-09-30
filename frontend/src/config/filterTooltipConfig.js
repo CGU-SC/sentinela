@@ -170,13 +170,19 @@ const FILTER_TOOLTIP_COPY = Object.freeze({
     sections: [
       {
         label: 'Período de referência',
-        text: 'O cálculo considera o período de análise selecionado.',
+        text: 'Os dados de origem são anuais: o cálculo usa o ano inteiro de cada ano tocado pelo período de análise. Ex.: 03/2023 a 05/2023 considera todo o ano de 2023.',
       },
     ],
   },
   volumeAtipico: {
     title: 'Aumento semestral atípico',
     body: 'Filtra estabelecimentos com crescimento percentual atípico e aumento absoluto mínimo de R$ 10.000 em relação ao semestre anterior.',
+    sections: [
+      {
+        label: 'Período de referência',
+        text: 'A comparação é feita por semestre (janeiro a junho e julho a dezembro). Entra todo semestre tocado pelo período de análise, mesmo que só em parte. Ex.: 05/2023 a 08/2023 avalia o 1º e o 2º semestres de 2023, cada um comparado ao semestre anterior.',
+      },
+    ],
   },
   percentual: {
     title: '% de não comprovação',
@@ -185,6 +191,10 @@ const FILTER_TOOLTIP_COPY = Object.freeze({
       {
         label: 'Cálculo',
         text: 'Percentual = valor sem comprovação ÷ valor total de vendas × 100, calculado separadamente para cada estabelecimento. O intervalo inclui os limites selecionados.',
+      },
+      {
+        label: 'Como escolher',
+        text: 'Use um atalho (todos ou a partir de 10%, 20%, 40%, 60% ou 80%) ou informe uma faixa personalizada ("De" e "Até") e clique em Aplicar.',
       },
     ],
   },
@@ -208,7 +218,11 @@ const FILTER_TOOLTIP_COPY = Object.freeze({
     sections: [
       {
         label: 'Período de cálculo',
-        text: 'O valor é somado por estabelecimento dentro do período de análise. O limite pode ser ajustado em incrementos de R$ 1.000, até R$ 1.000.000.',
+        text: 'O valor é somado por estabelecimento dentro do período de análise. O limite vai de R$ 0 a R$ 1.000.000.',
+      },
+      {
+        label: 'Como escolher',
+        text: 'Use um atalho (sem valor mínimo ou a partir de R$ 100 mil, R$ 300 mil ou R$ 500 mil) ou informe um valor personalizado e clique em Aplicar. Os botões − e + ajustam de R$ 10.000 em R$ 10.000.',
       },
     ],
   },

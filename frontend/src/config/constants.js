@@ -16,6 +16,11 @@ export const AUDIT_PERIOD = {
     SLIDER_MAX_INDEX: 113,  // 0-indexed → TOTAL_MONTHS - 1
 };
 
+// Paginação do ranking de médicos em /analises (abas Resumo, Linha do tempo e Por mês).
+// O backend aceita page_size entre 1 e 100.
+export const CRM_RANKING_PAGE_SIZE_OPTIONS = Object.freeze([15, 25, 50, 100]);
+export const CRM_RANKING_DEFAULT_PAGE_SIZE = 15;
+
 export const MONTH_LABELS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 
 /** Anos disponíveis para atalho rápido no filtro de período. */

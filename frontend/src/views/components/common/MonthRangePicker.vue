@@ -152,34 +152,34 @@ function aoTeclar(event, c) {
 <template>
   <button
     type="button"
-    class="mrp-gatilho"
+    class="rp-gatilho"
     :disabled="disabled"
     aria-haspopup="dialog"
     @click="abrir"
   >
-    <i class="pi pi-calendar" aria-hidden="true" />
-    <span class="mrp-gatilho-texto">{{ rotulo }}</span>
-    <i class="pi pi-chevron-down mrp-gatilho-seta" aria-hidden="true" />
+    <i class="pi pi-calendar rp-gatilho-icone" aria-hidden="true" />
+    <span class="rp-gatilho-texto">{{ rotulo }}</span>
+    <i class="pi pi-chevron-down rp-gatilho-seta" aria-hidden="true" />
   </button>
 
-  <OverlayPanel ref="painel" class="mrp-painel" :dismissable="true" @show="aoMostrar">
-    <div class="mrp-corpo" role="dialog" aria-label="Escolher período">
-      <ul v-if="atalhos.length" class="mrp-atalhos">
+  <OverlayPanel ref="painel" class="rp-painel" :dismissable="true" @show="aoMostrar">
+    <div class="rp-corpo" role="dialog" aria-label="Escolher período">
+      <ul v-if="atalhos.length" class="rp-atalhos">
         <li v-for="a in atalhos" :key="a.value">
           <button
             type="button"
-            class="mrp-atalho"
+            class="rp-atalho"
             :class="{ 'is-ativo': atalhoGrade != null ? a.value === atalhoGrade : a.value === atalhoAtivo }"
             :aria-pressed="atalhoGrade != null ? a.value === atalhoGrade : a.value === atalhoAtivo"
             @click="escolherAtalho(a)"
           >
             {{ a.label }}
-            <i v-if="a.grade" class="pi pi-angle-right mrp-atalho-seta" aria-hidden="true" />
+            <i v-if="a.grade" class="pi pi-angle-right rp-atalho-seta" aria-hidden="true" />
           </button>
         </li>
       </ul>
 
-      <div class="mrp-calendario">
+      <div class="rp-conteudo">
         <div ref="grade" class="mrp-anos" @mouseleave="ancora != null && (sobre = ancora)">
           <section v-for="(ano, i) in anos" :key="ano" class="mrp-ano">
             <header class="mrp-ano-cabecalho">
@@ -220,7 +220,7 @@ function aoTeclar(event, c) {
             </div>
           </section>
         </div>
-        <p class="mrp-dica" aria-live="polite">
+        <p class="rp-dica" aria-live="polite">
           <template v-if="ancora != null">
             Início em <strong>{{ fmt(ancora) }}</strong> · clique no mês final
             <span v-if="sobre != null && sobre !== ancora"> ({{ fmt(Math.min(ancora, sobre)) }} – {{ fmt(Math.max(ancora, sobre)) }})</span>
@@ -232,28 +232,8 @@ function aoTeclar(event, c) {
   </OverlayPanel>
 </template>
 
-<style scoped>
-.mrp-gatilho { display: inline-flex; align-items: center; gap: .5rem; min-height: 2.1rem; max-width: 100%; padding: 0 .7rem; border: 1px solid var(--card-border); border-radius: 6px; background: var(--card-bg); color: var(--text-color); font: inherit; font-size: .76rem; cursor: pointer; transition: border-color .15s ease; }
-.mrp-gatilho:hover:not(:disabled) { border-color: var(--primary-color); }
-.mrp-gatilho:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent); outline-offset: 1px; }
-.mrp-gatilho:disabled { opacity: .6; cursor: default; }
-.mrp-gatilho > .pi-calendar { color: var(--primary-color); font-size: .8rem; }
-/* Texto ocupa o espaço livre: a seta fica na borda direita (padrão de dropdown). */
-.mrp-gatilho-texto { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.mrp-gatilho-seta { flex-shrink: 0; margin-left: .35rem; color: var(--text-muted); font-size: .65rem; }
-</style>
-
 <style>
-/* OverlayPanel é teleportado para o body: estilos sem scoped, prefixados. */
-.mrp-painel .p-overlaypanel-content { padding: 0; }
-.mrp-corpo { display: flex; color: var(--text-color); font-size: .76rem; }
-.mrp-atalhos { display: flex; flex-direction: column; gap: .15rem; min-width: 11.5rem; margin: 0; padding: .6rem; border-right: 1px solid var(--card-border); list-style: none; }
-.mrp-atalho { width: 100%; padding: .45rem .6rem; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; cursor: pointer; }
-.mrp-atalho:hover, .mrp-atalho:focus-visible { background: color-mix(in srgb, var(--text-color) 6%, transparent); color: var(--text-color); outline: none; }
-.mrp-atalho { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
-.mrp-atalho-seta { font-size: .7rem; opacity: .6; }
-.mrp-atalho.is-ativo { background: color-mix(in srgb, var(--primary-color) 14%, transparent); color: var(--primary-color); font-weight: 600; }
-.mrp-calendario { display: flex; flex-direction: column; gap: .5rem; padding: .75rem .9rem .6rem; }
+/* Grade de meses (botão e painel: assets/styles/range-picker.css). OverlayPanel é teleportado para o body: estilos sem scoped, prefixados. */
 .mrp-anos { display: flex; gap: 1.25rem; }
 .mrp-ano { display: flex; flex-direction: column; gap: .45rem; }
 .mrp-ano-cabecalho { display: flex; align-items: center; justify-content: center; position: relative; min-height: 1.75rem; }
@@ -276,6 +256,4 @@ function aoTeclar(event, c) {
 .mrp-mes.is-faixa:nth-child(4n+1) { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 .mrp-mes.is-faixa:nth-child(4n) { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 .mrp-mes:disabled { color: var(--text-muted); opacity: .35; cursor: default; }
-.mrp-dica { margin: 0; min-height: 1.1rem; color: var(--text-muted); font-size: .7rem; text-align: center; }
-.mrp-dica strong { color: var(--text-color); font-weight: 600; }
 </style>

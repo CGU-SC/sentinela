@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 import { API_ENDPOINTS } from '@/config/api';
+import { CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
 
-const DEFAULT_RANKING_PAGE_SIZE = 25;
+const DEFAULT_RANKING_PAGE_SIZE = CRM_RANKING_DEFAULT_PAGE_SIZE;
 const DEFAULT_RANKING_SORT_FIELD = 'taxa_prescricoes_dia';
 const DEFAULT_RANKING_SORT_ORDER = 'desc';
 const RANKING_SORT_FIELDS = new Set([
@@ -320,6 +321,23 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
         this.isMapLoading = false;
         this.isRankingLoading = false;
       }
+    },
+
+    /**
+     * Aplica a busca sem consultar o ranking (aba "Por mês", que tem consulta
+     * própria). O ranking é refeito com essa busca ao voltar para as outras abas.
+     * @param {string} medicoQuery
+     * @returns {boolean} false quando a busca é inválida (erro em rankingPageError).
+     */
+    setRankingSearch(medicoQuery) {
+      const normalizedQuery = medicoQuery.trim();
+      if (normalizedQuery.length > 120) {
+        this.rankingPageError = 'A busca deve ter no máximo 120 caracteres.';
+        return false;
+      }
+      this.rankingPageError = null;
+      this.rankingSearch = normalizedQuery;
+      return true;
     },
 
     async fetchRankingPage(

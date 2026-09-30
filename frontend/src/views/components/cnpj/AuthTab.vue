@@ -9,6 +9,7 @@ import CRMKpiGrid from './CRMKpiGrid.vue';
 import CRMCronologia from './CRMCronologia.vue';
 import CRMPrescritoresTable from './CRMPrescritoresTable.vue';
 import MortalityTab from './MortalityTab.vue';
+import ExportMenuButton from '../common/ExportMenuButton.vue';
 import { useFilterStore } from "@/stores/filters";
 import { useFormatting } from "@/composables/useFormatting";
 import { useFilterParameters } from "@/composables/useFilterParameters";
@@ -45,6 +46,30 @@ const {
 // ── Estado de Navegação (Agora via Store) ─────────────────────────────────
 const activeKpiFilter = ref(null);
 const mortalityTabRef = ref(null);
+const crmTableRef = ref(null);
+const cronologiaRef = ref(null);
+
+// Exportação da aba ativa: o botão fica sempre na barra de abas e exporta o
+// que a aba visível oferece (cada aba expõe `exportacao`).
+const EXPORTACAO_CARREGANDO = Object.freeze({
+  itens: [],
+  carregando: false,
+  desabilitado: true,
+  motivo: 'Aguarde o carregamento da aba.',
+  tooltip: 'Aguarde o carregamento da aba para exportar.',
+});
+const EXPORTACAO_SEM_CRMS = Object.freeze({
+  ...EXPORTACAO_CARREGANDO,
+  motivo: 'Nenhum CRM no período.',
+  tooltip: 'Não há CRMs com prescrição nesta farmácia no período para exportar.',
+});
+const exportacaoAtiva = computed(() => {
+  if (activeCrmViewMode.value === 'medicos' && cachedPrescritoresData.value && crmsInteresse.value.length === 0) {
+    return EXPORTACAO_SEM_CRMS;
+  }
+  const refs = { medicos: crmTableRef, cronologia: cronologiaRef, falecidos: mortalityTabRef };
+  return refs[activeCrmViewMode.value]?.value?.exportacao ?? EXPORTACAO_CARREGANDO;
+});
 const openedCrmViews = ref(new Set(['medicos', activeCrmViewMode.value]));
 
 function markCrmViewOpened(mode) {
@@ -275,6 +300,11 @@ defineExpose({
             <span>FALECIDOS</span>
           </button>
         </div>
+        <ExportMenuButton
+          class="view-mode-export"
+          :exportacao="exportacaoAtiva"
+          :menu-id="`crm-export-menu-${activeCrmViewMode}`"
+        />
       </div>
 
       <div
@@ -311,6 +341,7 @@ defineExpose({
             @kpi-click="setKpiFilter"
           />
           <CRMPrescritoresTable
+            ref="crmTableRef"
             :crms-interesse="crmsInteresse"
             :active-kpi-filter="activeKpiFilter"
             :kpi-filters="kpiFilters"
@@ -325,6 +356,7 @@ defineExpose({
 
       <CRMCronologia
         v-if="hasOpenedCrmView('cronologia')"
+        ref="cronologiaRef"
         v-show="activeCrmViewMode === 'cronologia'"
         :cnpj="cnpj"
         :period-summary="periodSummary"
@@ -371,7 +403,21 @@ defineExpose({
 .animate-fade-in { animation: fadeIn 0.3s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-.view-mode-container { display: flex; flex-direction: column; align-items: center; margin: 0.5rem 0 1.5rem; padding: 0 1rem; }
+.view-mode-container {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin: 0.5rem 0 1.5rem;
+  padding: 0 1rem;
+}
+.view-mode-container .view-mode-selector { grid-column: 2; }
+.view-mode-export { grid-column: 3; justify-self: end; }
+@media (max-width: 900px) {
+  .view-mode-container { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 0.75rem; }
+  .view-mode-container .view-mode-selector,
+  .view-mode-export { grid-column: 1; justify-self: center; }
+}
 .view-mode-selector {
   display: flex;
   background: color-mix(in srgb, var(--card-bg) 40%, transparent);

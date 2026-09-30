@@ -66,7 +66,7 @@ A segunda rodada incorporou melhorias significativas:
 === "Análise de CRMs"
 
     - Validação de **regularidade dos CRMs** no CFM
-    - Detecção de **médicos-robô** (>30 prescrições/dia)
+    - Detecção de **prescrição intensiva** (>20 prescrições/dia)
     - Análise de **concentração** de prescritores
     - Alertas de **distância geográfica** (>400km)
 

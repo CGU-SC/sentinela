@@ -1,3 +1,11 @@
+<script>
+import { createRespostaCache as criarCacheModulo } from '@/utils/respostaCache';
+
+// Respostas dos modais guardadas entre aberturas (chave inclui a versão do cache).
+const historicoCache = criarCacheModulo(20);
+const atuacaoCache = criarCacheModulo(40);
+</script>
+
 <script setup>
 /**
  * Histórico completo de um CRM (clique numa linha do ranking de /analises).
@@ -26,8 +34,8 @@ import {
 } from 'echarts/components';
 import VChart from 'vue-echarts';
 import { API_ENDPOINTS } from '@/config/api';
-import { CRM_ALERTA_ICONES, analysisTooltip } from '@/config/analysisTooltipConfig';
-import { CRM_FARMACIA_SERIES, CRM_HEATMAP_TAXA_RAMP, DATA_NEUTRAL } from '@/config/colors';
+import { CRM_ALERTA_ICONES, analysisTooltip, crmAlturaAtuacao, crmFaixaPorTaxa } from '@/config/analysisTooltipConfig';
+import { CRM_FARMACIA_SERIES, CRM_HEATMAP_TAXA_RAMP, CRM_TAXA_P95_TONS, DATA_NEUTRAL } from '@/config/colors';
 import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
 import { useFormatting } from '@/composables/useFormatting';
@@ -47,6 +55,8 @@ const props = defineProps({
   medico: { type: Object, default: null },
   dataInicio: { type: String, default: null },
   dataFim: { type: String, default: null },
+  /** Versão do cache de dados: entra na chave das respostas guardadas. */
+  cacheVersion: { type: String, default: null },
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -58,6 +68,9 @@ const { formatNumberFull, formatarData, formatTitleCase, formatCnpj } = useForma
 const TOP_FARMACIAS_GRAFICO = 5;
 const TOP_FARMACIAS_CALOR = 15;
 
+// Respostas guardadas (historicoCache/atuacaoCache, no <script> do módulo) por
+// médico + período + farmácia + versão do cache: fechar e reabrir o modal, ou
+// voltar a um filtro já visto, não refaz a consulta.
 const dados = ref(null);
 const carregando = ref(false);
 const erro = ref(null);
@@ -165,12 +178,14 @@ async function carregar() {
   controller?.abort();
   const requestController = new AbortController();
   controller = requestController;
-  carregando.value = true;
+  const chaveCache = props.cacheVersion ? `${props.cacheVersion}|${chave}` : null;
+  const guardada = chaveCache ? historicoCache.get(chaveCache) : undefined;
+  if (!guardada) carregando.value = true;
   try {
-    const { data } = await axios.get(API_ENDPOINTS.analyticsCrmMedicoHistorico, {
+    const data = guardada ?? (await axios.get(API_ENDPOINTS.analyticsCrmMedicoHistorico, {
       params,
       signal: requestController.signal,
-    });
+    })).data;
     if (controller !== requestController) return;
     if ((data.id_cnpj_filtro ?? null) !== (params.id_cnpj ?? null)) {
       throw new Error('Contrato inválido em crm-medico-historico: farmácia filtrada diferente da solicitada.');
@@ -183,6 +198,7 @@ async function carregar() {
     }
     erro.value = null;
     dados.value = data;
+    if (chaveCache && !guardada) historicoCache.set(chaveCache, data);
   } catch (err) {
     if (axios.isCancel(err) || controller !== requestController) return;
     const status = err?.response?.status;
@@ -394,6 +410,9 @@ watch(
 const dataColorVars = computed(() => ({
   '--data-color': DATA_NEUTRAL[tema.value].strong,
   '--data-color-soft': DATA_NEUTRAL[tema.value].soft,
+  '--p95-leve': CRM_TAXA_P95_TONS[tema.value].leve,
+  '--p95-media': CRM_TAXA_P95_TONS[tema.value].media,
+  '--p95-forte': CRM_TAXA_P95_TONS[tema.value].forte,
 }));
 const eixoAtuacao = computed(() => {
   const lista = farmacias.value;
@@ -409,6 +428,7 @@ const atuacaoPorFarmacia = computed(() => {
   if (!eixo || !d) return mapa;
   const compInicio = compDaData(d.periodo_inicio);
   const compFim = compDaData(d.periodo_fim);
+  const mesPorCompetencia = new Map(d.meses.map((m) => [m.competencia, m]));
   const seriePorFarmacia = new Map();
   for (const r of d.farmacia_mes) {
     if (r.competencia < compInicio || r.competencia > compFim) continue;
@@ -420,11 +440,27 @@ const atuacaoPorFarmacia = computed(() => {
     if (!serie?.length) {
       throw new Error(`Contrato inválido em crm-medico-historico: farmácia ${f.id_cnpj} sem meses em farmacia_mes no período.`);
     }
-    const maximo = Math.max(1, ...serie.map((p) => Number(p.nu_prescricoes)));
-    const barras = serie.map((p) => ({
-      x: indiceMes(p.competencia) - eixo.inicio,
-      h: Math.max(1.5, (Number(p.nu_prescricoes) / maximo) * 16),
-    }));
+    // Altura: ×P95 nacional do mês da taxa diária do CRM nesta farmácia, na
+    // mesma escala para todas as farmácias (teto em crmAlturaAtuacao); cor:
+    // faixa do ×P95 (regra da linha do tempo).
+    const barras = serie.map((p) => {
+      const dias = Number(p.qtd_dias_com_prescricao);
+      if (!(dias > 0)) {
+        throw new Error(`Contrato inválido em crm-medico-historico: farmácia ${f.id_cnpj} sem dias em ${p.competencia}.`);
+      }
+      const mes = mesPorCompetencia.get(p.competencia);
+      if (!mes) {
+        throw new Error(`Contrato inválido em crm-medico-historico: mês ${p.competencia} sem P95 em meses.`);
+      }
+      const taxa = Number(p.nu_prescricoes) / dias;
+      const altura = crmAlturaAtuacao(taxa / Number(mes.p95_taxa_dia));
+      return {
+        x: indiceMes(p.competencia) - eixo.inicio,
+        h: Math.max(1.5, altura.fracao * 16),
+        cortada: altura.cortada,
+        faixa: crmFaixaPorTaxa(taxa, mes.p95_taxa_dia)?.chave ?? null,
+      };
+    });
     const inicio = f.primeira_competencia;
     const fim = f.ultima_competencia;
     const meses = Number(f.qtd_meses);
@@ -457,13 +493,21 @@ async function abrirAtuacao(f) {
   atuacaoCarregando.value = f.id_cnpj;
   atuacaoErro.value = null;
   try {
-    const params = {};
-    if (props.dataInicio) params.data_inicio = props.dataInicio;
-    if (props.dataFim) params.data_fim = props.dataFim;
-    const { data } = await axios.get(
-      API_ENDPOINTS.analyticsCrmMedicoAtuacao(f.cnpj, props.medico.id_medico),
-      { params, signal: requestController.signal },
-    );
+    // Mesmo período exibido na tabela do histórico (filtro do modal), e não o
+    // período da página.
+    if (!dados.value) throw new Error('Histórico do CRM ainda não carregado.');
+    const params = { data_inicio: dados.value.periodo_inicio, data_fim: dados.value.periodo_fim };
+    const chaveCache = props.cacheVersion
+      ? `${props.cacheVersion}|${JSON.stringify([f.cnpj, props.medico.id_medico, params])}`
+      : null;
+    let data = chaveCache ? atuacaoCache.get(chaveCache) : undefined;
+    if (!data) {
+      ({ data } = await axios.get(
+        API_ENDPOINTS.analyticsCrmMedicoAtuacao(f.cnpj, props.medico.id_medico),
+        { params, signal: requestController.signal },
+      ));
+      if (chaveCache) atuacaoCache.set(chaveCache, data);
+    }
     if (requestController !== atuacaoController || !props.modelValue) return;
     atuacao.value = {
       medico: data.medico,
@@ -1035,17 +1079,27 @@ const calorOption = computed(() => {
                       :viewBox="`0 0 ${atuacaoPorFarmacia.get(f.id_cnpj).total} 16`"
                       preserveAspectRatio="none"
                       role="img"
-                      :aria-label="`Prescrições mensais em ${nomeFarmacia(f)}: ${atuacaoPorFarmacia.get(f.id_cnpj).periodo}, ${atuacaoPorFarmacia.get(f.id_cnpj).meses}`"
+                      :aria-label="`Taxa diária mensal em ${nomeFarmacia(f)}: ${atuacaoPorFarmacia.get(f.id_cnpj).periodo}, ${atuacaoPorFarmacia.get(f.id_cnpj).meses}`"
                     >
                       <line class="atuacao-base" x1="0" y1="15.75" :x2="atuacaoPorFarmacia.get(f.id_cnpj).total" y2="15.75" />
                       <rect
                         v-for="barra in atuacaoPorFarmacia.get(f.id_cnpj).barras"
                         :key="barra.x"
                         class="atuacao-bar"
+                        :class="barra.faixa ? `is-p95-${barra.faixa}` : null"
                         :x="barra.x + 0.1"
                         :y="16 - barra.h"
                         width="0.8"
                         :height="barra.h"
+                      />
+                      <rect
+                        v-for="barra in atuacaoPorFarmacia.get(f.id_cnpj).barras.filter((b) => b.cortada)"
+                        :key="`corte-${barra.x}`"
+                        class="atuacao-corte"
+                        :x="barra.x + 0.1"
+                        y="0"
+                        width="0.8"
+                        height="1.4"
                       />
                     </svg>
                   </button>
@@ -1113,7 +1167,6 @@ const calorOption = computed(() => {
       :medico="atuacao.medico"
       :cnpj="atuacao.cnpj"
       :periodo="atuacao.periodo"
-      :periodo-consulta="{ inicio: dataInicio, fim: dataFim }"
       :serie-farmacia="atuacao.serieFarmacia"
     />
 
@@ -1245,7 +1298,7 @@ const calorOption = computed(() => {
 .hist-tabela tbody tr:hover .hist-farm-filtrar, .hist-farm-filtrar:focus-visible { opacity: 1; }
 .hist-farm-filtrar:hover, .hist-farm-filtrar:focus-visible { border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); color: var(--primary-color); outline: none; }
 .hist-farm-filtrar.is-ativo { opacity: 1; color: var(--primary-color); border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
-.hist-tabela tbody tr:hover, .hist-tabela tbody tr:focus-visible { background: color-mix(in srgb, var(--primary-color) 5%, var(--card-bg)); outline: none; }
+.hist-tabela tbody tr:hover, .hist-tabela tbody tr:focus-visible { background: var(--table-hover); outline: none; }
 .hist-farm { display: flex; align-items: flex-start; gap: .5rem; }
 .hist-farm .hist-swatch { margin-top: .24rem; }
 .hist-farm-identidade { display: block; position: relative; min-width: 0; padding-right: .9rem; }
@@ -1309,6 +1362,11 @@ const calorOption = computed(() => {
 .atuacao-spark { display: block; width: 100%; height: 35px; overflow: visible; }
 .atuacao-base { stroke: var(--card-border); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
 .atuacao-bar { fill: var(--data-color); }
+.atuacao-bar.is-p95-leve { fill: var(--p95-leve); }
+.atuacao-bar.is-p95-media { fill: var(--p95-media); }
+.atuacao-bar.is-p95-forte { fill: var(--p95-forte); }
+/* Mês acima do teto de altura (4× o P95): barra cheia com marca no topo. */
+.atuacao-corte { fill: var(--text-color); opacity: 0.55; }
 
 .hist-fechar { min-height: 34px; padding: 0 1.1rem; border: 1px solid var(--card-border); border-radius: 8px; background: transparent; color: var(--text-color); font: inherit; font-size: .8rem; font-weight: 500; cursor: pointer; }
 .hist-fechar:hover { border-color: var(--primary-color); color: var(--primary-color); }

@@ -315,7 +315,7 @@ Painel visual no topo da aba que alerta para situações críticas:
 | ---------------------- | ------------------------------- | ------------------ |
 | **Concentração Top 1** | % vendas do principal médico    | >50% = Alto        |
 | **Concentração Top 5** | % vendas dos 5 maiores          | >80% = Alto        |
-| **Prescritores Robô**  | Médicos com >30 prescrições/dia | Qualquer = Crítico |
+| **>20 Presc./Dia**     | Médicos com >20 prescrições/dia | Qualquer = Crítico |
 | **CRMs Inválidos**     | Médicos não encontrados no CFM  | Qualquer = Crítico |
 | **Alerta Geográfico**  | Prescritores a >400km           | Qualquer = Médio   |
 
@@ -354,8 +354,8 @@ Lista os **principais prescritores** ordenados por risco/volume:
 | Flag                      | Critério                                 | Cor         |
 | ------------------------- | ---------------------------------------- | ----------- |
 | **CRM Não Localizado**    | Não encontrado no CFM                    | 🔴 Vermelho |
-| **>30/dia Aqui**          | >30 prescrições/dia nesta farmácia       | 🔴 Magenta  |
-| **>30/dia Rede**          | >30 prescrições/dia em todas farmácias   | 🟣 Roxo     |
+| **>20/dia Aqui**          | >20 prescrições/dia nesta farmácia       | 🔴 Magenta  |
+| **>20/dia Rede**          | >20 prescrições/dia em todas farmácias   | 🟣 Roxo     |
 | **Multi-Farmácia**        | Atua em >20 estabelecimentos             | 🟣 Roxo     |
 | **Tempo Concentrado**     | Todas prescrições em período muito curto | 🟠 Laranja  |
 | **Alerta Geográfico**     | Prescritor a >400km da farmácia          | 🔵 Azul     |
@@ -371,7 +371,7 @@ ALERTAS IDENTIFICADOS:
 ⚠️ CRM NÃO LOCALIZADO: O médico CRM 123456/SP não foi localizado na base
    do Conselho Federal de Medicina. Vendas vinculadas: R$ 45.000,00.
 
-⚠️ PRESCRITOR ROBÔ: O médico Dr. João Silva (CRM 789012/SC) apresentou
+⚠️ MAIS DE 20 PRESCRIÇÕES/DIA: O médico Dr. João Silva (CRM 789012/SC) apresentou
    média de 45 prescrições por dia nesta farmácia, volume incompatível
    com a prática médica regular.
 ```

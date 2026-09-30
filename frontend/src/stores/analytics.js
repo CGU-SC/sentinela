@@ -39,7 +39,6 @@ export function buildAnalyticsParams(filters = {}) {
     grandeRede = null,
     cnpjRaiz = null,
     unidadePf = null,
-    razaoSocial = null,
     estabelecimento = null,
     parTeia = null,
     socioBeneficio = null,
@@ -68,7 +67,6 @@ export function buildAnalyticsParams(filters = {}) {
   if (grandeRede) params.grande_rede = grandeRede;
   if (cnpjRaiz) params.cnpj_raiz = cnpjRaiz;
   if (unidadePf) params.unidade_pf = unidadePf;
-  if (razaoSocial) params.razao_social = razaoSocial;
   if (estabelecimento) params.estabelecimento = estabelecimento;
   if (parTeia) params.par_teia = parTeia;
   if (socioBeneficio) params.socio_beneficio = socioBeneficio;
@@ -216,7 +214,6 @@ export const useAnalyticsStore = defineStore('analytics', {
           regiaoId: null,
           idIbge7: null,
           cnpjRaiz: null,
-          razaoSocial: null,
           estabelecimento: null,
         });
         const response = await axios.get(API_ENDPOINTS.analyticsResumo, {

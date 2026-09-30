@@ -35,7 +35,7 @@ Identificar **padrões anômalos de prescrição** que podem indicar:
 | `concentracao_top5`       | % das vendas dos 5 maiores CRMs       |
 | `hhi_prescritores`        | Índice de concentração HHI            |
 | `qtd_crms_invalidos`      | Número de CRMs não encontrados no CFM |
-| `qtd_crms_robo`           | CRMs com >30 prescrições/dia          |
+| `qtd_crms_robo`           | CRMs com >20 prescrições/dia          |
 | `media_prescricoes_dia`   | Média de prescrições por dia por CRM  |
 | `qtd_alertas_geograficos` | Médicos a >400km de distância         |
 
@@ -65,8 +65,8 @@ Identificar **padrões anômalos de prescrição** que podem indicar:
 | Alerta                    | Critério                                 | Cor         | Gravidade |
 | ------------------------- | ---------------------------------------- | ----------- | --------- |
 | **CRM Não Localizado**    | Não encontrado no CFM                    | 🔴 Vermelho | Crítica   |
-| **>30/dia Aqui**          | >30 prescrições/dia nesta farmácia       | 🔴 Magenta  | Crítica   |
-| **>30/dia Rede**          | >30 prescrições/dia em todo Brasil       | 🟣 Roxo     | Alta      |
+| **>20/dia Aqui**          | >20 prescrições/dia nesta farmácia       | 🔴 Magenta  | Crítica   |
+| **>20/dia Rede**          | >20 prescrições/dia em todo Brasil       | 🟣 Roxo     | Alta      |
 | **Multi-Farmácia**        | Atua em >20 estabelecimentos             | 🟣 Roxo     | Alta      |
 | **Tempo Concentrado**     | Todas prescrições em período muito curto | 🟠 Laranja  | Média     |
 | **Alerta Geográfico**     | Médico a >400km da farmácia              | 🔵 Azul     | Média     |
@@ -74,21 +74,21 @@ Identificar **padrões anômalos de prescrição** que podem indicar:
 
 ### 4.2. Constantes de Alerta
 
-Definidas no código `aba_crm.py`:
+O limite diário vem de `CRM_DAILY_RATE_ALERT_THRESHOLD` (`backend/api/services/analytics/crm_config.py`, espelhado em `frontend/src/config/riskConfig.js`); os demais, do código `aba_crm.py`:
 
-| Constante               | Valor | Descrição                                  |
-| ----------------------- | ----- | ------------------------------------------ |
-| `LIMITE_ROBO_DIA`       | 30    | Prescrições/dia para considerar "robô"     |
-| `LIMITE_MULTI_FARMACIA` | 20    | Farmácias para considerar "multi-farmácia" |
-| `LIMITE_DISTANCIA_KM`   | 400   | Distância para alerta geográfico           |
+| Constante                        | Valor | Descrição                                            |
+| -------------------------------- | ----- | ---------------------------------------------------- |
+| `CRM_DAILY_RATE_ALERT_THRESHOLD` | 20    | Prescrições por dia com prescrição (alerta se maior) |
+| `LIMITE_MULTI_FARMACIA`          | 20    | Farmácias para considerar "multi-farmácia"           |
+| `LIMITE_DISTANCIA_KM`            | 400   | Distância para alerta geográfico                     |
 
 ---
 
-## 5. Prescritor "Robô"
+## 5. Mais de 20 Prescrições por Dia
 
 ### 5.1. Conceito
 
-Um CRM que emite mais de **30 prescrições por dia** está com comportamento compatível com "robô" - uma taxa difícil de manter de forma consistente.
+Um CRM que emite mais de **20 prescrições por dia com prescrição** tem volume atípico — uma taxa difícil de manter de forma consistente. A taxa igual ao limite (exatamente 20) não gera alerta.
 
 ### 5.2. Cálculo
 
@@ -96,24 +96,24 @@ $$
 \text{Prescrições/Dia} = \frac{\text{Total de Prescrições}}{\text{Dias com Atividade}}
 $$
 
-Onde "Dias com Atividade" é o número de dias distintos em que o médico emitiu ao menos uma prescrição.
+Onde "Dias com Atividade" é o número de dias distintos em que o médico emitiu ao menos uma prescrição. No nível nacional, as prescrições do médico no Brasil são divididas pelos dias distintos com prescrição no país, considerando apenas os meses em que ele atuou na farmácia analisada.
 
 ### 5.3. Contexto
 
 Um médico em consultório normal atende:
 
-- 15-25 pacientes/dia é um volume alto mas viável
-- 30+ pacientes/dia é extremamente improvável
+- Até 20 prescrições/dia é um volume alto, mas viável
+- Acima de 20/dia, de forma sustentada, é atípico e merece verificação
 - 50+ pacientes/dia é fisicamente impossível
 
 ### 5.4. Dois Níveis de Análise
 
 | Nível        | Verificação                    | Interpretação        |
 | ------------ | ------------------------------ | -------------------- |
-| **Local**    | Prescrições/dia nesta farmácia | >30 = suspeito       |
-| **Nacional** | Prescrições/dia em todo Brasil | >30 = muito suspeito |
+| **Local**    | Prescrições/dia nesta farmácia | >20 = suspeito       |
+| **Nacional** | Prescrições/dia em todo Brasil | >20 = muito suspeito |
 
-Se um médico tem >30 prescrições/dia considerando **todas as farmácias do país**, é praticamente certo que há algo errado.
+Se um médico tem >20 prescrições/dia considerando **todas as farmácias do país**, é praticamente certo que há algo errado.
 
 ---
 
@@ -181,7 +181,7 @@ SE data_primeira_prescricao < data_registro_cfm ENTÃO
 ├─────────────────────────────────────────────────────────────┤
 │  CARDS DE RESUMO                                            │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐    │
-│  │Top 1:  │ │Top 5:  │ │Robôs:  │ │Inválidos│ │Geográf.│    │
+│  │Top 1:  │ │Top 5:  │ │>20/dia:│ │Inválidos│ │Geográf.│    │
 │  │  35%   │ │  72%   │ │   3    │ │   2    │ │   1    │    │
 │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘    │
 ├─────────────────────────────────────────────────────────────┤
@@ -208,8 +208,8 @@ SE data_primeira_prescricao < data_registro_cfm ENTÃO
 | --------------------- | ---------------------------- |
 | CRM normal            | Fundo branco                 |
 | CRM inválido          | Fundo vermelho, texto branco |
-| Robô local            | Fundo magenta                |
-| Robô nacional         | Fundo roxo                   |
+| >20/dia local         | Fundo magenta                |
+| >20/dia Brasil        | Fundo roxo                   |
 | Multi-farmácia        | Fundo roxo                   |
 | Alerta geográfico     | Fundo azul                   |
 | Prescrição retroativa | Fundo vermelho               |
@@ -223,7 +223,7 @@ SE data_primeira_prescricao < data_registro_cfm ENTÃO
 | Combinação                     | Interpretação      |
 | ------------------------------ | ------------------ |
 | CRM inválido + Alto volume     | Fraude estruturada |
-| Robô + Multi-farmácia          | Esquema organizado |
+| >20/dia + Multi-farmácia       | Esquema organizado |
 | Retroativo + Concentração alta | CRM forjado        |
 | Geográfico + Exclusividade     | CRM forjado        |
 

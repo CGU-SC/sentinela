@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 import { API_ENDPOINTS } from '@/config/api';
+import { CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
 
 /**
  * Abas mensais do ranking de médicos (/analises):
@@ -11,7 +12,7 @@ import { API_ENDPOINTS } from '@/config/api';
  *   (GET /crm-prescricoes-alertas), acumulados por período.
  */
 export const CRM_RANKING_TABS = Object.freeze(['resumo', 'linha', 'mes']);
-const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = CRM_RANKING_DEFAULT_PAGE_SIZE;
 const DEFAULT_SORT_FIELD = 'razao_p95';
 const DEFAULT_SORT_ORDER = 'desc';
 const MENSAL_SORT_FIELDS = new Set(['razao_p95', 'taxa_prescricoes_dia', 'nu_prescricoes', 'competencia']);
@@ -184,6 +185,8 @@ export const useCrmPrescricoesMensalStore = defineStore('crmPrescricoesMensal', 
           throw new ContractError('Resposta de alertas com médicos diferentes dos solicitados.');
         }
         if (chave !== this.alertasChave) return;
+        // Consulta bem-sucedida no mesmo período: o aviso de uma falha anterior some.
+        this.alertasErro = null;
         this.alertasPeriodo = { inicio: data.periodo_inicio, fim: data.periodo_fim };
         this.alertas = {
           ...this.alertas,

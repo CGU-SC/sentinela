@@ -3,19 +3,22 @@
  * Aba "Por mês" do ranking de médicos: uma linha por médico e mês,
  * paginada e ordenada no servidor (GET /crm-prescricoes-mensal).
  */
+import { computed } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { useFormatting } from '@/composables/useFormatting';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
-import { analysisTooltip } from '@/config/analysisTooltipConfig';
+import { CRM_RANKING_PAGE_SIZE_OPTIONS, CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
+import { analysisTooltip, CRM_ALERTA_ICONES, CRM_NAO_LOCALIZADO_TOOLTIP } from '@/config/analysisTooltipConfig';
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
+import { destaqueBuscaMedico } from '@/utils/crmBusca';
 import CrmAlertasBadge from './CrmAlertasBadge.vue';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
   totalRecords: { type: Number, default: 0 },
   first: { type: Number, default: 0 },
-  pageSize: { type: Number, default: 25 },
+  pageSize: { type: Number, default: CRM_RANKING_DEFAULT_PAGE_SIZE },
   sortField: { type: String, default: 'razao_p95' },
   sortOrder: { type: String, default: 'desc' },
   isLoading: { type: Boolean, default: false },
@@ -41,8 +44,14 @@ function formatDecimal(value, casas = 2) {
 function formatComp(comp) {
   return `${String(comp % 100).padStart(2, '0')}/${Math.floor(comp / 100)}`;
 }
+// "800 sc" ou "CRM-SC 800" destacam "800/SC" na linha do CRM.
+const destaque = computed(() => destaqueBuscaMedico(props.appliedQuery));
+const naoLocalizadoTooltip = CRM_NAO_LOCALIZADO_TOOLTIP;
+const naoLocalizadoIcone = CRM_ALERTA_ICONES.nao_localizado_cfm;
 function doctorLabel(row) {
-  return row.no_medico ? formatTitleCase(row.no_medico) : 'Médico não localizado';
+  if (!row.localizado_cfm) return 'Não localizado no CFM';
+  if (!row.no_medico) throw new Error(`Contrato inválido: médico ${row.id_medico} localizado no CFM sem nome.`);
+  return formatTitleCase(row.no_medico);
 }
 function crmLabel(row) {
   if (row.nu_crm == null) return `CRM ${row.id_medico}`;
@@ -74,7 +83,7 @@ function onPage(event) {
     :first="first"
     :rows="pageSize"
     :total-records="totalRecords"
-    :rows-per-page-options="[25, 50, 100]"
+    :rows-per-page-options="CRM_RANKING_PAGE_SIZE_OPTIONS"
     :sort-field="sortField"
     :sort-order="sortOrder === 'asc' ? 1 : -1"
     class="enterprise-table crm-ranking-table crm-mensal-table clickable-rows"
@@ -103,8 +112,11 @@ function onPage(event) {
     </Column>
     <Column header="MÉDICO / CRM" header-class="col-doctor" body-class="col-doctor">
       <template #body="{ data }">
-        <span class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="appliedQuery" /></span>
-        <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="appliedQuery" /></span>
+        <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
+          <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
+        </span>
+        <span v-else class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
+        <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
       </template>
     </Column>
     <Column field="taxa_prescricoes_dia" header="TAXA / DIA" sortable header-class="col-number col-rate" body-class="col-number col-rate rate-cell">
