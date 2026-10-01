@@ -1002,12 +1002,7 @@ def generate_nota_tecnica(
     
     p_intro = doc.add_paragraph()
     _run(p_intro, 'A partir da metodologia desenvolvida pela CGU, sintetizada no item 4 dessa NT e consignada no Relatório de Auditoria nº 823121 (', color='0F172A', size=12)
-    _add_external_hyperlink(
-        p_intro,
-        'Acesse aqui',
-        'https://cgugovbr.sharepoint.com/:b:/r/sites/intracgu-sc/Documentos%20Compartilhados/Sentinela/Relat%C3%B3rio_PFPB.pdf?csf=1&web=1&e=MBdcS8',
-        size=12,
-    )
+    _run(p_intro, 'https://eaud.cgu.gov.br/relatorios', color='0F172A', size=12)
     _run(p_intro, f'), foi identificada, conforme item 6 e detalhamento contido no ANEXO {anexo_memoria_num} desta NT, ausência significativa de estoque compatível com as vendas (distribuições) de medicamentos realizadas à população, denominada pela CGU como “vendas sem comprovação”, o que sugere a possibilidade de fraudes cometidas pelo estabelecimento por meio do registro fictício de dispensações de medicamentos.', color='0F172A', size=12)
     
     snippets = [f'[Subitem 6.1] evolução atípica das transferências do Programa e das possíveis “vendas sem comprovação” realizadas pela Farmácia {razao_social}']
@@ -1049,7 +1044,7 @@ def generate_nota_tecnica(
 
     nota_pfpb_2 = (
         'Consulta ao site https://www.gov.br/saude/pt-br/composicao/sectics/farmacia-popular, '
-        f'em {date.today().strftime("%d.%m.%Y")}.'
+        'em 01.09.2026.'
     )
     nota_pfpb_3 = (
         'A lista dos medicamentos e produtos do PFPB, atualizada em 02.09.2025, pode ser obtida no endereço: '
@@ -1147,12 +1142,7 @@ def generate_nota_tecnica(
     _run(p_sent, 'Para enfrentar essa realidade, a CGU elaborou o ', color='0F172A', size=12)
     _run(p_sent, 'Relatório de Apuração nº 823121', color='334155', size=12, underline=True)
     _run(p_sent, ' (', color='0F172A', size=12)
-    _add_external_hyperlink(
-        p_sent,
-        'Acesse aqui',
-        'https://cgugovbr.sharepoint.com/:b:/r/sites/intracgu-sc/Documentos%20Compartilhados/Sentinela/Relat%C3%B3rio_PFPB.pdf?csf=1&web=1&e=MBdcS8',
-        size=12,
-    )
+    _run(p_sent, 'https://eaud.cgu.gov.br/relatorios', color='0F172A', size=12)
     _run(p_sent, '), fundamentado no desenvolvimento do ', color='0F172A', size=12)
     _run(p_sent, 'Sentinela', color='0F172A', size=12)
     _run(p_sent, ', uma ferramenta de tecnologia da informação que automatiza o cruzamento de dados, em larga escala, do SAV com outras bases de informações.', color='0F172A', size=12)

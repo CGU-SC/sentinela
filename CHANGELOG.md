@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.0.1] - 2026-10-01
+
+### Alterado
+- **Nota Técnica: referência ao Relatório de Apuração nº 823121.** As duas citações do relatório passam a indicar o endereço do e-Aud (https://eaud.cgu.gov.br/relatorios) no lugar do link interno.
+- **Nota Técnica: data de consulta ao site do Farmácia Popular.** A nota de rodapé passa a citar a data fixa da consulta (01.09.2026), em vez da data de geração do documento.
+
 ## [2.0.0] - 2026-10-01
 
 ### Adicionado
