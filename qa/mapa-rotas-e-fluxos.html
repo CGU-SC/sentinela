@@ -7,12 +7,10 @@
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
 <meta content="Sistema de Auditoria Automatizada do Programa Farmácia Popular do Brasil" name="description"/>
 <meta content="CGU - Núcleo de Estudos e Pesquisas (NEP/SC)" name="author"/>
-<link href="https://cgu-sc.github.io/sentinela/indicadores/analise-prescritores.html" rel="canonical"/>
-<link href="grupo5-crms.html" rel="prev"/>
-<link href="../contatos.html" rel="next"/>
+<link href="https://cgu-sc.github.io/sentinela/qa/mapa-rotas-e-fluxos.html" rel="canonical"/>
 <link href="../assets/images/favicon.png" rel="icon"/>
 <meta content="mkdocs-1.6.1, mkdocs-material-9.7.7" name="generator"/>
-<title>Análise de Prescritores - Projeto Sentinela</title>
+<title>Inventário de rotas e fluxos do Sentinela - Projeto Sentinela</title>
 <link href="../assets/stylesheets/main.ec1eaa64.min.css" rel="stylesheet"/>
 <link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
 <style>:root{--md-admonition-icon--note:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M1%207.775V2.75C1%201.784%201.784%201%202.75%201h5.025c.464%200%20.91.184%201.238.513l6.25%206.25a1.75%201.75%200%200%201%200%202.474l-5.026%205.026a1.75%201.75%200%200%201-2.474%200l-6.25-6.25A1.75%201.75%200%200%201%201%207.775m1.5%200c0%20.066.026.13.073.177l6.25%206.25a.25.25%200%200%200%20.354%200l5.025-5.025a.25.25%200%200%200%200-.354l-6.25-6.25a.25.25%200%200%200-.177-.073H2.75a.25.25%200%200%200-.25.25ZM6%205a1%201%200%201%201%200%202%201%201%200%200%201%200-2%22/%3E%3C/svg%3E');--md-admonition-icon--abstract:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M2.5%201.75v11.5c0%20.138.112.25.25.25h3.17a.75.75%200%200%201%200%201.5H2.75A1.75%201.75%200%200%201%201%2013.25V1.75C1%20.784%201.784%200%202.75%200h8.5C12.216%200%2013%20.784%2013%201.75v7.736a.75.75%200%200%201-1.5%200V1.75a.25.25%200%200%200-.25-.25h-8.5a.25.25%200%200%200-.25.25m13.274%209.537zl-4.557%204.45a.75.75%200%200%201-1.055-.008l-1.943-1.95a.75.75%200%200%201%201.062-1.058l1.419%201.425%204.026-3.932a.75.75%200%201%201%201.048%201.074M4.75%204h4.5a.75.75%200%200%201%200%201.5h-4.5a.75.75%200%200%201%200-1.5M4%207.75A.75.75%200%200%201%204.75%207h2a.75.75%200%200%201%200%201.5h-2A.75.75%200%200%201%204%207.75%22/%3E%3C/svg%3E');--md-admonition-icon--info:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M0%208a8%208%200%201%201%2016%200A8%208%200%200%201%200%208m8-6.5a6.5%206.5%200%201%200%200%2013%206.5%206.5%200%200%200%200-13M6.5%207.75A.75.75%200%200%201%207.25%207h1a.75.75%200%200%201%20.75.75v2.75h.25a.75.75%200%200%201%200%201.5h-2a.75.75%200%200%201%200-1.5h.25v-2h-.25a.75.75%200%200%201-.75-.75M8%206a1%201%200%201%201%200-2%201%201%200%200%201%200%202%22/%3E%3C/svg%3E');--md-admonition-icon--tip:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M3.499.75a.75.75%200%200%201%201.5%200v.996C5.9%202.903%206.793%203.65%207.662%204.376l.24.202c-.036-.694.055-1.422.426-2.163C9.1.873%2010.794-.045%2012.622.26%2014.408.558%2016%201.94%2016%204.25c0%201.278-.954%202.575-2.44%202.734l.146.508.065.22c.203.701.412%201.455.476%202.226.142%201.707-.4%203.03-1.487%203.898C11.714%2014.671%2010.27%2015%208.75%2015h-6a.75.75%200%200%201%200-1.5h1.376a4.5%204.5%200%200%201-.563-1.191%203.84%203.84%200%200%201-.05-2.063%204.65%204.65%200%200%201-2.025-.293.75.75%200%200%201%20.525-1.406c1.357.507%202.376-.006%202.698-.318l.009-.01a.747.747%200%200%201%201.06%200%20.75.75%200%200%201-.012%201.074c-.912.92-.992%201.835-.768%202.586.221.74.745%201.337%201.196%201.621H8.75c1.343%200%202.398-.296%203.074-.836.635-.507%201.036-1.31.928-2.602-.05-.603-.216-1.224-.422-1.93l-.064-.221c-.12-.407-.246-.84-.353-1.29a2.4%202.4%200%200%201-.507-.441%203.1%203.1%200%200%201-.633-1.248.75.75%200%200%201%201.455-.364c.046.185.144.436.31.627.146.168.353.305.712.305.738%200%201.25-.615%201.25-1.25%200-1.47-.95-2.315-2.123-2.51-1.172-.196-2.227.387-2.706%201.345-.46.92-.27%201.774.019%203.062l.042.19.01.05c.348.443.666.949.94%201.553a.75.75%200%201%201-1.365.62c-.553-1.217-1.32-1.94-2.3-2.768L6.7%205.527c-.814-.68-1.75-1.462-2.692-2.619a3.7%203.7%200%200%200-1.023.88c-.406.495-.663%201.036-.722%201.508.116.122.306.21.591.239.388.038.797-.06%201.032-.19a.75.75%200%200%201%20.728%201.31c-.515.287-1.23.439-1.906.373-.682-.067-1.473-.38-1.879-1.193L.75%205.677V5.5c0-.984.48-1.94%201.077-2.664.46-.559%201.05-1.055%201.673-1.353z%22/%3E%3C/svg%3E');--md-admonition-icon--success:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M13.78%204.22a.75.75%200%200%201%200%201.06l-7.25%207.25a.75.75%200%200%201-1.06%200L2.22%209.28a.75.75%200%200%201%20.018-1.042.75.75%200%200%201%201.042-.018L6%2010.94l6.72-6.72a.75.75%200%200%201%201.06%200%22/%3E%3C/svg%3E');--md-admonition-icon--question:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M0%208a8%208%200%201%201%2016%200A8%208%200%200%201%200%208m8-6.5a6.5%206.5%200%201%200%200%2013%206.5%206.5%200%200%200%200-13M6.92%206.085h.001a.749.749%200%201%201-1.342-.67c.169-.339.436-.701.849-.977C6.845%204.16%207.369%204%208%204a2.76%202.76%200%200%201%201.637.525c.503.377.863.965.863%201.725%200%20.448-.115.83-.329%201.15-.205.307-.47.513-.692.662-.109.072-.22.138-.313.195l-.006.004a6%206%200%200%200-.26.16%201%201%200%200%200-.276.245.75.75%200%200%201-1.248-.832c.184-.264.42-.489.692-.661q.154-.1.313-.195l.007-.004c.1-.061.182-.11.258-.161a1%201%200%200%200%20.277-.245C8.96%206.514%209%206.427%209%206.25a.61.61%200%200%200-.262-.525A1.27%201.27%200%200%200%208%205.5c-.369%200-.595.09-.74.187a1%201%200%200%200-.34.398M9%2011a1%201%200%201%201-2%200%201%201%200%200%201%202%200%22/%3E%3C/svg%3E');--md-admonition-icon--warning:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M6.457%201.047c.659-1.234%202.427-1.234%203.086%200l6.082%2011.378A1.75%201.75%200%200%201%2014.082%2015H1.918a1.75%201.75%200%200%201-1.543-2.575Zm1.763.707a.25.25%200%200%200-.44%200L1.698%2013.132a.25.25%200%200%200%20.22.368h12.164a.25.25%200%200%200%20.22-.368Zm.53%203.996v2.5a.75.75%200%200%201-1.5%200v-2.5a.75.75%200%200%201%201.5%200M9%2011a1%201%200%201%201-2%200%201%201%200%200%201%202%200%22/%3E%3C/svg%3E');--md-admonition-icon--failure:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M2.344%202.343za8%208%200%200%201%2011.314%2011.314A8.002%208.002%200%200%201%20.234%2010.089a8%208%200%200%201%202.11-7.746m1.06%2010.253a6.5%206.5%200%201%200%209.108-9.275%206.5%206.5%200%200%200-9.108%209.275M6.03%204.97%208%206.94l1.97-1.97a.749.749%200%200%201%201.275.326.75.75%200%200%201-.215.734L9.06%208l1.97%201.97a.749.749%200%200%201-.326%201.275.75.75%200%200%201-.734-.215L8%209.06l-1.97%201.97a.749.749%200%200%201-1.275-.326.75.75%200%200%201%20.215-.734L6.94%208%204.97%206.03a.75.75%200%200%201%20.018-1.042.75.75%200%200%201%201.042-.018%22/%3E%3C/svg%3E');--md-admonition-icon--danger:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M9.504.43a1.516%201.516%200%200%201%202.437%201.713L10.415%205.5h2.123c1.57%200%202.346%201.909%201.22%203.004l-7.34%207.142a1.25%201.25%200%200%201-.871.354h-.302a1.25%201.25%200%200%201-1.157-1.723L5.633%2010.5H3.462c-1.57%200-2.346-1.909-1.22-3.004zm1.047%201.074L3.286%208.571A.25.25%200%200%200%203.462%209H6.75a.75.75%200%200%201%20.694%201.034l-1.713%204.188%206.982-6.793A.25.25%200%200%200%2012.538%207H9.25a.75.75%200%200%201-.683-1.06l2.008-4.418.003-.006-.004-.009-.006-.006-.008-.001q-.005%200-.009.004%22/%3E%3C/svg%3E');--md-admonition-icon--bug:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M4.72.22a.75.75%200%200%201%201.06%200l1%20.999a3.5%203.5%200%200%201%202.441%200l.999-1a.748.748%200%200%201%201.265.332.75.75%200%200%201-.205.729l-.775.776c.616.63.995%201.493.995%202.444v.327q0%20.15-.025.292c.408.14.764.392%201.029.722l1.968-.787a.75.75%200%200%201%20.556%201.392L13%207.258V9h2.25a.75.75%200%200%201%200%201.5H13v.5q-.002.615-.141%201.186l2.17.868a.75.75%200%200%201-.557%201.392l-2.184-.873A5%205%200%200%201%208%2016a5%205%200%200%201-4.288-2.427l-2.183.873a.75.75%200%200%201-.558-1.392l2.17-.868A5%205%200%200%201%203%2011v-.5H.75a.75.75%200%200%201%200-1.5H3V7.258L.971%206.446a.75.75%200%200%201%20.558-1.392l1.967.787c.265-.33.62-.583%201.03-.722a1.7%201.7%200%200%201-.026-.292V4.5c0-.951.38-1.814.995-2.444L4.72%201.28a.75.75%200%200%201%200-1.06m.53%206.28a.75.75%200%200%200-.75.75V11a3.5%203.5%200%201%200%207%200V7.25a.75.75%200%200%200-.75-.75ZM6.173%205h3.654A.17.17%200%200%200%2010%204.827V4.5a2%202%200%201%200-4%200v.327c0%20.096.077.173.173.173%22/%3E%3C/svg%3E');--md-admonition-icon--example:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M5%205.782V2.5h-.25a.75.75%200%200%201%200-1.5h6.5a.75.75%200%200%201%200%201.5H11v3.282l3.666%205.76C15.619%2013.04%2014.543%2015%2012.767%2015H3.233c-1.776%200-2.852-1.96-1.899-3.458Zm-2.4%206.565a.75.75%200%200%200%20.633%201.153h9.534a.75.75%200%200%200%20.633-1.153L12.225%2010.5h-8.45ZM9.5%202.5h-3V6c0%20.143-.04.283-.117.403L4.73%209h6.54L9.617%206.403A.75.75%200%200%201%209.5%206Z%22/%3E%3C/svg%3E');--md-admonition-icon--quote:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M1.75%202.5h10.5a.75.75%200%200%201%200%201.5H1.75a.75.75%200%200%201%200-1.5m4%205h8.5a.75.75%200%200%201%200%201.5h-8.5a.75.75%200%200%201%200-1.5m0%205h8.5a.75.75%200%200%201%200%201.5h-8.5a.75.75%200%200%201%200-1.5M2.5%207.75v6a.75.75%200%200%201-1.5%200v-6a.75.75%200%200%201%201.5%200%22/%3E%3C/svg%3E');}</style>
@@ -27,7 +25,7 @@
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
 <label class="md-overlay" for="__drawer"></label>
 <div data-md-component="skip">
-<a class="md-skip" href="#analise-de-prescritores">
+<a class="md-skip" href="#inventario-de-rotas-e-fluxos-do-sentinela">
           Pular para conteúdo
         </a>
 </div>
@@ -51,7 +49,7 @@
 <div class="md-header__topic" data-md-component="header-topic">
 <span class="md-ellipsis">
             
-              Análise de Prescritores
+              Inventário de rotas e fluxos do Sentinela
             
           </span>
 </div>
@@ -162,8 +160,8 @@
 
         </a>
 </li>
-<li class="md-tabs__item md-tabs__item--active">
-<a class="md-tabs__link" href="index.html">
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../indicadores/index.html">
           
   
   
@@ -592,9 +590,9 @@
 </ul>
 </nav>
 </li>
-<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-<input checked="" class="md-nav__toggle md-toggle" id="__nav_7" type="checkbox"/>
-<label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_7" type="checkbox"/>
+<label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
 <span class="md-ellipsis">
     
   
@@ -605,7 +603,7 @@
   </span>
 <span class="md-nav__icon md-icon"></span>
 </label>
-<nav aria-expanded="true" aria-labelledby="__nav_7_label" class="md-nav" data-md-level="1">
+<nav aria-expanded="false" aria-labelledby="__nav_7_label" class="md-nav" data-md-level="1">
 <label class="md-nav__title" for="__nav_7">
 <span class="md-nav__icon md-icon"></span>
             
@@ -616,7 +614,7 @@
           </label>
 <ul class="md-nav__list" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="index.html">
+<a class="md-nav__link" href="../indicadores/index.html">
 <span class="md-ellipsis">
     
   
@@ -628,7 +626,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="matriz-risco.html">
+<a class="md-nav__link" href="../indicadores/matriz-risco.html">
 <span class="md-ellipsis">
     
   
@@ -640,7 +638,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="grupo1-elegibilidade.html">
+<a class="md-nav__link" href="../indicadores/grupo1-elegibilidade.html">
 <span class="md-ellipsis">
     
   
@@ -652,7 +650,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="grupo2-quantidade.html">
+<a class="md-nav__link" href="../indicadores/grupo2-quantidade.html">
 <span class="md-ellipsis">
     
   
@@ -664,7 +662,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="grupo3-financeiro.html">
+<a class="md-nav__link" href="../indicadores/grupo3-financeiro.html">
 <span class="md-ellipsis">
     
   
@@ -676,7 +674,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="grupo4-automacao.html">
+<a class="md-nav__link" href="../indicadores/grupo4-automacao.html">
 <span class="md-ellipsis">
     
   
@@ -688,7 +686,7 @@
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="grupo5-crms.html">
+<a class="md-nav__link" href="../indicadores/grupo5-crms.html">
 <span class="md-ellipsis">
     
   
@@ -699,20 +697,8 @@
   </span>
 </a>
 </li>
-<li class="md-nav__item md-nav__item--active">
-<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
-<label class="md-nav__link md-nav__link--active" for="__toc">
-<span class="md-ellipsis">
-    
-  
-    Análise de Prescritores
-  
-
-    
-  </span>
-<span class="md-nav__icon md-icon"></span>
-</label>
-<a class="md-nav__link md-nav__link--active" href="analise-prescritores.html">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../indicadores/analise-prescritores.html">
 <span class="md-ellipsis">
     
   
@@ -722,285 +708,6 @@
     
   </span>
 </a>
-<nav aria-label="Índice" class="md-nav md-nav--secondary">
-<label class="md-nav__title" for="__toc">
-<span class="md-nav__icon md-icon"></span>
-      Índice
-    </label>
-<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#1-objetivo">
-<span class="md-ellipsis">
-      
-        1. Objetivo
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#2-fontes-de-dados">
-<span class="md-ellipsis">
-      
-        2. Fontes de Dados
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#3-metricas-calculadas">
-<span class="md-ellipsis">
-      
-        3. Métricas Calculadas
-      
-    </span>
-</a>
-<nav aria-label="3. Métricas Calculadas" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#31-por-farmacia-agregado">
-<span class="md-ellipsis">
-      
-        3.1. Por Farmácia (Agregado)
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#32-por-crm-individual">
-<span class="md-ellipsis">
-      
-        3.2. Por CRM (Individual)
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#4-alertas-implementados">
-<span class="md-ellipsis">
-      
-        4. Alertas Implementados
-      
-    </span>
-</a>
-<nav aria-label="4. Alertas Implementados" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#41-tipos-de-alerta">
-<span class="md-ellipsis">
-      
-        4.1. Tipos de Alerta
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#42-constantes-de-alerta">
-<span class="md-ellipsis">
-      
-        4.2. Constantes de Alerta
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#5-mais-de-20-prescricoes-por-dia">
-<span class="md-ellipsis">
-      
-        5. Mais de 20 Prescrições por Dia
-      
-    </span>
-</a>
-<nav aria-label="5. Mais de 20 Prescrições por Dia" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#51-conceito">
-<span class="md-ellipsis">
-      
-        5.1. Conceito
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#52-calculo">
-<span class="md-ellipsis">
-      
-        5.2. Cálculo
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#53-contexto">
-<span class="md-ellipsis">
-      
-        5.3. Contexto
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#54-dois-niveis-de-analise">
-<span class="md-ellipsis">
-      
-        5.4. Dois Níveis de Análise
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#6-analise-geografica">
-<span class="md-ellipsis">
-      
-        6. Análise Geográfica
-      
-    </span>
-</a>
-<nav aria-label="6. Análise Geográfica" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#61-distancia-medico-farmacia">
-<span class="md-ellipsis">
-      
-        6.1. Distância Médico-Farmácia
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#62-alerta-de-distancia">
-<span class="md-ellipsis">
-      
-        6.2. Alerta de Distância
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#63-cenarios-legitimos">
-<span class="md-ellipsis">
-      
-        6.3. Cenários Legítimos
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#64-cenarios-suspeitos">
-<span class="md-ellipsis">
-      
-        6.4. Cenários Suspeitos
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#7-prescricao-retroativa">
-<span class="md-ellipsis">
-      
-        7. Prescrição Retroativa
-      
-    </span>
-</a>
-<nav aria-label="7. Prescrição Retroativa" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#71-conceito">
-<span class="md-ellipsis">
-      
-        7.1. Conceito
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#72-calculo">
-<span class="md-ellipsis">
-      
-        7.2. Cálculo
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#73-causas">
-<span class="md-ellipsis">
-      
-        7.3. Causas
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#8-estrutura-da-aba-no-relatorio">
-<span class="md-ellipsis">
-      
-        8. Estrutura da Aba no Relatório
-      
-    </span>
-</a>
-<nav aria-label="8. Estrutura da Aba no Relatório" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#81-secoes">
-<span class="md-ellipsis">
-      
-        8.1. Seções
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#82-formatacao-visual">
-<span class="md-ellipsis">
-      
-        8.2. Formatação Visual
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#9-investigacao-de-crms">
-<span class="md-ellipsis">
-      
-        9. Investigação de CRMs
-      
-    </span>
-</a>
-<nav aria-label="9. Investigação de CRMs" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#91-sinais-de-alerta-combinados">
-<span class="md-ellipsis">
-      
-        9.1. Sinais de Alerta Combinados
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-</ul>
-</nav>
 </li>
 </ul>
 </nav>
@@ -1058,47 +765,47 @@
     </label>
 <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#1-objetivo">
+<a class="md-nav__link" href="#como-interpretar-este-inventario">
 <span class="md-ellipsis">
       
-        1. Objetivo
+        Como interpretar este inventário
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#2-fontes-de-dados">
+<a class="md-nav__link" href="#visao-de-navegacao">
 <span class="md-ellipsis">
       
-        2. Fontes de Dados
+        Visão de navegação
       
     </span>
 </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#3-metricas-calculadas">
-<span class="md-ellipsis">
-      
-        3. Métricas Calculadas
-      
-    </span>
-</a>
-<nav aria-label="3. Métricas Calculadas" class="md-nav">
+<nav aria-label="Visão de navegação" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#31-por-farmacia-agregado">
+<a class="md-nav__link" href="#rotas-de-tela-do-vue-router">
 <span class="md-ellipsis">
       
-        3.1. Por Farmácia (Agregado)
+        Rotas de tela do Vue Router
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#32-por-crm-individual">
+<a class="md-nav__link" href="#redirecionamentos-e-parametros">
 <span class="md-ellipsis">
       
-        3.2. Por CRM (Individual)
+        Redirecionamentos e parâmetros
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#observacoes-de-navegacao-a-confirmar">
+<span class="md-ellipsis">
+      
+        Observações de navegação a confirmar
       
     </span>
 </a>
@@ -1107,29 +814,47 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#4-alertas-implementados">
+<a class="md-nav__link" href="#detalhe-de-estabelecimento">
 <span class="md-ellipsis">
       
-        4. Alertas Implementados
-      
-    </span>
-</a>
-<nav aria-label="4. Alertas Implementados" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#41-tipos-de-alerta">
-<span class="md-ellipsis">
-      
-        4.1. Tipos de Alerta
+        Detalhe de estabelecimento
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#42-constantes-de-alerta">
+<a class="md-nav__link" href="#inventario-da-api">
 <span class="md-ellipsis">
       
-        4.2. Constantes de Alerta
+        Inventário da API
+      
+    </span>
+</a>
+<nav aria-label="Inventário da API" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#analytics-57-operacoes">
+<span class="md-ellipsis">
+      
+        Analytics — 57 operações
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#demais-grupos">
+<span class="md-ellipsis">
+      
+        Demais grupos
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rotas-fora-dos-grupos-versionados">
+<span class="md-ellipsis">
+      
+        Rotas fora dos grupos versionados
       
     </span>
 </a>
@@ -1138,47 +863,101 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#5-mais-de-20-prescricoes-por-dia">
+<a class="md-nav__link" href="#fluxos-de-ponta-a-ponta-identificados">
 <span class="md-ellipsis">
       
-        5. Mais de 20 Prescrições por Dia
+        Fluxos de ponta a ponta identificados
       
     </span>
 </a>
-<nav aria-label="5. Mais de 20 Prescrições por Dia" class="md-nav">
+<nav aria-label="Fluxos de ponta a ponta identificados" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#51-conceito">
+<a class="md-nav__link" href="#1-inicializacao-e-disponibilidade">
 <span class="md-ellipsis">
       
-        5.1. Conceito
+        1. Inicialização e disponibilidade
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#52-calculo">
+<a class="md-nav__link" href="#2-filtros-globais-e-navegacao-geografica">
 <span class="md-ellipsis">
       
-        5.2. Cálculo
+        2. Filtros globais e navegação geográfica
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#53-contexto">
+<a class="md-nav__link" href="#3-analises-nacional-regional-e-municipal">
 <span class="md-ellipsis">
       
-        5.3. Contexto
+        3. Análises nacional, regional e municipal
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#54-dois-niveis-de-analise">
+<a class="md-nav__link" href="#4-busca-e-auditoria-de-estabelecimento">
 <span class="md-ellipsis">
       
-        5.4. Dois Níveis de Análise
+        4. Busca e auditoria de estabelecimento
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#5-crm-e-evidencias-medicas">
+<span class="md-ellipsis">
+      
+        5. CRM e evidências médicas
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#6-teia-societaria">
+<span class="md-ellipsis">
+      
+        6. Teia societária
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#7-listas-e-evidencias">
+<span class="md-ellipsis">
+      
+        7. Listas e evidências
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#8-configuracoes-e-metodologia">
+<span class="md-ellipsis">
+      
+        8. Configurações e metodologia
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#9-exportacoes-e-documentos">
+<span class="md-ellipsis">
+      
+        9. Exportações e documentos
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#10-atualizacao-do-aplicativo">
+<span class="md-ellipsis">
+      
+        10. Atualização do aplicativo
       
     </span>
 </a>
@@ -1187,146 +966,40 @@
 </nav>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#6-analise-geografica">
+<a class="md-nav__link" href="#ligacoes-entre-telas-e-operacoes-pontos-a-confirmar">
 <span class="md-ellipsis">
       
-        6. Análise Geográfica
-      
-    </span>
-</a>
-<nav aria-label="6. Análise Geográfica" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#61-distancia-medico-farmacia">
-<span class="md-ellipsis">
-      
-        6.1. Distância Médico-Farmácia
+        Ligações entre telas e operações: pontos a confirmar
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#62-alerta-de-distancia">
+<a class="md-nav__link" href="#fontes-tecnicas-a-revisar-ao-transformar-o-mapa-em-casos">
 <span class="md-ellipsis">
       
-        6.2. Alerta de Distância
+        Fontes técnicas a revisar ao transformar o mapa em casos
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#63-cenarios-legitimos">
+<a class="md-nav__link" href="#proximos-artefatos-de-qa-recomendados">
 <span class="md-ellipsis">
       
-        6.3. Cenários Legítimos
+        Próximos artefatos de QA recomendados
       
     </span>
 </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#64-cenarios-suspeitos">
+<a class="md-nav__link" href="#limites-deste-levantamento">
 <span class="md-ellipsis">
       
-        6.4. Cenários Suspeitos
+        Limites deste levantamento
       
     </span>
 </a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#7-prescricao-retroativa">
-<span class="md-ellipsis">
-      
-        7. Prescrição Retroativa
-      
-    </span>
-</a>
-<nav aria-label="7. Prescrição Retroativa" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#71-conceito">
-<span class="md-ellipsis">
-      
-        7.1. Conceito
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#72-calculo">
-<span class="md-ellipsis">
-      
-        7.2. Cálculo
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#73-causas">
-<span class="md-ellipsis">
-      
-        7.3. Causas
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#8-estrutura-da-aba-no-relatorio">
-<span class="md-ellipsis">
-      
-        8. Estrutura da Aba no Relatório
-      
-    </span>
-</a>
-<nav aria-label="8. Estrutura da Aba no Relatório" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#81-secoes">
-<span class="md-ellipsis">
-      
-        8.1. Seções
-      
-    </span>
-</a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#82-formatacao-visual">
-<span class="md-ellipsis">
-      
-        8.2. Formatação Visual
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#9-investigacao-de-crms">
-<span class="md-ellipsis">
-      
-        9. Investigação de CRMs
-      
-    </span>
-</a>
-<nav aria-label="9. Investigação de CRMs" class="md-nav">
-<ul class="md-nav__list">
-<li class="md-nav__item">
-<a class="md-nav__link" href="#91-sinais-de-alerta-combinados">
-<span class="md-ellipsis">
-      
-        9.1. Sinais de Alerta Combinados
-      
-    </span>
-</a>
-</li>
-</ul>
-</nav>
 </li>
 </ul>
 </nav>
@@ -1334,451 +1007,865 @@
 </div>
 </div>
 <div class="md-content" data-md-component="content">
-<nav aria-label="Navegação" class="md-path">
-<ol class="md-path__list">
-<li class="md-path__item">
-<a class="md-path__link" href="../index.html">
-<span class="md-ellipsis">
-    Início
-  </span>
-</a>
-</li>
-<li class="md-path__item">
-<a class="md-path__link" href="index.html">
-<span class="md-ellipsis">
-    Indicadores de Risco
-  </span>
-</a>
-</li>
-</ol>
-</nav>
 <article class="md-content__inner md-typeset">
-<h1 id="analise-de-prescritores">Análise de Prescritores<a class="headerlink" href="#analise-de-prescritores" title="Permanent link">¶</a></h1>
-<p>O módulo de análise de prescritores, implementado em <code>aba_crm.py</code>, foca na <strong>"ponta da caneta"</strong> - os médicos que assinam as receitas vinculadas às vendas do Programa Farmácia Popular.</p>
-<hr/>
-<h2 id="1-objetivo">1. Objetivo<a class="headerlink" href="#1-objetivo" title="Permanent link">¶</a></h2>
-<p>Identificar <strong>padrões anômalos de prescrição</strong> que podem indicar:</p>
+<h1 id="inventario-de-rotas-e-fluxos-do-sentinela">Inventário de rotas e fluxos do Sentinela<a class="headerlink" href="#inventario-de-rotas-e-fluxos-do-sentinela" title="Permanent link">¶</a></h1>
+<p><strong>Levantamento estático do código:</strong> 1º de outubro de 2026<br/>
+<strong>Escopo:</strong> rotas da SPA, operações HTTP da API, navegação, fluxos de negócio e integrações identificáveis no repositório.<br/>
+<strong>Status:</strong> inventário para planejamento de QA; não representa validação funcional em ambiente conectado ao SQL Server.</p>
+<h2 id="como-interpretar-este-inventario">Como interpretar este inventário<a class="headerlink" href="#como-interpretar-este-inventario" title="Permanent link">¶</a></h2>
 <ul>
-<li>Médicos fictícios ou com CRM inválido</li>
-<li>Esquemas de direcionamento de pacientes</li>
-<li>Volumes de prescrição muito acima da média</li>
-<li>Concentração suspeita de vendas em poucos CRMs</li>
+<li>Rotas de tela são URLs resolvidas pelo Vue Router.</li>
+<li>Rotas de API são operações HTTP registradas no FastAPI. O prefixo comum da API é <code>/api/v1</code>.</li>
+<li>Um endpoint registrado não prova que a tela funciona de ponta a ponta. É necessário exercitar o frontend, API, caches e dependências de dados.</li>
+<li>“Não localizado caller” significa que a busca estática não encontrou consumidor direto no frontend; pode haver uso externo, indireto ou legado.</li>
+<li>Cobertura “100%” exige validar os caminhos condicionais, permissões, dados, estados de erro e diferenças Web/Desktop em ambiente executável. Este documento mapeia o que está registrado no código e aponta o que falta confirmar.</li>
 </ul>
-<hr/>
-<h2 id="2-fontes-de-dados">2. Fontes de Dados<a class="headerlink" href="#2-fontes-de-dados" title="Permanent link">¶</a></h2>
+<h2 id="visao-de-navegacao">Visão de navegação<a class="headerlink" href="#visao-de-navegacao" title="Permanent link">¶</a></h2>
+<p>O frontend é uma SPA Vue 3. Em desenvolvimento, o Vite serve as telas e encaminha chamadas HTTP para o FastAPI. No modo desktop/produção, o FastAPI também serve os artefatos estáticos do frontend e suporta history mode.</p>
+<p>Fluxo básico:</p>
+<ol>
+<li>Inicialização da aplicação e consulta do estado dos caches.</li>
+<li>Carregamento de preferências, filtros, localidades e dados necessários ao shell.</li>
+<li>Navegação entre análises e domínios operacionais.</li>
+<li>Chamadas à API, que combina regras de negócio, caches Parquet e consultas ao SQL Server.</li>
+<li>Apresentação de resultados, evidências e exportações.</li>
+</ol>
+<h3 id="rotas-de-tela-do-vue-router">Rotas de tela do Vue Router<a class="headerlink" href="#rotas-de-tela-do-vue-router" title="Permanent link">¶</a></h3>
 <table>
 <thead>
 <tr>
-<th>Tabela</th>
-<th>Conteúdo</th>
-<th>Uso</th>
+<th>Caminho</th>
+<th>Tela/componente</th>
+<th>Fluxo principal</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>indicadorCRM_Completo</code></td>
-<td>Dados consolidados de prescritores</td>
-<td>Métricas agregadas</td>
+<td><code>/</code></td>
+<td><code>NationalView</code></td>
+<td>Visão nacional, KPIs, filtros globais, mapa e navegação para níveis inferiores.</td>
 </tr>
 <tr>
-<td><code>top20CRMsPorFarmacia</code></td>
-<td>Top 20 prescritores por farmácia</td>
-<td>Detalhamento</td>
+<td><code>/dispersao-beneficio</code></td>
+<td><code>BenefitDispersionView</code></td>
+<td>Dispersão do benefício e análise geográfica/operacional associada.</td>
 </tr>
 <tr>
-<td>Base CFM</td>
-<td>Registro de médicos</td>
-<td>Validação</td>
+<td><code>/municipios</code></td>
+<td><code>MunicipalView</code></td>
+<td>Análise municipal e drill-down a partir do contexto geográfico/filtros.</td>
+</tr>
+<tr>
+<td><code>/estabelecimentos</code></td>
+<td><code>CnpjView</code></td>
+<td>Lista de estabelecimentos filtrada, busca e abertura de detalhe.</td>
+</tr>
+<tr>
+<td><code>/estabelecimentos/:cnpj</code></td>
+<td><code>CnpjDetailView</code></td>
+<td>Validação do CNPJ, carregamento das abas de auditoria, exportações e navegação entre CNPJs.</td>
+</tr>
+<tr>
+<td><code>/analises</code></td>
+<td><code>AnalysesView</code></td>
+<td>Página de análises; confirmar em runtime o conteúdo e as ações vinculadas.</td>
+</tr>
+<tr>
+<td><code>/alvos</code></td>
+<td><code>TargetsView</code></td>
+<td>Consulta de alvos temáticos, com seleção de tipo por query string.</td>
+</tr>
+<tr>
+<td><code>/regional</code></td>
+<td><code>RegionalView</code></td>
+<td>Comparativos regionais, UF/região, percentis e animações.</td>
+</tr>
+<tr>
+<td><code>/listas</code></td>
+<td><code>WatchlistView</code></td>
+<td>Lista de interesse, observações, evidências e ações de remoção/desfazer.</td>
+</tr>
+<tr>
+<td><code>/configuracoes</code></td>
+<td><code>SettingsView</code></td>
+<td>Preferências, limiares/configurações e operações administrativas disponíveis na tela.</td>
 </tr>
 </tbody>
 </table>
-<hr/>
-<h2 id="3-metricas-calculadas">3. Métricas Calculadas<a class="headerlink" href="#3-metricas-calculadas" title="Permanent link">¶</a></h2>
-<h3 id="31-por-farmacia-agregado">3.1. Por Farmácia (Agregado)<a class="headerlink" href="#31-por-farmacia-agregado" title="Permanent link">¶</a></h3>
+<h3 id="redirecionamentos-e-parametros">Redirecionamentos e parâmetros<a class="headerlink" href="#redirecionamentos-e-parametros" title="Permanent link">¶</a></h3>
 <table>
 <thead>
 <tr>
-<th>Métrica</th>
-<th>Descrição</th>
+<th>Caminho legado/alternativo</th>
+<th>Destino</th>
+<th>Observação para QA</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>concentracao_top1</code></td>
-<td>% das vendas do principal CRM</td>
+<td><code>/municipio</code></td>
+<td><code>/municipios</code></td>
+<td>Confirmar URL final, histórico do navegador e preservação de query string.</td>
 </tr>
 <tr>
-<td><code>concentracao_top5</code></td>
-<td>% das vendas dos 5 maiores CRMs</td>
+<td><code>/cnpj</code></td>
+<td><code>/estabelecimentos</code></td>
+<td>Confirmar comportamento sem CNPJ.</td>
 </tr>
 <tr>
-<td><code>hhi_prescritores</code></td>
-<td>Índice de concentração HHI</td>
+<td><code>/estabelecimento/:cnpj</code></td>
+<td><code>/estabelecimentos/:cnpj</code></td>
+<td>Verificar CNPJ válido, inválido e ausente da base.</td>
 </tr>
 <tr>
-<td><code>qtd_crms_invalidos</code></td>
-<td>Número de CRMs não encontrados no CFM</td>
+<td><code>/alvos/:pathMatch(.*)*</code></td>
+<td><code>/alvos</code></td>
+<td>Segmentos após <code>/alvos</code> são redirecionados; conferir impacto em links antigos.</td>
 </tr>
 <tr>
-<td><code>qtd_crms_robo</code></td>
-<td>CRMs com &gt;20 prescrições/dia</td>
-</tr>
-<tr>
-<td><code>media_prescricoes_dia</code></td>
-<td>Média de prescrições por dia por CRM</td>
-</tr>
-<tr>
-<td><code>qtd_alertas_geograficos</code></td>
-<td>Médicos a &gt;400km de distância</td>
+<td><code>/indicadores</code></td>
+<td><code>/estabelecimentos</code></td>
+<td>Rota antiga aponta para lista de estabelecimentos, não para a análise cruzada.</td>
 </tr>
 </tbody>
 </table>
-<h3 id="32-por-crm-individual">3.2. Por CRM (Individual)<a class="headerlink" href="#32-por-crm-individual" title="Permanent link">¶</a></h3>
-<table>
-<thead>
-<tr>
-<th>Métrica</th>
-<th>Descrição</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>crm</code></td>
-<td>Número do registro médico</td>
-</tr>
-<tr>
-<td><code>nome_medico</code></td>
-<td>Nome completo</td>
-</tr>
-<tr>
-<td><code>uf_crm</code></td>
-<td>Estado de registro</td>
-</tr>
-<tr>
-<td><code>data_primeira_prescricao</code></td>
-<td>Primeira vez que prescreveu para a farmácia</td>
-</tr>
-<tr>
-<td><code>data_registro_cfm</code></td>
-<td>Data de inscrição no conselho</td>
-</tr>
-<tr>
-<td><code>num_prescricoes</code></td>
-<td>Total de prescrições</td>
-</tr>
-<tr>
-<td><code>valor_total</code></td>
-<td>Valor movimentado</td>
-</tr>
-<tr>
-<td><code>participacao_pct</code></td>
-<td>% do faturamento da farmácia</td>
-</tr>
-<tr>
-<td><code>prescricoes_dia_local</code></td>
-<td>Média diária nesta farmácia</td>
-</tr>
-<tr>
-<td><code>prescricoes_dia_brasil</code></td>
-<td>Média diária em todas farmácias do país</td>
-</tr>
-<tr>
-<td><code>num_farmacias</code></td>
-<td>Em quantas farmácias atua</td>
-</tr>
-<tr>
-<td><code>distancia_km</code></td>
-<td>Distância entre médico e farmácia</td>
-</tr>
-</tbody>
-</table>
-<hr/>
-<h2 id="4-alertas-implementados">4. Alertas Implementados<a class="headerlink" href="#4-alertas-implementados" title="Permanent link">¶</a></h2>
-<h3 id="41-tipos-de-alerta">4.1. Tipos de Alerta<a class="headerlink" href="#41-tipos-de-alerta" title="Permanent link">¶</a></h3>
-<table>
-<thead>
-<tr>
-<th>Alerta</th>
-<th>Critério</th>
-<th>Cor</th>
-<th>Gravidade</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>CRM Não Localizado</strong></td>
-<td>Não encontrado no CFM</td>
-<td>🔴 Vermelho</td>
-<td>Crítica</td>
-</tr>
-<tr>
-<td><strong>&gt;20/dia Aqui</strong></td>
-<td>&gt;20 prescrições/dia nesta farmácia</td>
-<td>🔴 Magenta</td>
-<td>Crítica</td>
-</tr>
-<tr>
-<td><strong>&gt;20/dia Rede</strong></td>
-<td>&gt;20 prescrições/dia em todo Brasil</td>
-<td>🟣 Roxo</td>
-<td>Alta</td>
-</tr>
-<tr>
-<td><strong>Multi-Farmácia</strong></td>
-<td>Atua em &gt;20 estabelecimentos</td>
-<td>🟣 Roxo</td>
-<td>Alta</td>
-</tr>
-<tr>
-<td><strong>Tempo Concentrado</strong></td>
-<td>Todas prescrições em período muito curto</td>
-<td>🟠 Laranja</td>
-<td>Média</td>
-</tr>
-<tr>
-<td><strong>Alerta Geográfico</strong></td>
-<td>Médico a &gt;400km da farmácia</td>
-<td>🔵 Azul</td>
-<td>Média</td>
-</tr>
-<tr>
-<td><strong>Prescrição Retroativa</strong></td>
-<td>Prescrição antes do registro no CFM</td>
-<td>🔴 Vermelho</td>
-<td>Crítica</td>
-</tr>
-</tbody>
-</table>
-<h3 id="42-constantes-de-alerta">4.2. Constantes de Alerta<a class="headerlink" href="#42-constantes-de-alerta" title="Permanent link">¶</a></h3>
-<p>O limite diário vem de <code>CRM_DAILY_RATE_ALERT_THRESHOLD</code> (<code>backend/api/services/analytics/crm_config.py</code>, espelhado em <code>frontend/src/config/riskConfig.js</code>); os demais, do código <code>aba_crm.py</code>:</p>
-<table>
-<thead>
-<tr>
-<th>Constante</th>
-<th>Valor</th>
-<th>Descrição</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>CRM_DAILY_RATE_ALERT_THRESHOLD</code></td>
-<td>20</td>
-<td>Prescrições por dia com prescrição (alerta se maior)</td>
-</tr>
-<tr>
-<td><code>LIMITE_MULTI_FARMACIA</code></td>
-<td>20</td>
-<td>Farmácias para considerar "multi-farmácia"</td>
-</tr>
-<tr>
-<td><code>LIMITE_DISTANCIA_KM</code></td>
-<td>400</td>
-<td>Distância para alerta geográfico</td>
-</tr>
-</tbody>
-</table>
-<hr/>
-<h2 id="5-mais-de-20-prescricoes-por-dia">5. Mais de 20 Prescrições por Dia<a class="headerlink" href="#5-mais-de-20-prescricoes-por-dia" title="Permanent link">¶</a></h2>
-<h3 id="51-conceito">5.1. Conceito<a class="headerlink" href="#51-conceito" title="Permanent link">¶</a></h3>
-<p>Um CRM que emite mais de <strong>20 prescrições por dia com prescrição</strong> tem volume atípico — uma taxa difícil de manter de forma consistente. A taxa igual ao limite (exatamente 20) não gera alerta.</p>
-<h3 id="52-calculo">5.2. Cálculo<a class="headerlink" href="#52-calculo" title="Permanent link">¶</a></h3>
-<div class="arithmatex">\[
-\text{Prescrições/Dia} = \frac{\text{Total de Prescrições}}{\text{Dias com Atividade}}
-\]</div>
-<p>Onde "Dias com Atividade" é o número de dias distintos em que o médico emitiu ao menos uma prescrição. No nível nacional, as prescrições do médico no Brasil são divididas pelos dias distintos com prescrição no país, considerando apenas os meses em que ele atuou na farmácia analisada.</p>
-<h3 id="53-contexto">5.3. Contexto<a class="headerlink" href="#53-contexto" title="Permanent link">¶</a></h3>
-<p>Um médico em consultório normal atende:</p>
+<p>O router não apresenta uma rota catch-all de tela explícita. Testar URL desconhecida, refresh em rota interna e acesso direto pelo modo Web e pelo aplicativo desktop.</p>
+<h3 id="observacoes-de-navegacao-a-confirmar">Observações de navegação a confirmar<a class="headerlink" href="#observacoes-de-navegacao-a-confirmar" title="Permanent link">¶</a></h3>
 <ul>
-<li>Até 20 prescrições/dia é um volume alto, mas viável</li>
-<li>Acima de 20/dia, de forma sustentada, é atípico e merece verificação</li>
-<li>50+ pacientes/dia é fisicamente impossível</li>
+<li><code>/dispersao</code> não aparece entre as rotas atuais; confirmar se é URL antiga, funcionalidade removida ou rota ausente.</li>
+<li><code>/indicadores</code> redireciona para estabelecimentos, enquanto a análise de indicadores existe como operação de API e pode ser acessada por outro fluxo/tela. Confirmar o destino funcional esperado.</li>
+<li><code>/regional</code>, <code>/dispersao-beneficio</code> e <code>/alvos</code> não aparecem como itens principais na navegação identificada. Confirmar acesso por links secundários, permissões ou links diretos.</li>
+<li>Foram encontrados condicionais da sidebar para <code>/alvos/cluster</code> e <code>/alvos/rede</code>, embora segmentos de <code>/alvos/...</code> sejam redirecionados para <code>/alvos</code>. Confirmar se essas condições são alcançáveis.</li>
+<li>A tela de detalhe tem abas e slugs próprios. Verificar sincronização entre aba selecionada, URL, back/forward e carregamento inicial.</li>
 </ul>
-<h3 id="54-dois-niveis-de-analise">5.4. Dois Níveis de Análise<a class="headerlink" href="#54-dois-niveis-de-analise" title="Permanent link">¶</a></h3>
+<h2 id="detalhe-de-estabelecimento">Detalhe de estabelecimento<a class="headerlink" href="#detalhe-de-estabelecimento" title="Permanent link">¶</a></h2>
+<p>O detalhe é acessado por <code>/estabelecimentos/:cnpj</code>. O fluxo identificado valida o CNPJ pela API, limpa o estado anterior ao trocar de estabelecimento e carrega dados para as abas. Abas/slugs registrados no frontend:</p>
 <table>
 <thead>
 <tr>
-<th>Nível</th>
-<th>Verificação</th>
-<th>Interpretação</th>
+<th>Aba/slug</th>
+<th>Conteúdo a cobrir</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Local</strong></td>
-<td>Prescrições/dia nesta farmácia</td>
-<td>&gt;20 = suspeito</td>
+<td><code>movimentacao</code></td>
+<td>Movimentação agregada por período e produtos/GTIN; estados sem dados e erro.</td>
 </tr>
 <tr>
-<td><strong>Nacional</strong></td>
-<td>Prescrições/dia em todo Brasil</td>
-<td>&gt;20 = muito suspeito</td>
+<td><code>diagnostico</code></td>
+<td>Diagnóstico e alertas de integridade do estabelecimento.</td>
+</tr>
+<tr>
+<td><code>memoria</code></td>
+<td>Memória de cálculo e detalhamento de GTIN.</td>
+</tr>
+<tr>
+<td><code>indicadores</code></td>
+<td>Indicadores do CNPJ, benchmarks locais e evolução de benchmark.</td>
+</tr>
+<tr>
+<td><code>autorizacoes</code></td>
+<td>Autorizações relacionadas a CRM/evidências, conforme integração disponível.</td>
+</tr>
+<tr>
+<td><code>socios</code></td>
+<td>Quadro societário e navegação para relações societárias.</td>
+</tr>
+<tr>
+<td><code>teia</code></td>
+<td>Grafo societário, níveis N2/N3/N4, filtros, busca e painel do nó.</td>
+</tr>
+<tr>
+<td><code>regional</code></td>
+<td>Contexto geográfico e benchmarks local/regional.</td>
 </tr>
 </tbody>
 </table>
-<p>Se um médico tem &gt;20 prescrições/dia considerando <strong>todas as farmácias do país</strong>, é praticamente certo que há algo errado.</p>
-<hr/>
-<h2 id="6-analise-geografica">6. Análise Geográfica<a class="headerlink" href="#6-analise-geografica" title="Permanent link">¶</a></h2>
-<h3 id="61-distancia-medico-farmacia">6.1. Distância Médico-Farmácia<a class="headerlink" href="#61-distancia-medico-farmacia" title="Permanent link">¶</a></h3>
-<p>O sistema calcula a distância entre:</p>
-<ul>
-<li>Localização do consultório do médico (endereço do CRM)</li>
-<li>Localização da farmácia</li>
-</ul>
-<h3 id="62-alerta-de-distancia">6.2. Alerta de Distância<a class="headerlink" href="#62-alerta-de-distancia" title="Permanent link">¶</a></h3>
+<p>Também há funções relacionadas a evolução financeira, repasses, incompatibilidades clínicas, falecidos, CRM, timeline, Nota Técnica e relatório PDF. Conferir correspondência exata entre abas visíveis, slugs, chamadas da store e operações da API.</p>
+<h2 id="inventario-da-api">Inventário da API<a class="headerlink" href="#inventario-da-api" title="Permanent link">¶</a></h2>
+<p>As rotas abaixo são relativas ao prefixo <code>/api/v1</code>. O grupo Analytics usa <code>/api/v1/analytics</code>; os demais grupos têm os prefixos indicados. Parâmetros de query e modelos de corpo devem ser extraídos dos schemas/assinaturas ao detalhar casos de teste.</p>
+<h3 id="analytics-57-operacoes">Analytics — 57 operações<a class="headerlink" href="#analytics-57-operacoes" title="Permanent link">¶</a></h3>
 <table>
 <thead>
 <tr>
-<th>Distância</th>
-<th>Interpretação</th>
+<th>Método</th>
+<th>Caminho relativo a <code>/api/v1/analytics</code></th>
+<th>Uso/fluxo identificado</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>&lt; 50km</strong></td>
-<td>Normal</td>
+<td>GET</td>
+<td><code>/crm-prescricoes-analise</code></td>
+<td>Análise de prescrições por CRM.</td>
 </tr>
 <tr>
-<td><strong>50-200km</strong></td>
-<td>Pode ser legítimo (cidade-polo)</td>
+<td>GET</td>
+<td><code>/crm-prescricoes-mensal</code></td>
+<td>Agregação mensal de prescrições.</td>
 </tr>
 <tr>
-<td><strong>200-400km</strong></td>
-<td>Suspeito</td>
+<td>GET</td>
+<td><code>/crm-prescricoes-serie-mensal</code></td>
+<td>Série mensal de prescrições.</td>
 </tr>
 <tr>
-<td><strong>&gt; 400km</strong></td>
-<td>Crítico - médico de outra região</td>
+<td>GET</td>
+<td><code>/crm-prescricoes-alertas</code></td>
+<td>Alertas de prescrições/CRM.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/crm-medico-evidencias</code></td>
+<td>Evidências associadas a médico.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/crm-medico-evidencias/autorizacoes</code></td>
+<td>Autorizações associadas às evidências do médico.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/crm-medico-evidencias/exportar</code></td>
+<td>Exportação de evidências do médico.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/crm-medico-historico</code></td>
+<td>Histórico de atuação do médico.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/client-perf</code></td>
+<td>Recebe dados de desempenho/telemetria do cliente.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/bootstrap</code></td>
+<td>Dados iniciais agregados para detalhe do estabelecimento.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/status</code></td>
+<td>Valida formato e presença do CNPJ na base.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/cadastro</code></td>
+<td>Cadastro e geografia do estabelecimento.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/socios</code></td>
+<td>Quadro societário.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/alertas-panorama</code></td>
+<td>Panorama de alertas.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/alertas-integridade</code></td>
+<td>Alertas de integridade por estabelecimento.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/network</code></td>
+<td>Grafo societário inicial.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/network/expand/{target_id}</code></td>
+<td>Expande nó CPF/CNPJ.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/network/level/3</code></td>
+<td>Expansão em lote do nível 3.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/network/level/4</code></td>
+<td>Expansão em lote do nível 4.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/resumo</code></td>
+<td>KPIs, UFs, municípios e estabelecimentos para análise geral.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/producao-semestral</code></td>
+<td>Dados de produção semestral.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/faixas-risco</code></td>
+<td>Distribuição por faixas de risco.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/evolucao</code></td>
+<td>Evolução financeira semestral.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/evolucao-mensal-gtin</code></td>
+<td>Evolução mensal agrupada por GTIN.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/repasses</code></td>
+<td>Repasses do estabelecimento.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/gtin-detalhamento-mensal</code></td>
+<td>Ranking/detalhamento de GTIN por período.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/indicadores</code></td>
+<td>Indicadores detalhados do CNPJ.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/indicadores/{indicador}/benchmark-local</code></td>
+<td>Benchmark local para indicador.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/indicadores/{indicador}/evolucao-benchmark</code></td>
+<td>Evolução do benchmark de indicador.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/geografico/origem-uf</code></td>
+<td>Origem geográfica das vendas.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/geografico/benchmark-local</code></td>
+<td>Benchmark geográfico local.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/clinico/incompatibilidades</code></td>
+<td>Incompatibilidades clínicas.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/falecidos</code></td>
+<td>Resumo e transações associadas a falecidos.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/falecidos/exportar</code></td>
+<td>Exportação de dados de falecidos.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/rede/{cnpj_raiz}</code></td>
+<td>Dados consolidados da rede por raiz CNPJ.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cpf/{cpf}/timeline</code></td>
+<td>Timeline de CPF, com contexto de CNPJ.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/regional-benchmarking</code></td>
+<td>Benchmark regional/UF.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/regional-benchmarking-animation</code></td>
+<td>Série temporal para animação regional.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/crm-data</code></td>
+<td>KPIs e dados CRM do CNPJ.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/crm/medico-atuacao/{id_medico:path}</code></td>
+<td>Atuação do médico no CNPJ.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/crm/timeline-dataset</code></td>
+<td>Dataset para timeline CRM.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/crm/raio-x</code></td>
+<td>Detalhamento CRM por data/hora.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/crm/raio-x/exportar</code></td>
+<td>Exportação do raio-X CRM.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/cnpj/{cnpj}/crm/prescritores/exportar</code></td>
+<td>Exporta prescritores conforme filtros enviados.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/indicadores-analise</code></td>
+<td>Análise cruzada por indicador.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/indicadores-analise/cnpjs</code></td>
+<td>Lista/paginação de CNPJs para análise de indicador.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/movimentacao</code></td>
+<td>Memória de cálculo/movimentação por GTIN.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj-lookup</code></td>
+<td>Busca/autocomplete slim de CNPJ.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/metric-percentiles-animation</code></td>
+<td>Percentis para animação temporal.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/metric-percentiles</code></td>
+<td>Percentis por escopo regional, UF ou Brasil.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/nota-tecnica/regionais</code></td>
+<td>Opções/contexto regional da Nota Técnica.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/nota-tecnica/readiness</code></td>
+<td>Verifica prontidão para gerar Nota Técnica.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/cnpj/{cnpj}/nota-tecnica/prepare</code></td>
+<td>Prepara dados/caches para Nota Técnica.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/relatorio-pdf/readiness</code></td>
+<td>Verifica prontidão para gerar relatório PDF.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/cnpj/{cnpj}/relatorio-pdf/prepare</code></td>
+<td>Prepara dados para relatório PDF.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/nota-tecnica</code></td>
+<td>Gera/baixa documento da Nota Técnica.</td>
 </tr>
 </tbody>
 </table>
-<h3 id="63-cenarios-legitimos">6.3. Cenários Legítimos<a class="headerlink" href="#63-cenarios-legitimos" title="Permanent link">¶</a></h3>
-<ul>
-<li>Médico atendendo em cidade vizinha</li>
-<li>Pacientes que viajam para especialistas</li>
-<li>Cidade-polo que atrai pacientes regionais</li>
-</ul>
-<h3 id="64-cenarios-suspeitos">6.4. Cenários Suspeitos<a class="headerlink" href="#64-cenarios-suspeitos" title="Permanent link">¶</a></h3>
-<ul>
-<li>Médico de São Paulo prescrevendo regularmente em farmácia do Rio Grande do Sul</li>
-<li>Múltiplos médicos de outras regiões na mesma farmácia</li>
-<li>Padrão sistemático de prescrições distantes</li>
-</ul>
-<hr/>
-<h2 id="7-prescricao-retroativa">7. Prescrição Retroativa<a class="headerlink" href="#7-prescricao-retroativa" title="Permanent link">¶</a></h2>
-<h3 id="71-conceito">7.1. Conceito<a class="headerlink" href="#71-conceito" title="Permanent link">¶</a></h3>
-<p>Uma prescrição <strong>não pode existir antes do médico ter CRM válido</strong>. Se a data da primeira prescrição é anterior à data de registro no CFM, há fraude documental.</p>
-<h3 id="72-calculo">7.2. Cálculo<a class="headerlink" href="#72-calculo" title="Permanent link">¶</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>SE data_primeira_prescricao &lt; data_registro_cfm ENTÃO
-</span><span id="__span-0-2"><a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>    ALERTA: Prescrição Retroativa
-</span></code></pre></div>
-<h3 id="73-causas">7.3. Causas<a class="headerlink" href="#73-causas" title="Permanent link">¶</a></h3>
-<ul>
-<li>Uso de CRM de médico recém-formado antes do registro ser efetivado</li>
-<li>Falsificação de datas nas receitas</li>
-<li>Uso de CRM de terceiros</li>
-</ul>
-<hr/>
-<h2 id="8-estrutura-da-aba-no-relatorio">8. Estrutura da Aba no Relatório<a class="headerlink" href="#8-estrutura-da-aba-no-relatorio" title="Permanent link">¶</a></h2>
-<h3 id="81-secoes">8.1. Seções<a class="headerlink" href="#81-secoes" title="Permanent link">¶</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>┌─────────────────────────────────────────────────────────────┐
-</span><span id="__span-1-2"><a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>│  CABEÇALHO                                                  │
-</span><span id="__span-1-3"><a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>│  CNPJ: XX.XXX.XXX/0001-XX | Razão Social | Município/UF     │
-</span><span id="__span-1-4"><a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a>├─────────────────────────────────────────────────────────────┤
-</span><span id="__span-1-5"><a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a>│  CARDS DE RESUMO                                            │
-</span><span id="__span-1-6"><a href="#__codelineno-1-6" id="__codelineno-1-6" name="__codelineno-1-6"></a>│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐    │
-</span><span id="__span-1-7"><a href="#__codelineno-1-7" id="__codelineno-1-7" name="__codelineno-1-7"></a>│  │Top 1:  │ │Top 5:  │ │&gt;20/dia:│ │Inválidos│ │Geográf.│    │
-</span><span id="__span-1-8"><a href="#__codelineno-1-8" id="__codelineno-1-8" name="__codelineno-1-8"></a>│  │  35%   │ │  72%   │ │   3    │ │   2    │ │   1    │    │
-</span><span id="__span-1-9"><a href="#__codelineno-1-9" id="__codelineno-1-9" name="__codelineno-1-9"></a>│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘    │
-</span><span id="__span-1-10"><a href="#__codelineno-1-10" id="__codelineno-1-10" name="__codelineno-1-10"></a>├─────────────────────────────────────────────────────────────┤
-</span><span id="__span-1-11"><a href="#__codelineno-1-11" id="__codelineno-1-11" name="__codelineno-1-11"></a>│  TABELA DE INDICADORES VS MÉDIAS                           │
-</span><span id="__span-1-12"><a href="#__codelineno-1-12" id="__codelineno-1-12" name="__codelineno-1-12"></a>│  ┌────────────────────┬──────────┬─────────┬─────────┐     │
-</span><span id="__span-1-13"><a href="#__codelineno-1-13" id="__codelineno-1-13" name="__codelineno-1-13"></a>│  │ Indicador          │ Farmácia │ Média UF│ Média BR│     │
-</span><span id="__span-1-14"><a href="#__codelineno-1-14" id="__codelineno-1-14" name="__codelineno-1-14"></a>│  ├────────────────────┼──────────┼─────────┼─────────┤     │
-</span><span id="__span-1-15"><a href="#__codelineno-1-15" id="__codelineno-1-15" name="__codelineno-1-15"></a>│  │ Concentração Top 1 │   35%    │   15%   │   12%   │     │
-</span><span id="__span-1-16"><a href="#__codelineno-1-16" id="__codelineno-1-16" name="__codelineno-1-16"></a>│  │ HHI                │  2845    │   890   │   750   │     │
-</span><span id="__span-1-17"><a href="#__codelineno-1-17" id="__codelineno-1-17" name="__codelineno-1-17"></a>│  │ ...                │   ...    │   ...   │   ...   │     │
-</span><span id="__span-1-18"><a href="#__codelineno-1-18" id="__codelineno-1-18" name="__codelineno-1-18"></a>│  └────────────────────┴──────────┴─────────┴─────────┘     │
-</span><span id="__span-1-19"><a href="#__codelineno-1-19" id="__codelineno-1-19" name="__codelineno-1-19"></a>├─────────────────────────────────────────────────────────────┤
-</span><span id="__span-1-20"><a href="#__codelineno-1-20" id="__codelineno-1-20" name="__codelineno-1-20"></a>│  TABELA DE CRMs DE INTERESSE                               │
-</span><span id="__span-1-21"><a href="#__codelineno-1-21" id="__codelineno-1-21" name="__codelineno-1-21"></a>│  (Top 20 + CRMs com alertas, ordenados por risco/volume)   │
-</span><span id="__span-1-22"><a href="#__codelineno-1-22" id="__codelineno-1-22" name="__codelineno-1-22"></a>├─────────────────────────────────────────────────────────────┤
-</span><span id="__span-1-23"><a href="#__codelineno-1-23" id="__codelineno-1-23" name="__codelineno-1-23"></a>│  ALERTAS IDENTIFICADOS                                     │
-</span><span id="__span-1-24"><a href="#__codelineno-1-24" id="__codelineno-1-24" name="__codelineno-1-24"></a>│  Descrições textuais de cada alerta encontrado             │
-</span><span id="__span-1-25"><a href="#__codelineno-1-25" id="__codelineno-1-25" name="__codelineno-1-25"></a>└─────────────────────────────────────────────────────────────┘
-</span></code></pre></div>
-<h3 id="82-formatacao-visual">8.2. Formatação Visual<a class="headerlink" href="#82-formatacao-visual" title="Permanent link">¶</a></h3>
+<h3 id="demais-grupos">Demais grupos<a class="headerlink" href="#demais-grupos" title="Permanent link">¶</a></h3>
+<h4 id="alvos-apiv1targets">Alvos — <code>/api/v1/targets</code><a class="headerlink" href="#alvos-apiv1targets" title="Permanent link">¶</a></h4>
 <table>
 <thead>
 <tr>
-<th>Situação</th>
-<th>Formatação</th>
+<th>Método</th>
+<th>Caminho</th>
+<th>Uso/fluxo identificado</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>CRM normal</td>
-<td>Fundo branco</td>
+<td>GET</td>
+<td><code>/parkinson-menor-50</code></td>
+<td>Lista temática de alvos com Parkinson e idade menor que 50.</td>
 </tr>
 <tr>
-<td>CRM inválido</td>
-<td>Fundo vermelho, texto branco</td>
-</tr>
-<tr>
-<td>&gt;20/dia local</td>
-<td>Fundo magenta</td>
-</tr>
-<tr>
-<td>&gt;20/dia Brasil</td>
-<td>Fundo roxo</td>
-</tr>
-<tr>
-<td>Multi-farmácia</td>
-<td>Fundo roxo</td>
-</tr>
-<tr>
-<td>Alerta geográfico</td>
-<td>Fundo azul</td>
-</tr>
-<tr>
-<td>Prescrição retroativa</td>
-<td>Fundo vermelho</td>
+<td>GET</td>
+<td><code>/diabetes-menor-20</code></td>
+<td>Lista temática de alvos com diabetes e idade menor que 20.</td>
 </tr>
 </tbody>
 </table>
-<hr/>
-<h2 id="9-investigacao-de-crms">9. Investigação de CRMs<a class="headerlink" href="#9-investigacao-de-crms" title="Permanent link">¶</a></h2>
-<h3 id="91-sinais-de-alerta-combinados">9.1. Sinais de Alerta Combinados<a class="headerlink" href="#91-sinais-de-alerta-combinados" title="Permanent link">¶</a></h3>
+<h4 id="geografia-apiv1geo">Geografia — <code>/api/v1/geo</code><a class="headerlink" href="#geografia-apiv1geo" title="Permanent link">¶</a></h4>
 <table>
 <thead>
 <tr>
-<th>Combinação</th>
-<th>Interpretação</th>
+<th>Método</th>
+<th>Caminho</th>
+<th>Uso/fluxo identificado</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>CRM inválido + Alto volume</td>
-<td>Fraude estruturada</td>
+<td>GET</td>
+<td><code>/localidades</code></td>
+<td>Hierarquia territorial e unidades do programa.</td>
 </tr>
 <tr>
-<td>&gt;20/dia + Multi-farmácia</td>
-<td>Esquema organizado</td>
-</tr>
-<tr>
-<td>Retroativo + Concentração alta</td>
-<td>CRM forjado</td>
-</tr>
-<tr>
-<td>Geográfico + Exclusividade</td>
-<td>CRM forjado</td>
+<td>GET</td>
+<td><code>/estabelecimentos</code></td>
+<td>Coordenadas e risco de estabelecimentos para mapas/PDF.</td>
 </tr>
 </tbody>
 </table>
-<hr/>
-<div class="admonition tip">
-<p class="admonition-title">Próximo Passo</p>
-</div>
-<p>Veja as <a href="../relatorios/index.md">Abas do Relatório</a> para entender como esses dados são apresentados no dossiê Excel.</p>
+<h4 id="cache-apiv1cache">Cache — <code>/api/v1/cache</code><a class="headerlink" href="#cache-apiv1cache" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th>Método</th>
+<th>Caminho</th>
+<th>Uso/fluxo identificado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/status</code></td>
+<td>Estado do carregamento/sincronização.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/refresh</code></td>
+<td>Atualiza caches globais.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="preferencias-apiv1preferences">Preferências — <code>/api/v1/preferences</code><a class="headerlink" href="#preferencias-apiv1preferences" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th>Método</th>
+<th>Caminho</th>
+<th>Uso/fluxo identificado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/</code></td>
+<td>Lê preferências.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/</code></td>
+<td>Atualiza preferências gerais.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/filters</code></td>
+<td>Persiste filtros.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/watchlist</code></td>
+<td>Persiste lista de interesse.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/watchlist/ultima-remocao</code></td>
+<td>Consulta última remoção para desfazer.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/watchlist/desfazer-remocao</code></td>
+<td>Desfaz remoção da lista.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/ui</code></td>
+<td>Persiste preferências de interface.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/nota-tecnica</code></td>
+<td>Persiste preferências da Nota Técnica.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/recovery/status</code></td>
+<td>Estado de recuperação/backup de preferências.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/recovery</code></td>
+<td>Recupera preferências.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/metodologia</code></td>
+<td>Lê metodologia configurável.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/metodologia</code></td>
+<td>Atualiza metodologia configurável.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="evidencias-apiv1evidencias">Evidências — <code>/api/v1/evidencias</code><a class="headerlink" href="#evidencias-apiv1evidencias" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th>Método</th>
+<th>Caminho</th>
+<th>Uso/fluxo identificado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/</code></td>
+<td>Lista evidências.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/resumo</code></td>
+<td>Resumo agregado de evidências.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/</code></td>
+<td>Cria evidência.</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/{evidencia_id}</code></td>
+<td>Atualiza evidência.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/cnpj/{cnpj}/exportar</code></td>
+<td>Exporta evidências por CNPJ.</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/cnpj/{cnpj}</code></td>
+<td>Remove evidências do CNPJ.</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/{evidencia_id}</code></td>
+<td>Remove uma evidência.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="sistemaatualizacao-apiv1system">Sistema/atualização — <code>/api/v1/system</code><a class="headerlink" href="#sistemaatualizacao-apiv1system" title="Permanent link">¶</a></h4>
+<table>
+<thead>
+<tr>
+<th>Método</th>
+<th>Caminho</th>
+<th>Uso/fluxo identificado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/update-status</code></td>
+<td>Estado da versão/atualização.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/check-update</code></td>
+<td>Consulta atualização disponível.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/download-update</code></td>
+<td>Inicia download.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/download-progress</code></td>
+<td>Consulta progresso.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/apply-update</code></td>
+<td>Aplica atualização baixada.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/cancel-update</code></td>
+<td>Cancela operação de atualização.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rotas-fora-dos-grupos-versionados">Rotas fora dos grupos versionados<a class="headerlink" href="#rotas-fora-dos-grupos-versionados" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th>Método</th>
+<th>Caminho</th>
+<th>Condição/uso</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/saude</code></td>
+<td>Health check do FastAPI.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/</code></td>
+<td>Serve entrada da SPA quando frontend compilado está disponível.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/{full_path:path}</code></td>
+<td>Fallback de history mode quando os arquivos de frontend estão disponíveis; confirmar a ordem de registro e o comportamento em execução.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/openapi.json</code></td>
+<td>Esquema OpenAPI padrão do FastAPI.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/docs</code></td>
+<td>Interface Swagger padrão, se habilitada.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/docs/oauth2-redirect</code></td>
+<td>Callback padrão do Swagger, se habilitado.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/redoc</code></td>
+<td>Interface ReDoc padrão, se habilitada.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="fluxos-de-ponta-a-ponta-identificados">Fluxos de ponta a ponta identificados<a class="headerlink" href="#fluxos-de-ponta-a-ponta-identificados" title="Permanent link">¶</a></h2>
+<h3 id="1-inicializacao-e-disponibilidade">1. Inicialização e disponibilidade<a class="headerlink" href="#1-inicializacao-e-disponibilidade" title="Permanent link">¶</a></h3>
+<ol>
+<li>Backend inicia e tenta carregar/sincronizar os caches no lifespan.</li>
+<li>Frontend consulta estado do cache, configurações, dados do dashboard e dados geográficos.</li>
+<li>Quando a sincronização está em andamento, o frontend acompanha o estado e exibe carregamento.</li>
+<li>A aplicação pode sinalizar modo degradado quando o cache não está pronto.</li>
+</ol>
+<p><strong>Testar:</strong> cache pronto, carregando, erro, timeout, API indisponível, falta de conexão com banco, reabertura depois de falha e diferença entre Vite e pacote desktop.</p>
+<h3 id="2-filtros-globais-e-navegacao-geografica">2. Filtros globais e navegação geográfica<a class="headerlink" href="#2-filtros-globais-e-navegacao-geografica" title="Permanent link">¶</a></h3>
+<ol>
+<li>Usuário altera período, UF, região, município, unidade PF e demais filtros.</li>
+<li>Estado normalizado fica na store Pinia e é persistido localmente/no backend.</li>
+<li>A cascata geográfica ajusta filtros dependentes.</li>
+<li>Chamadas de análise são refeitas e os resultados alimentam KPIs, tabelas e mapas.</li>
+</ol>
+<p><strong>Testar:</strong> combinação e limpeza de filtros, restauração após reload, precedência da seleção, mudança rápida, debounce, falha de persistência e coerência entre URL/estado/API. Regiões devem usar <code>id_regiao_saude</code>/<code>regiao_id</code>; município usa <code>id_ibge7</code>.</p>
+<h3 id="3-analises-nacional-regional-e-municipal">3. Análises nacional, regional e municipal<a class="headerlink" href="#3-analises-nacional-regional-e-municipal" title="Permanent link">¶</a></h3>
+<ol>
+<li>Tela consome resumo, faixas de risco, localidades e dados de estabelecimentos.</li>
+<li>Seleção no mapa/filtros altera o escopo.</li>
+<li>Navegação aprofunda para UF/região/município e lista de estabelecimentos.</li>
+<li>Animações consomem endpoints de séries em chamada única.</li>
+</ol>
+<p><strong>Testar:</strong> universo nacional, filtros territoriais, dados vazios, dados parciais, limites de período, troca rápida de escopo, sincronização mapa/tabela/KPI, percentis e navegação de retorno.</p>
+<h3 id="4-busca-e-auditoria-de-estabelecimento">4. Busca e auditoria de estabelecimento<a class="headerlink" href="#4-busca-e-auditoria-de-estabelecimento" title="Permanent link">¶</a></h3>
+<ol>
+<li>Busca/autocomplete localiza CNPJ.</li>
+<li>Lista filtrada abre <code>/estabelecimentos/:cnpj</code>.</li>
+<li>Detalhe valida o CNPJ e inicializa/limpa estado.</li>
+<li>Abas carregam dados financeiros, indicadores, CRM, sócios, geografia e rede societária.</li>
+<li>Usuário troca de estabelecimento ou aba; a store mantém caches por chave contextual.</li>
+</ol>
+<p><strong>Testar:</strong> CNPJ malformado (422), CNPJ ausente (404), CNPJ válido, resposta parcial, troca rápida de CNPJ, isolamento do cache entre estabelecimentos, refresh em subrota, abas em erro e deep link.</p>
+<h3 id="5-crm-e-evidencias-medicas">5. CRM e evidências médicas<a class="headerlink" href="#5-crm-e-evidencias-medicas" title="Permanent link">¶</a></h3>
+<ol>
+<li>Tela de detalhe ou análises consulta indicadores e séries de CRM.</li>
+<li>Usuário abre alertas, atuação/histórico, dia/hora e raio-X.</li>
+<li>Dados podem ser exportados como evidência/relatório.</li>
+</ol>
+<p><strong>Testar:</strong> identificador médico com caracteres especiais, filtros de data/hora, fronteiras de período, vazio, volume alto, exportação, erro de geração e consistência de registros.</p>
+<h3 id="6-teia-societaria">6. Teia societária<a class="headerlink" href="#6-teia-societaria" title="Permanent link">¶</a></h3>
+<ol>
+<li>API sincroniza dados de grafo por CNPJ e retorna nível inicial.</li>
+<li>Frontend desenha nós/arestas e oferece seleção, busca, zoom e filtros.</li>
+<li>Usuário expande CPF para nível 4 ou CNPJ para nível 3, individualmente ou em lote.</li>
+<li>Flags de risco dos nós são exibidas em estilos, alertas e painel de detalhe.</li>
+</ol>
+<p><strong>Testar:</strong> nós isolados, grafo denso, expansão repetida, nó inválido, carga lenta, flags ausentes/inconsistentes, filtros visuais e falha durante sincronização.</p>
+<h3 id="7-listas-e-evidencias">7. Listas e evidências<a class="headerlink" href="#7-listas-e-evidencias" title="Permanent link">¶</a></h3>
+<ol>
+<li>Usuário inclui/edita estabelecimento, observação ou evidência.</li>
+<li>Alterações sincronizam com preferências/API.</li>
+<li>Remoção pode ser desfeita pela última remoção.</li>
+<li>Evidências podem ser filtradas, editadas, removidas e exportadas por CNPJ.</li>
+</ol>
+<p><strong>Testar:</strong> persistência após reload, duplicidade, concorrência, validação, remoção individual/em lote, desfazer após nova operação, erro de rede e autorização funcional conforme o modelo de acesso.</p>
+<h3 id="8-configuracoes-e-metodologia">8. Configurações e metodologia<a class="headerlink" href="#8-configuracoes-e-metodologia" title="Permanent link">¶</a></h3>
+<ol>
+<li>Tela lê configurações, limiares, preferências da interface e metodologia.</li>
+<li>Alterações são validadas e persistidas.</li>
+<li>Algumas configurações mudam a apresentação ou a classificação de risco.</li>
+</ol>
+<p><strong>Testar:</strong> valores de fronteira, tipo inválido, persistência, recuperação, efeito imediato, reload e consistência entre cores/badges/tabelas e cálculo.</p>
+<h3 id="9-exportacoes-e-documentos">9. Exportações e documentos<a class="headerlink" href="#9-exportacoes-e-documentos" title="Permanent link">¶</a></h3>
+<ol>
+<li>Usuário solicita PDF, Nota Técnica ou exportação CRM/falecidos/evidências.</li>
+<li>Algumas gerações consultam readiness e podem exigir etapa de preparação.</li>
+<li>Backend compõe arquivo e retorna download.</li>
+</ol>
+<p><strong>Testar:</strong> readiness positivo/negativo, preparação idempotente, timeout, erro no arquivo, nome/MIME, conteúdo, filtros aplicados, caracteres pt-BR e memória sob volume grande.</p>
+<h3 id="10-atualizacao-do-aplicativo">10. Atualização do aplicativo<a class="headerlink" href="#10-atualizacao-do-aplicativo" title="Permanent link">¶</a></h3>
+<ol>
+<li>Consulta versão disponível.</li>
+<li>Inicia download e consulta progresso.</li>
+<li>Aplica ou cancela a atualização.</li>
+</ol>
+<p><strong>Testar:</strong> sem atualização, atualização disponível, download lento/interrompido, cancelamento, arquivo inválido, aplicação bem-sucedida e reinício. Executar em ambiente isolado da instalação usada pelo usuário.</p>
+<h2 id="ligacoes-entre-telas-e-operacoes-pontos-a-confirmar">Ligações entre telas e operações: pontos a confirmar<a class="headerlink" href="#ligacoes-entre-telas-e-operacoes-pontos-a-confirmar" title="Permanent link">¶</a></h2>
+<p>A busca estática não localizou caller frontend direto para estas operações ou não comprovou seu caminho de uso; revisar antes de concluir cobertura:</p>
+<ul>
+<li><code>GET /api/v1/analytics/rede/{cnpj_raiz}</code></li>
+<li><code>GET /api/v1/analytics/cnpj/{cnpj}/status</code> (pode estar encapsulada em bootstrap ou store)</li>
+<li><code>GET /api/v1/geo/estabelecimentos</code></li>
+<li><code>GET /api/v1/evidencias/resumo</code></li>
+<li><code>POST /api/v1/system/cancel-update</code></li>
+<li>Algumas operações de CRM médico/evidências podem ser acionadas por componentes com chamadas indiretas.</li>
+</ul>
+<p>Também é necessário conferir se todo endpoint listado possui ao menos uma tela/ação consumidora e se cada ação de tela tem sua operação, permissões e tratamento de erro correspondentes.</p>
+<h2 id="fontes-tecnicas-a-revisar-ao-transformar-o-mapa-em-casos">Fontes técnicas a revisar ao transformar o mapa em casos<a class="headerlink" href="#fontes-tecnicas-a-revisar-ao-transformar-o-mapa-em-casos" title="Permanent link">¶</a></h2>
+<ul>
+<li>Frontend: router, layouts, views, componentes de domínio, stores, composables e configuração de endpoints.</li>
+<li>Backend: <code>backend/api/router.py</code>, routers de endpoints, schemas Pydantic e services.</li>
+<li>Dados: <code>backend/data_cache.py</code>, caches globais e por CNPJ, <code>src/scripts/sincronizar_cache.py</code>.</li>
+<li>Indicadores/metodologia: SQLs em <code>src/indicadores/</code> e configuração/mapeamento de indicadores no frontend/backend.</li>
+<li>Integrações: SQL Server via SQLAlchemy/ODBC, sistema de atualização desktop, geração de documentos e arquivos locais de preferências.</li>
+</ul>
+<h2 id="proximos-artefatos-de-qa-recomendados">Próximos artefatos de QA recomendados<a class="headerlink" href="#proximos-artefatos-de-qa-recomendados" title="Permanent link">¶</a></h2>
+<ol>
+<li>Catálogo de telas, rotas, papéis de usuário e ações.</li>
+<li>Matriz de rastreabilidade: requisito/fluxo → tela → API → dados → casos de teste.</li>
+<li>Casos de teste por fluxo, começando por inicialização, filtros, análise geográfica e detalhe CNPJ.</li>
+<li>Contratos de API e testes de validação de schemas/erros.</li>
+<li>Plano de dados de teste: CNPJ válido/inválido, registros limítrofes, vazios e grandes volumes.</li>
+<li>Plano de automação unitária, integração, componente e ponta a ponta.</li>
+<li>Execução manual em Web e Desktop, com evidências, ambiente, versão e resultado.</li>
+</ol>
+<h2 id="limites-deste-levantamento">Limites deste levantamento<a class="headerlink" href="#limites-deste-levantamento" title="Permanent link">¶</a></h2>
+<ul>
+<li>É um mapa estático dos registros encontrados; não confirma disponibilidade de banco, cache, arquivos locais ou atualizador.</li>
+<li>Não foi executado teste funcional, build, chamada de endpoint ou geração de documento neste levantamento.</li>
+<li>A contagem de operações da API corresponde aos routers identificados no código: Analytics 57, targets 2, geo 2, cache 2, preferences 12, evidências 7 e system 6; total de 88 operações modulares, além das rotas de saúde/SPA/OpenAPI.</li>
+<li>A completude funcional depende de validar runtime, permissões, parâmetros e ligações indiretas descritas nos itens “a confirmar”.</li>
+</ul>
 </article>
 </div>
 <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
@@ -1790,34 +1877,6 @@
 </button>
 </main>
 <footer class="md-footer">
-<nav aria-label="Rodapé" class="md-footer__inner md-grid">
-<a aria-label="Anterior: Grupo 5 - CRMs" class="md-footer__link md-footer__link--prev" href="grupo5-crms.html">
-<div class="md-footer__button md-icon">
-<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
-</div>
-<div class="md-footer__title">
-<span class="md-footer__direction">
-                Anterior
-              </span>
-<div class="md-ellipsis">
-                Grupo 5 - CRMs
-              </div>
-</div>
-</a>
-<a aria-label="Próximo: Contatos" class="md-footer__link md-footer__link--next" href="../contatos.html">
-<div class="md-footer__title">
-<span class="md-footer__direction">
-                Próximo
-              </span>
-<div class="md-ellipsis">
-                Contatos
-              </div>
-</div>
-<div class="md-footer__button md-icon">
-<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
-</div>
-</a>
-</nav>
 <div class="md-footer-meta md-typeset">
 <div class="md-footer-meta__inner md-grid">
 <div class="md-copyright">
