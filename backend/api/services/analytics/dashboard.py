@@ -57,6 +57,7 @@ from ...schemas.analytics import (
     GtinDetalhamentoMensalSummary,
     GtinDetalhamentoMensalItem,
 )
+from .filtros_farmacia import SEM_FILTRO_FARMACIA, FiltrosFarmacia
 
 DASHBOARD_SECOES = frozenset({"kpis", "ufs", "municipios", "cnpjs"})
 
@@ -86,7 +87,7 @@ def validar_secoes_dashboard(secoes: Collection[str], cnpjs: Optional[List[str]]
     return pedidas
 
 
-def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=None, perc_max=None, val_min=None, uf=None, regiao_saude=None, municipio=None, situacao_rf=None, conexao_ms=None, porte_empresa=None, grande_rede=None, cnpj_raiz=None, unidade_pf=None, cnpjs: Optional[List[str]] = None, regiao_id: Optional[int] = None, id_ibge7: Optional[int] = None, volume_atipico: bool = False, volume_atipico_limite: Optional[float] = None, dispersao_uf_sem_fronteira: bool = False, dispersao_uf_sem_fronteira_limite: Optional[float] = None, par_teia: Optional[str] = None, socio_beneficio: Optional[str] = None, socio_esocial: Optional[str] = None, cnae_incompativel: bool = False, socio_idade_atipica: bool = False, socio_falecido: bool = False, estabelecimento: Optional[str] = None, *, secoes: Collection[str]) -> AnalyticsResponse:
+def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, uf=None, regiao_saude=None, municipio=None, cnpjs: Optional[List[str]] = None, regiao_id: Optional[int] = None, id_ibge7: Optional[int] = None, *, filtros: FiltrosFarmacia = SEM_FILTRO_FARMACIA, secoes: Collection[str]) -> AnalyticsResponse:
     """
     Versão Unificada (Motor Polars): Calcula KPIs e análise por UF em tempo real.
     Garante consistência total entre as telas e alta performance via processamento em memória.
@@ -95,7 +96,6 @@ def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=No
     demais voltam como None. A seção cnpjs exige o filtro `cnpjs`.
     """
     secoes = validar_secoes_dashboard(secoes, cnpjs)
-    print(f'DEBUG get_dashboard_data - cnae_incompativel: {cnae_incompativel}')
     try:
         def human_format(num):
             if num is None: return "0"
@@ -132,9 +132,9 @@ def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=No
         # 1. Parâmetros e DataFrame Base
         MIN_DATA = date(2015, 7, 1)
         MAX_DATA = date(2024, 12, 31)
-        p_min = perc_min if perc_min is not None else 0.0
-        p_max = perc_max if perc_max is not None else 100.0
-        v_min = float(val_min) if val_min is not None and val_min > 0 else None
+        p_min = filtros.perc_min if filtros.perc_min is not None else 0.0
+        p_max = filtros.perc_max if filtros.perc_max is not None else 100.0
+        v_min = float(filtros.val_min) if filtros.val_min is not None and filtros.val_min > 0 else None
         
         inicio = (data_inicio if data_inicio and data_inicio >= MIN_DATA else MIN_DATA) if data_inicio else MIN_DATA
         fim = data_fim if data_fim else MAX_DATA
@@ -148,23 +148,23 @@ def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=No
         if uf and uf != 'Todos':                      perfil_mask = perfil_mask & (pl.col("uf") == uf)
         if regiao_id is not None:                     perfil_mask = perfil_mask & (pl.col("id_regiao_saude") == str(regiao_id))
         if id_ibge7 is not None:                      perfil_mask = perfil_mask & (pl.col("id_ibge7") == id_ibge7)
-        if situacao_rf and situacao_rf != 'Todos':    perfil_mask = perfil_mask & (pl.col("situacao_rf") == situacao_rf)
-        if conexao_ms and conexao_ms != 'Todos':
-            perfil_mask = perfil_mask & (pl.col("is_conexao_ativa") == (conexao_ms == 'Ativa'))
-        if porte_empresa and porte_empresa != 'Todos': perfil_mask = perfil_mask & (pl.col("porte_empresa") == porte_empresa)
-        if grande_rede and grande_rede != 'Todos':
-            perfil_mask = perfil_mask & (pl.col("is_grande_rede") == (grande_rede == 'Sim'))
-        if unidade_pf and unidade_pf != 'Todos':
-            perfil_mask = perfil_mask & (pl.col("unidade_pf") == unidade_pf)
-        if cnpj_raiz:
-            if len(cnpj_raiz) == 14:
-                perfil_mask = perfil_mask & (pl.col("cnpj") == cnpj_raiz)
+        if filtros.situacao_rf and filtros.situacao_rf != 'Todos':    perfil_mask = perfil_mask & (pl.col("situacao_rf") == filtros.situacao_rf)
+        if filtros.conexao_ms and filtros.conexao_ms != 'Todos':
+            perfil_mask = perfil_mask & (pl.col("is_conexao_ativa") == (filtros.conexao_ms == 'Ativa'))
+        if filtros.porte_empresa and filtros.porte_empresa != 'Todos': perfil_mask = perfil_mask & (pl.col("porte_empresa") == filtros.porte_empresa)
+        if filtros.grande_rede and filtros.grande_rede != 'Todos':
+            perfil_mask = perfil_mask & (pl.col("is_grande_rede") == (filtros.grande_rede == 'Sim'))
+        if filtros.unidade_pf and filtros.unidade_pf != 'Todos':
+            perfil_mask = perfil_mask & (pl.col("unidade_pf") == filtros.unidade_pf)
+        if filtros.cnpj_raiz:
+            if len(filtros.cnpj_raiz) == 14:
+                perfil_mask = perfil_mask & (pl.col("cnpj") == filtros.cnpj_raiz)
             else:
-                perfil_mask = perfil_mask & (pl.col("cnpj").str.slice(0, 8) == cnpj_raiz)
+                perfil_mask = perfil_mask & (pl.col("cnpj").str.slice(0, 8) == filtros.cnpj_raiz)
         if cnpjs:
             perfil_mask = perfil_mask & (pl.col("cnpj").is_in(cnpjs))
 
-        estabelecimento_query = estabelecimento
+        estabelecimento_query = filtros.estabelecimento
         perfil_filtrado = apply_token_search(
             perfil_df.filter(perfil_mask),
             estabelecimento_query,
@@ -172,27 +172,22 @@ def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=No
         )
         perfil_filtrado = build_perfil_filtrado(
             perfil_filtrado,
-            par_teia=par_teia,
-            socio_beneficio=socio_beneficio,
-            socio_esocial=socio_esocial,
-            socio_falecido=socio_falecido,
-            cnae_incompativel=cnae_incompativel,
-            socio_idade_atipica=socio_idade_atipica,
+            filtros=filtros,
             data_referencia=fim,
-            volume_atipico=volume_atipico,
+            periodo_inicio=inicio,
             volume_atipico_inicio=inicio,
+            periodo_fim=fim,
             volume_atipico_fim=fim,
-            volume_atipico_limite=volume_atipico_limite,
         )
         period_df = (
             df.filter(mov_mask)
             .join(perfil_filtrado.select("id_cnpj"), on="id_cnpj", how="semi")
         )
-        if dispersao_uf_sem_fronteira:
+        if filtros.dispersao_uf_sem_fronteira:
             id_cnpjs_dispersao_df = get_dispersao_uf_sem_fronteira_id_cnpjs_df(
                 inicio,
                 fim,
-                dispersao_uf_sem_fronteira_limite,
+                filtros.dispersao_uf_sem_fronteira_limite,
             )
             period_df = period_df.join(id_cnpjs_dispersao_df.select("id_cnpj"), on="id_cnpj", how="semi")
 
@@ -350,133 +345,127 @@ def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, perc_min=No
         raise HTTPException(status_code=503, detail="Resumo analitico indisponivel: matriz dinamica de risco ou cache base invalido.") from e
 
 
-def get_producao_semestral_data(db: Session, data_inicio=None, data_fim=None, perc_min=None, perc_max=None, val_min=None, uf=None, situacao_rf=None, conexao_ms=None, porte_empresa=None, grande_rede=None, cnpj_raiz=None, unidade_pf=None, cnpjs: Optional[List[str]] = None, regiao_id: Optional[int] = None, id_ibge7: Optional[int] = None, volume_atipico: bool = False, volume_atipico_limite: Optional[float] = None, dispersao_uf_sem_fronteira: bool = False, dispersao_uf_sem_fronteira_limite: Optional[float] = None, par_teia: Optional[str] = None, socio_beneficio: Optional[str] = None, socio_esocial: Optional[str] = None, cnae_incompativel: bool = False, socio_idade_atipica: bool = False, socio_falecido: bool = False, estabelecimento: Optional[str] = None) -> ProducaoSemestralResponse:
-    """Retorna a producao acumulada por semestre para a Home, respeitando os filtros globais."""
-    try:
-        MIN_DATA = date(2015, 7, 1)
-        MAX_DATA = date(2024, 12, 31)
-        p_min = perc_min if perc_min is not None else 0.0
-        p_max = perc_max if perc_max is not None else 100.0
-        v_min = float(val_min) if val_min is not None and val_min > 0 else None
+def get_producao_semestral_data(db: Session, data_inicio=None, data_fim=None, uf=None, cnpjs: Optional[List[str]] = None, regiao_id: Optional[int] = None, id_ibge7: Optional[int] = None, *, filtros: FiltrosFarmacia = SEM_FILTRO_FARMACIA) -> ProducaoSemestralResponse:
+    """
+    Retorna a producao acumulada por semestre para a Home, respeitando os filtros globais.
 
-        inicio = (data_inicio if data_inicio and data_inicio >= MIN_DATA else MIN_DATA) if data_inicio else MIN_DATA
-        fim = data_fim if data_fim else MAX_DATA
+    Sem captura generica: erro de filtro (422) ou de dado indisponivel (503)
+    chega ao grafico em vez de virar uma serie vazia ("sem dados").
+    """
+    MIN_DATA = date(2015, 7, 1)
+    MAX_DATA = date(2024, 12, 31)
+    p_min = filtros.perc_min if filtros.perc_min is not None else 0.0
+    p_max = filtros.perc_max if filtros.perc_max is not None else 100.0
+    v_min = float(filtros.val_min) if filtros.val_min is not None and filtros.val_min > 0 else None
 
-        df = get_df()
-        perfil_df = get_df_perfil_estabelecimento()
+    inicio = (data_inicio if data_inicio and data_inicio >= MIN_DATA else MIN_DATA) if data_inicio else MIN_DATA
+    fim = data_fim if data_fim else MAX_DATA
 
-        mov_mask = pl.col("periodo").is_between(inicio, fim)
-        perfil_mask = pl.lit(True)
-        if uf and uf != 'Todos':                       perfil_mask = perfil_mask & (pl.col("uf") == uf)
-        if regiao_id is not None:                      perfil_mask = perfil_mask & (pl.col("id_regiao_saude") == str(regiao_id))
-        if id_ibge7 is not None:                       perfil_mask = perfil_mask & (pl.col("id_ibge7") == id_ibge7)
-        if situacao_rf and situacao_rf != 'Todos':     perfil_mask = perfil_mask & (pl.col("situacao_rf") == situacao_rf)
-        if conexao_ms and conexao_ms != 'Todos':       perfil_mask = perfil_mask & (pl.col("is_conexao_ativa") == (conexao_ms == 'Ativa'))
-        if porte_empresa and porte_empresa != 'Todos': perfil_mask = perfil_mask & (pl.col("porte_empresa") == porte_empresa)
-        if grande_rede and grande_rede != 'Todos':     perfil_mask = perfil_mask & (pl.col("is_grande_rede") == (grande_rede == 'Sim'))
-        if unidade_pf and unidade_pf != 'Todos':       perfil_mask = perfil_mask & (pl.col("unidade_pf") == unidade_pf)
-        if cnpj_raiz:
-            if len(cnpj_raiz) == 14:
-                perfil_mask = perfil_mask & (pl.col("cnpj") == cnpj_raiz)
-            else:
-                perfil_mask = perfil_mask & (pl.col("cnpj").str.slice(0, 8) == cnpj_raiz)
-        if cnpjs:
-            perfil_mask = perfil_mask & (pl.col("cnpj").is_in(cnpjs))
+    df = get_df()
+    perfil_df = get_df_perfil_estabelecimento()
 
-        estabelecimento_query = estabelecimento
-        perfil_filtrado = apply_token_search(
-            perfil_df.filter(perfil_mask),
-            estabelecimento_query,
-            ("cnpj", "razao_social", "nome_fantasia"),
+    mov_mask = pl.col("periodo").is_between(inicio, fim)
+    perfil_mask = pl.lit(True)
+    if uf and uf != 'Todos':                       perfil_mask = perfil_mask & (pl.col("uf") == uf)
+    if regiao_id is not None:                      perfil_mask = perfil_mask & (pl.col("id_regiao_saude") == str(regiao_id))
+    if id_ibge7 is not None:                       perfil_mask = perfil_mask & (pl.col("id_ibge7") == id_ibge7)
+    if filtros.situacao_rf and filtros.situacao_rf != 'Todos':     perfil_mask = perfil_mask & (pl.col("situacao_rf") == filtros.situacao_rf)
+    if filtros.conexao_ms and filtros.conexao_ms != 'Todos':       perfil_mask = perfil_mask & (pl.col("is_conexao_ativa") == (filtros.conexao_ms == 'Ativa'))
+    if filtros.porte_empresa and filtros.porte_empresa != 'Todos': perfil_mask = perfil_mask & (pl.col("porte_empresa") == filtros.porte_empresa)
+    if filtros.grande_rede and filtros.grande_rede != 'Todos':     perfil_mask = perfil_mask & (pl.col("is_grande_rede") == (filtros.grande_rede == 'Sim'))
+    if filtros.unidade_pf and filtros.unidade_pf != 'Todos':       perfil_mask = perfil_mask & (pl.col("unidade_pf") == filtros.unidade_pf)
+    if filtros.cnpj_raiz:
+        if len(filtros.cnpj_raiz) == 14:
+            perfil_mask = perfil_mask & (pl.col("cnpj") == filtros.cnpj_raiz)
+        else:
+            perfil_mask = perfil_mask & (pl.col("cnpj").str.slice(0, 8) == filtros.cnpj_raiz)
+    if cnpjs:
+        perfil_mask = perfil_mask & (pl.col("cnpj").is_in(cnpjs))
+
+    estabelecimento_query = filtros.estabelecimento
+    perfil_filtrado = apply_token_search(
+        perfil_df.filter(perfil_mask),
+        estabelecimento_query,
+        ("cnpj", "razao_social", "nome_fantasia"),
+    )
+    perfil_filtrado = build_perfil_filtrado(
+        perfil_filtrado,
+        filtros=filtros,
+        data_referencia=fim,
+        periodo_inicio=inicio,
+        volume_atipico_inicio=inicio,
+        periodo_fim=fim,
+        volume_atipico_fim=fim,
+    )
+
+    period_df = (
+        df.filter(mov_mask)
+        .join(perfil_filtrado.select("id_cnpj"), on="id_cnpj", how="semi")
+    )
+    if filtros.dispersao_uf_sem_fronteira:
+        id_cnpjs_dispersao_df = get_dispersao_uf_sem_fronteira_id_cnpjs_df(
+            inicio,
+            fim,
+            filtros.dispersao_uf_sem_fronteira_limite,
         )
-        perfil_filtrado = build_perfil_filtrado(
-            perfil_filtrado,
-            par_teia=par_teia,
-            socio_beneficio=socio_beneficio,
-            socio_esocial=socio_esocial,
-            socio_falecido=socio_falecido,
-            cnae_incompativel=cnae_incompativel,
-            socio_idade_atipica=socio_idade_atipica,
-            data_referencia=fim,
-            volume_atipico=volume_atipico,
-            volume_atipico_inicio=inicio,
-            volume_atipico_fim=fim,
-            volume_atipico_limite=volume_atipico_limite,
-        )
+        period_df = period_df.join(id_cnpjs_dispersao_df.select("id_cnpj"), on="id_cnpj", how="semi")
 
-        period_df = (
-            df.filter(mov_mask)
-            .join(perfil_filtrado.select("id_cnpj"), on="id_cnpj", how="semi")
-        )
-        if dispersao_uf_sem_fronteira:
-            id_cnpjs_dispersao_df = get_dispersao_uf_sem_fronteira_id_cnpjs_df(
-                inicio,
-                fim,
-                dispersao_uf_sem_fronteira_limite,
-            )
-            period_df = period_df.join(id_cnpjs_dispersao_df.select("id_cnpj"), on="id_cnpj", how="semi")
-
-        if period_df.is_empty():
-            return ProducaoSemestralResponse(pontos=[])
-
-        cnpj_agg = (
-            period_df
-            .group_by("id_cnpj")
-            .agg([
-                pl.sum("total_vendas").alias("tv"),
-                pl.sum("total_sem_comprovacao").alias("tsc"),
-            ])
-            .with_columns([
-                (pl.col("tsc") / pl.when(pl.col("tv") > 0).then(pl.col("tv")).otherwise(None) * 100)
-                .fill_null(0)
-                .alias("pct")
-            ])
-        )
-        cnpj_ok = cnpj_agg.filter((pl.col("pct") >= p_min) & (pl.col("pct") <= p_max))
-        if v_min is not None:
-            cnpj_ok = cnpj_ok.filter(pl.col("tsc") >= v_min)
-
-        filtered_period = period_df.join(cnpj_ok.select("id_cnpj"), on="id_cnpj", how="inner")
-        if filtered_period.is_empty():
-            return ProducaoSemestralResponse(pontos=[])
-
-        semestral_df = (
-            filtered_period
-            .with_columns([
-                pl.col("periodo").dt.year().alias("ano"),
-                pl.when(pl.col("periodo").dt.month() <= 6).then(1).otherwise(2).alias("semestre_num"),
-            ])
-            .with_columns([
-                (pl.col("ano") * 100 + pl.col("semestre_num")).cast(pl.Int32).alias("chave_semestre"),
-            ])
-            .group_by(["ano", "semestre_num", "chave_semestre"])
-            .agg([
-                pl.sum("total_vendas").alias("valor_producao"),
-                pl.sum("total_sem_comprovacao").alias("valor_sem_comprovacao"),
-                pl.n_unique("id_cnpj").alias("cnpjs"),
-            ])
-            .sort("chave_semestre")
-            .with_columns([
-                pl.format("{}-S{}", pl.col("ano"), pl.col("semestre_num")).alias("semestre"),
-                (pl.col("valor_producao") - pl.col("valor_sem_comprovacao")).clip(0, None).alias("valor_regular"),
-                (
-                    pl.col("valor_sem_comprovacao")
-                    / pl.when(pl.col("valor_producao") > 0).then(pl.col("valor_producao")).otherwise(None)
-                    * 100
-                ).fill_null(0).alias("pct_sem_comprovacao"),
-            ])
-            .select(["semestre", "chave_semestre", "valor_producao", "valor_regular", "valor_sem_comprovacao", "pct_sem_comprovacao", "cnpjs"])
-        )
-
-        return ProducaoSemestralResponse(
-            pontos=[ProducaoSemestralPointSchema(**row) for row in semestral_df.iter_rows(named=True)]
-        )
-
-    except Exception as e:
-        import traceback
-        print(f"ERRO AO BUSCAR PRODUCAO SEMESTRAL: {e}")
-        print(traceback.format_exc())
+    if period_df.is_empty():
         return ProducaoSemestralResponse(pontos=[])
+
+    cnpj_agg = (
+        period_df
+        .group_by("id_cnpj")
+        .agg([
+            pl.sum("total_vendas").alias("tv"),
+            pl.sum("total_sem_comprovacao").alias("tsc"),
+        ])
+        .with_columns([
+            (pl.col("tsc") / pl.when(pl.col("tv") > 0).then(pl.col("tv")).otherwise(None) * 100)
+            .fill_null(0)
+            .alias("pct")
+        ])
+    )
+    cnpj_ok = cnpj_agg.filter((pl.col("pct") >= p_min) & (pl.col("pct") <= p_max))
+    if v_min is not None:
+        cnpj_ok = cnpj_ok.filter(pl.col("tsc") >= v_min)
+
+    filtered_period = period_df.join(cnpj_ok.select("id_cnpj"), on="id_cnpj", how="inner")
+    if filtered_period.is_empty():
+        return ProducaoSemestralResponse(pontos=[])
+
+    semestral_df = (
+        filtered_period
+        .with_columns([
+            pl.col("periodo").dt.year().alias("ano"),
+            pl.when(pl.col("periodo").dt.month() <= 6).then(1).otherwise(2).alias("semestre_num"),
+        ])
+        .with_columns([
+            (pl.col("ano") * 100 + pl.col("semestre_num")).cast(pl.Int32).alias("chave_semestre"),
+        ])
+        .group_by(["ano", "semestre_num", "chave_semestre"])
+        .agg([
+            pl.sum("total_vendas").alias("valor_producao"),
+            pl.sum("total_sem_comprovacao").alias("valor_sem_comprovacao"),
+            pl.n_unique("id_cnpj").alias("cnpjs"),
+        ])
+        .sort("chave_semestre")
+        .with_columns([
+            pl.format("{}-S{}", pl.col("ano"), pl.col("semestre_num")).alias("semestre"),
+            (pl.col("valor_producao") - pl.col("valor_sem_comprovacao")).clip(0, None).alias("valor_regular"),
+            (
+                pl.col("valor_sem_comprovacao")
+                / pl.when(pl.col("valor_producao") > 0).then(pl.col("valor_producao")).otherwise(None)
+                * 100
+            ).fill_null(0).alias("pct_sem_comprovacao"),
+        ])
+        .select(["semestre", "chave_semestre", "valor_producao", "valor_regular", "valor_sem_comprovacao", "pct_sem_comprovacao", "cnpjs"])
+    )
+
+    return ProducaoSemestralResponse(
+        pontos=[ProducaoSemestralPointSchema(**row) for row in semestral_df.iter_rows(named=True)]
+    )
+
 
 
 def get_rede_por_cnpj_raiz(cnpj_raiz: str) -> List[RedeEstabelecimentoSchema]:

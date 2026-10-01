@@ -197,16 +197,53 @@ function remover(cnpj) {
   farmaciaLists.toggleInteresse(cnpj, "");
 }
 
-async function restaurarArquivo(source, count) {
-  if (window.confirm(`Restaurar ${count} farmácia(s) desta cópia? A lista atual será preservada antes da restauração.`)) {
-    if (await farmaciaLists.restoreFromFile(source)) {
+function descricaoCopia(source) {
+  const copy = farmaciaLists.recoveryOptions[source];
+  const evidence = copy.evidencias_count === null
+    ? 'somente a lista'
+    : `${copy.evidencias_count} evidência(s) no backup de evidências`;
+  return `${copy.watchlist_count} farmácia(s), ${evidence}`;
+}
+
+async function restaurarArquivo(source) {
+  const copy = farmaciaLists.recoveryOptions[source];
+  const includeEvidenceBackup = copy.evidencias_backup_valid;
+  const cestaIlegivel = Boolean(farmaciaLists.recoveryOptions.principal?.evidencias_error);
+  const details = !includeEvidenceBackup
+    ? 'Esta cópia restaura somente a lista. Ela não recupera evidências; as evidências atuais serão mantidas.'
+    : cestaIlegivel
+      ? 'A cesta de evidências atual não pôde ser lida: ela será arquivada e substituída pelo backup de evidências, que pode ser de outro momento.'
+      : 'As evidências ausentes serão recuperadas do backup de evidências, que pode ser de outro momento. As evidências atuais serão mantidas.';
+  // Cópia separada: farmácias com evidências atuais que não estão na cópia continuam na lista.
+  const mantidas = copy.farmacias_mantidas_count > 0
+    ? ` ${copy.farmacias_mantidas_count} farmácia(s) com evidências atuais que não estão nesta cópia continuarão na lista.`
+    : '';
+  if (window.confirm(`Restaurar ${descricaoCopia(source)}? ${details}${mantidas} Os arquivos atuais serão preservados antes da restauração.`)) {
+    if (await farmaciaLists.restoreFromFile(source, includeEvidenceBackup)) {
       await carregarRegional({ force: true, reportarErroPreferencias: true });
     }
   }
 }
 
+function nomeRemovida(item) {
+  return item.razaoSocial ? formatTitleCase(item.razaoSocial) : formatCnpj(item.cnpj);
+}
+
+async function desfazerRemocao(item) {
+  if (await farmaciaLists.desfazerRemocao(item.cnpj)) {
+    toast.add({
+      severity: "success",
+      summary: "Remoção desfeita",
+      detail: item.evidencias_count > 0
+        ? `${nomeRemovida(item)} voltou à lista com ${item.evidencias_count} evidência(s).`
+        : `${nomeRemovida(item)} voltou à lista.`,
+      life: 4000,
+    });
+  }
+}
+
 async function restaurarLocal() {
-  if (window.confirm(`Restaurar ${farmaciaLists.localSnapshot.length} farmácia(s) da cópia local desta janela?`)) {
+  if (window.confirm(`Restaurar ${farmaciaLists.localSnapshot.length} farmácia(s) da cópia local desta janela? Esta cópia contém somente a lista e não recupera evidências.`)) {
     if (await farmaciaLists.restoreFromLocal()) {
       await carregarRegional({ force: true, reportarErroPreferencias: true });
     }
@@ -475,17 +512,38 @@ function formatScore(v) {
       </p>
     </div>
 
-    <section v-if="farmaciaLists.loadState === 'error' || farmaciaLists.error || farmaciaLists.localRecoveryAvailable ||
-      (farmaciaLists.loadState === 'ready' && farmaciaLists.interesse.length === 0 &&
-        (farmaciaLists.recoveryOptions?.backup?.watchlist_count > 0 || farmaciaLists.recoveryOptions?.corrupt?.watchlist_count > 0))"
+    <div v-if="farmaciaLists.ultimaRemocao.length || farmaciaLists.ultimaRemocaoError" class="lists-undo" role="status">
+      <i class="pi pi-undo" aria-hidden="true" />
+      <span v-if="farmaciaLists.ultimaRemocaoError">{{ farmaciaLists.ultimaRemocaoError }}</span>
+      <template v-else>
+        <span v-for="item in farmaciaLists.ultimaRemocao" :key="item.cnpj" class="lists-undo-item">
+          {{ nomeRemovida(item) }} removida da lista{{ item.evidencias_count ? ` (${item.evidencias_count} evidência(s))` : '' }}.
+          <button type="button" class="lists-undo-btn" :disabled="!farmaciaLists.canEdit"
+            @click="desfazerRemocao(item)">Desfazer</button>
+        </span>
+      </template>
+    </div>
+
+    <section v-if="farmaciaLists.loadState === 'error' || farmaciaLists.error || farmaciaLists.recoveryError ||
+      farmaciaLists.localRecoveryAvailable || farmaciaLists.recoveryAvailable"
       class="preferences-recovery" aria-label="Estado das Farmácias Monitoradas">
       <div class="preferences-recovery-copy">
         <i class="pi pi-shield" aria-hidden="true" />
         <div>
           <p v-if="farmaciaLists.loadState === 'error'">Não foi possível abrir sua lista. Nenhum favorito foi apagado por esta tela.</p>
           <p v-else-if="farmaciaLists.error">{{ farmaciaLists.error }}</p>
-          <p v-else>Há cópias da sua lista disponíveis para conferência e recuperação.</p>
-          <span>A restauração só acontece após sua confirmação. O arquivo atual é preservado.</span>
+          <p v-else-if="farmaciaLists.recoveryError">{{ farmaciaLists.recoveryError }}</p>
+          <p v-else>Há cópias da sua lista e das evidências disponíveis para conferência e recuperação.</p>
+          <p v-if="farmaciaLists.recoveryOptions?.principal?.evidencias_error">
+            Não foi possível conferir as evidências atuais: {{ farmaciaLists.recoveryOptions.principal.evidencias_error }}
+          </p>
+          <template v-for="source in ['backup', 'corrupt']" :key="source">
+            <p v-if="farmaciaLists.recoveryOptions?.[source]?.error || farmaciaLists.recoveryOptions?.[source]?.evidencias_error">
+              Cópia {{ source === 'backup' ? 'de segurança' : 'isolada' }} indisponível ou incompleta:
+              {{ farmaciaLists.recoveryOptions[source].error || farmaciaLists.recoveryOptions[source].evidencias_error }}
+            </p>
+          </template>
+          <span>A restauração só acontece após sua confirmação. Os arquivos atuais são preservados.</span>
         </div>
       </div>
       <div class="preferences-recovery-actions">
@@ -493,13 +551,13 @@ function formatScore(v) {
           @click="tentarCarregarNovamente">Tentar carregar novamente</button>
         <button v-if="farmaciaLists.recoveryOptions?.backup?.valid && farmaciaLists.recoveryOptions.backup.watchlist_count > 0"
           type="button" :disabled="farmaciaLists.saving"
-          @click="restaurarArquivo('backup', farmaciaLists.recoveryOptions.backup.watchlist_count)">
-          Restaurar backup ({{ farmaciaLists.recoveryOptions.backup.watchlist_count }})
+          @click="restaurarArquivo('backup')">
+          Restaurar backup ({{ descricaoCopia('backup') }})
         </button>
         <button v-if="farmaciaLists.recoveryOptions?.corrupt?.valid && farmaciaLists.recoveryOptions.corrupt.watchlist_count > 0"
           type="button" :disabled="farmaciaLists.saving"
-          @click="restaurarArquivo('corrupt', farmaciaLists.recoveryOptions.corrupt.watchlist_count)">
-          Restaurar cópia isolada ({{ farmaciaLists.recoveryOptions.corrupt.watchlist_count }})
+          @click="restaurarArquivo('corrupt')">
+          Restaurar cópia isolada ({{ descricaoCopia('corrupt') }})
         </button>
         <button v-if="farmaciaLists.localRecoveryAvailable && farmaciaLists.loadState === 'ready'"
           type="button" :disabled="farmaciaLists.saving" @click="restaurarLocal">
@@ -917,6 +975,35 @@ function formatScore(v) {
   opacity: 0.5;
   margin: 0;
 }
+
+/* Desfazer a última remoção: discreto, sem tom de alerta. */
+.lists-undo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text-color-85);
+  font-size: 0.8rem;
+}
+.lists-undo > i { color: var(--text-muted); font-size: 0.8rem; }
+.lists-undo-item { display: inline-flex; align-items: center; gap: 0.4rem; }
+.lists-undo-btn {
+  padding: 0.15rem 0.45rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary-color);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lists-undo-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+.lists-undo-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
+.lists-undo-btn:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .preferences-recovery {
   display: flex;

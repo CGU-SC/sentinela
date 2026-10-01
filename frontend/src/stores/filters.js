@@ -55,6 +55,36 @@ function normalizeSocioBeneficioFilter(value) {
     : FILTER_DEFAULTS.SOCIO_BENEFICIO;
 }
 
+/** Faixa salva de população: [min, max] com inteiros >= 0 ou null; senão, o padrão. */
+function normalizePopulacaoMunicipio(value) {
+  const valido = (v) => v === null || (Number.isInteger(v) && v >= 0);
+  if (Array.isArray(value) && value.length === 2 && value.every(valido)
+    && !(value[0] !== null && value[1] !== null && value[0] > value[1])) {
+    return [...value];
+  }
+  return [...FILTER_DEFAULTS.POPULACAO_MUNICIPIO_RANGE];
+}
+
+/** Tipo salvo da sequência: unico | multiplo | qualquer; senão, o padrão. */
+function normalizeSeqTipo(value) {
+  return ['unico', 'multiplo', 'qualquer'].includes(value) ? value : FILTER_DEFAULTS.SEQ_TIPO;
+}
+
+/** Severidade salva da sequência: null ou 1..4; senão, o padrão. */
+function normalizeSeqSeveridade(value) {
+  return value === null || [1, 2, 3, 4].includes(value) ? value : FILTER_DEFAULTS.SEQ_SEVERIDADE;
+}
+
+/** Faixa salva de dias de sequência: [min, max] com inteiros >= 0 ou null; senão, o padrão. */
+function normalizeSeqDias(value) {
+  const valido = (v) => v === null || (Number.isInteger(v) && v >= 0);
+  if (Array.isArray(value) && value.length === 2 && value.every(valido)
+    && !(value[0] !== null && value[1] !== null && value[0] > value[1])) {
+    return [...value];
+  }
+  return [...FILTER_DEFAULTS.SEQ_DIAS_RANGE];
+}
+
 function normalizeSocioEsocialFilter(value) {
   return SOCIO_ESOCIAL_FILTER_VALUES.has(value)
     ? value
@@ -101,6 +131,12 @@ export const useFilterStore = defineStore('filters', () => {
   const percentualNaoComprovacaoRange = ref(saved?.percentualNaoComprovacaoRange ?? FILTER_DEFAULTS.PERCENTUAL_RANGE);
   const percentualNaoComprovacaoFilter = ref(saved?.percentualNaoComprovacaoFilter ?? FILTER_DEFAULTS.PERCENTUAL_RANGE);
   const valorMinSemComp = ref(typeof saved?.valorMinSemComp === 'number' ? saved.valorMinSemComp : FILTER_DEFAULTS.VALOR_MIN);
+  // População do município da farmácia: [min, max] em habitantes (null = sem limite).
+  const populacaoMunicipio = ref(normalizePopulacaoMunicipio(saved?.populacaoMunicipio));
+  // Autorizações em sequência na farmácia (tipo, severidade mínima e dias).
+  const seqTipo = ref(normalizeSeqTipo(saved?.seqTipo));
+  const seqSeveridade = ref(normalizeSeqSeveridade(saved?.seqSeveridade ?? null));
+  const seqDias = ref(normalizeSeqDias(saved?.seqDias));
   const valorMinSemCompFilter = ref(typeof saved?.valorMinSemCompFilter === 'number' ? saved.valorMinSemCompFilter : FILTER_DEFAULTS.VALOR_MIN);
   const volumeAtipicoEnabled = ref(typeof saved?.volumeAtipicoEnabled === 'boolean' ? saved.volumeAtipicoEnabled : FILTER_DEFAULTS.VOLUME_ATIPICO_ENABLED);
   const volumeAtipicoPercentual = ref(typeof saved?.volumeAtipicoPercentual === 'number' ? saved.volumeAtipicoPercentual : FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL);
@@ -209,6 +245,12 @@ export const useFilterStore = defineStore('filters', () => {
       cnaeIncompativel: selectedCnaeIncompativel.value,
       socioIdadeAtipica: selectedSocioIdadeAtipica.value,
       socioFalecido: selectedSocioFalecido.value,
+      populacaoMin: populacaoMunicipio.value[0],
+      populacaoMax: populacaoMunicipio.value[1],
+      seqTipo: seqSeveridade.value !== null || seqDias.value.some((v) => v !== null) ? seqTipo.value : null,
+      seqSeveridadeMin: seqSeveridade.value,
+      seqDiasMin: seqDias.value[0],
+      seqDiasMax: seqDias.value[1],
     };
   });
 
@@ -233,6 +275,12 @@ export const useFilterStore = defineStore('filters', () => {
       dispersaoUfSemFronteiraPercentual,
       volumeAtipicoEnabled,
       volumeAtipicoPercentual,
+      populacaoMin,
+      populacaoMax,
+      seqTipo,
+      seqSeveridadeMin,
+      seqDiasMin,
+      seqDiasMax,
     } = apiParams.value;
 
     return stableStringify({
@@ -253,6 +301,12 @@ export const useFilterStore = defineStore('filters', () => {
       dispersaoUfSemFronteiraPercentual,
       volumeAtipicoEnabled,
       volumeAtipicoPercentual,
+      populacaoMin,
+      populacaoMax,
+      seqTipo,
+      seqSeveridadeMin,
+      seqDiasMin,
+      seqDiasMax,
     });
   });
 
@@ -287,6 +341,12 @@ export const useFilterStore = defineStore('filters', () => {
       valMin,
       volumeAtipicoEnabled,
       volumeAtipicoPercentual,
+      populacaoMin,
+      populacaoMax,
+      seqTipo,
+      seqSeveridadeMin,
+      seqDiasMin,
+      seqDiasMax,
     } = apiParams.value;
 
     return withoutEmptyValues({
@@ -314,6 +374,12 @@ export const useFilterStore = defineStore('filters', () => {
       val_min: valMin,
       volume_atipico: volumeAtipicoEnabled,
       volume_atipico_limite: volumeAtipicoPercentual,
+      populacao_min: populacaoMin,
+      populacao_max: populacaoMax,
+      seq_tipo: seqTipo,
+      seq_severidade_min: seqSeveridadeMin,
+      seq_dias_min: seqDiasMin,
+      seq_dias_max: seqDiasMax,
     });
   });
 
@@ -371,6 +437,10 @@ export const useFilterStore = defineStore('filters', () => {
     percentualNaoComprovacaoFilter: percentualNaoComprovacaoFilter.value,
     valorMinSemComp: valorMinSemComp.value,
     valorMinSemCompFilter: valorMinSemCompFilter.value,
+    populacaoMunicipio: populacaoMunicipio.value,
+    seqTipo: seqTipo.value,
+    seqSeveridade: seqSeveridade.value,
+    seqDias: seqDias.value,
     volumeAtipicoEnabled: volumeAtipicoEnabled.value,
     volumeAtipicoPercentual: volumeAtipicoPercentual.value,
     volumeAtipicoPercentualFilter: volumeAtipicoPercentualFilter.value,
@@ -424,6 +494,10 @@ export const useFilterStore = defineStore('filters', () => {
     if (Array.isArray(filters.percentualNaoComprovacaoFilter)) percentualNaoComprovacaoFilter.value = filters.percentualNaoComprovacaoFilter;
     if (typeof filters.valorMinSemComp === 'number') valorMinSemComp.value = filters.valorMinSemComp;
     if (typeof filters.valorMinSemCompFilter === 'number') valorMinSemCompFilter.value = filters.valorMinSemCompFilter;
+    if ('populacaoMunicipio' in filters) populacaoMunicipio.value = normalizePopulacaoMunicipio(filters.populacaoMunicipio);
+    if ('seqTipo' in filters) seqTipo.value = normalizeSeqTipo(filters.seqTipo);
+    if ('seqSeveridade' in filters) seqSeveridade.value = normalizeSeqSeveridade(filters.seqSeveridade);
+    if ('seqDias' in filters) seqDias.value = normalizeSeqDias(filters.seqDias);
     if (typeof filters.volumeAtipicoEnabled === 'boolean') volumeAtipicoEnabled.value = filters.volumeAtipicoEnabled;
     if (typeof filters.volumeAtipicoPercentual === 'number') volumeAtipicoPercentual.value = filters.volumeAtipicoPercentual;
     if (typeof filters.volumeAtipicoPercentualFilter === 'number') {
@@ -548,7 +622,7 @@ export const useFilterStore = defineStore('filters', () => {
   watch(
     [selectedUF, selectedRegiaoSaude, selectedUnidadePf, selectedMunicipio, selectedSituacao, selectedMS, selectedPorte, selectedGrandeRede, selectedParTeia, selectedSocioBeneficio, selectedSocioEsocial, selectedCnaeIncompativel, selectedSocioIdadeAtipica, selectedSocioFalecido, selectedCnpjRaiz,
      percentualNaoComprovacaoRange, percentualNaoComprovacaoFilter,
-     valorMinSemComp, valorMinSemCompFilter, volumeAtipicoEnabled, volumeAtipicoPercentual, volumeAtipicoPercentualFilter, dispersaoUfSemFronteiraEnabled, dispersaoUfSemFronteiraPercentual, periodo, sliderValue,
+     valorMinSemComp, valorMinSemCompFilter, populacaoMunicipio, seqTipo, seqSeveridade, seqDias, volumeAtipicoEnabled, volumeAtipicoPercentual, volumeAtipicoPercentualFilter, dispersaoUfSemFronteiraEnabled, dispersaoUfSemFronteiraPercentual, periodo, sliderValue,
      clusterSelection, statusSelection, rfaSelection, searchTarget],
     saveToStorage,
     { deep: true }
@@ -574,6 +648,10 @@ export const useFilterStore = defineStore('filters', () => {
     percentualNaoComprovacaoFilter.value = [...FILTER_DEFAULTS.PERCENTUAL_RANGE];
     valorMinSemComp.value = FILTER_DEFAULTS.VALOR_MIN;
     valorMinSemCompFilter.value = FILTER_DEFAULTS.VALOR_MIN;
+    populacaoMunicipio.value = [...FILTER_DEFAULTS.POPULACAO_MUNICIPIO_RANGE];
+    seqTipo.value = FILTER_DEFAULTS.SEQ_TIPO;
+    seqSeveridade.value = FILTER_DEFAULTS.SEQ_SEVERIDADE;
+    seqDias.value = [...FILTER_DEFAULTS.SEQ_DIAS_RANGE];
     volumeAtipicoEnabled.value = FILTER_DEFAULTS.VOLUME_ATIPICO_ENABLED;
     volumeAtipicoPercentual.value = FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL;
     volumeAtipicoPercentualFilter.value = FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL;
@@ -661,6 +739,10 @@ export const useFilterStore = defineStore('filters', () => {
     percentualNaoComprovacaoFilter,
     valorMinSemComp,
     valorMinSemCompFilter,
+    populacaoMunicipio,
+    seqTipo,
+    seqSeveridade,
+    seqDias,
     volumeAtipicoEnabled,
     volumeAtipicoPercentual,
     volumeAtipicoPercentualFilter,

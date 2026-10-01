@@ -48,9 +48,11 @@ from ...schemas.analytics import (
     CrmHistoricoFarmaciaSchema,
     CrmHistoricoKpisSchema,
     CrmHistoricoMesSchema,
+    CrmHistoricoP95MesSchema,
     CrmMedicoHistoricoResponse,
 )
 from .crm_analysis import _competencia, _period_bounds
+from .crm_medico_evidencias import evidencias_do_medico
 
 # Farmacia com esta fatia (ou mais) das prescricoes do medico no periodo vira
 # ponto de atencao.
@@ -166,8 +168,6 @@ def _maior_sequencia(competencias: list[int]) -> list[int]:
 
 def pontos_de_atencao(
     *,
-    id_medico: str,
-    localizado_cfm: bool,
     dt_inscricao: object,
     meses_periodo: pl.DataFrame,
     principal: Optional[tuple[float, str]],
@@ -187,17 +187,9 @@ def pontos_de_atencao(
     avaliar_farmacias: False com filtro de farmacia (distancia e
     concentracao precisam de todas as farmacias).
     """
+    # CRM nao localizado no CFM nao e ponto de atencao: o modal (cabecalho) e o
+    # ranking (coluna Medico / CRM) ja mostram essa situacao.
     pontos: list[CrmHistoricoAtencaoSchema] = []
-    if not localizado_cfm:
-        # Fato do CRM (nao do periodo): vem primeiro e vale com ou sem filtro.
-        pontos.append(CrmHistoricoAtencaoSchema(
-            codigo="nao_localizado_cfm",
-            titulo="CRM não localizado no cadastro do CFM",
-            detalhe=(
-                f"O CRM {id_medico} não consta no cadastro do CFM. Sem a data de 1ª inscrição, "
-                "não é possível conferir prescrições anteriores à inscrição."
-            ),
-        ))
     comps_periodo = meses_periodo.get_column("competencia").to_list()
     if isinstance(dt_inscricao, date):
         comp_inscricao = dt_inscricao.year * 100 + dt_inscricao.month
@@ -369,6 +361,12 @@ def get_crm_medico_historico(
     )
     if meses_df.filter(pl.col("p95_taxa_dia").is_null()).height:
         raise HTTPException(status_code=503, detail="Limiar P95 ausente para algum mes do historico do medico.")
+    # P95 de todos os meses do medico, antes do filtro de farmacia (farmacia_mes
+    # continua completa e a coluna de atuacao precisa do P95 de cada mes dela).
+    p95_meses = [
+        CrmHistoricoP95MesSchema(competencia=int(c), p95_taxa_dia=float(p))
+        for c, p in meses_df.select(["competencia", "p95_taxa_dia"]).iter_rows()
+    ]
     # Total do medico no periodo (base do % de cada farmacia na tabela).
     total_medico_periodo = int(meses_df.filter(pl.col("no_periodo")).get_column("nu_prescricoes").sum() or 0)
     if id_cnpj is not None:
@@ -472,8 +470,6 @@ def get_crm_medico_historico(
     # Pontos de atencao (no periodo filtrado)
     principal = farmacias[0] if farmacias else None
     pontos = pontos_de_atencao(
-        id_medico=id_medico,
-        localizado_cfm=bool(info),
         dt_inscricao=dt_inscricao,
         meses_periodo=meses_periodo,
         principal=(
@@ -485,6 +481,9 @@ def get_crm_medico_historico(
         avaliar_farmacias=id_cnpj is None,
     )
 
+    # Mesmas tabelas do painel "Evidencias" (em cache: a consulta do painel as reaproveita).
+    evidencias = evidencias_do_medico(id_medico, inicio, fim, id_cnpj)
+    tem_evidencias = bool(evidencias.unico.height or evidencias.multiplos.height or evidencias.distancia.height)
     return CrmMedicoHistoricoResponse(
         id_medico=id_medico,
         nu_crm=info.get("nu_crm"),
@@ -505,6 +504,8 @@ def get_crm_medico_historico(
             for a, b, c, e in por_farmacia_todas.select(["id_cnpj", "competencia", "nu_prescricoes", "qtd_dias"])
             .sort(["competencia", "id_cnpj"]).iter_rows()
         ],
+        p95_meses=p95_meses,
+        tem_evidencias=tem_evidencias,
         pontos_atencao=pontos,
         limite_concentracao_percentual=LIMITE_CONCENTRACAO_PERCENTUAL,
     )
@@ -638,8 +639,6 @@ def get_crm_medicos_alertas(
         resultado.append(CrmRankingAlertasMedicoSchema(
             id_medico=id_medico,
             pontos_atencao=pontos_de_atencao(
-                id_medico=id_medico,
-                localizado_cfm=bool(info),
                 dt_inscricao=info.get("dt_primeira_inscricao_uf"),
                 meses_periodo=meses_por_medico[(id_medico,)].sort("competencia"),
                 principal=principal_por_medico[id_medico],

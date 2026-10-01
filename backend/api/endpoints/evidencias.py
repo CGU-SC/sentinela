@@ -12,6 +12,7 @@ from ..schemas.evidencias import (
 from ..services.evidencias_export import export_evidencias_xlsx
 from ..services.evidencias import (
     EvidenciaDuplicadaError,
+    EvidenciaForaDaListaError,
     EvidenciaNaoEncontradaError,
     EvidenciasError,
     EvidenciasService,
@@ -25,7 +26,7 @@ CNPJ_PATTERN = r"^\d{14}$"
 def _chamar(operacao, *args):
     try:
         return operacao(*args)
-    except EvidenciaDuplicadaError as exc:
+    except (EvidenciaDuplicadaError, EvidenciaForaDaListaError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except EvidenciaNaoEncontradaError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

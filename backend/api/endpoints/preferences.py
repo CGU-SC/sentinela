@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from typing import Any
 
 from ..schemas.preferences import (
@@ -9,8 +9,10 @@ from ..schemas.preferences import (
     PreferencesRecoveryPayload,
     UiPayload,
     WatchlistPayload,
+    WatchlistUndoPayload,
 )
 from ..services.preferences import PreferencesError, PreferencesService
+from ..services.watchlist_recovery import RemocaoIndisponivelError, WatchlistRecoveryService
 from ..services.analytics.indicator_rules import (
     DEFAULT_AUDIT_HIGH_VALUE,
     DEFAULT_VOLUME_ATIPICO_AUMENTO_MINIMO,
@@ -31,6 +33,8 @@ router = APIRouter()
 def _preferences_call(operation, *args):
     try:
         return operation(*args)
+    except RemocaoIndisponivelError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PreferencesError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -74,7 +78,7 @@ def get_preferences():
 
 @router.put("", response_model=PreferencesSchema)
 def save_preferences(payload: PreferencesSchema):
-    return _preferences_call(PreferencesService.write, payload.model_dump())
+    return _preferences_call(WatchlistRecoveryService.write_preferences, payload.model_dump())
 
 
 @router.put("/filters", response_model=PreferencesSchema)
@@ -84,9 +88,21 @@ def save_filters(payload: FiltersPayload):
 
 @router.put("/watchlist", response_model=PreferencesSchema)
 def save_watchlist(payload: WatchlistPayload):
-    return _preferences_call(PreferencesService.update_watchlist,
+    return _preferences_call(WatchlistRecoveryService.update_watchlist,
         [item.model_dump() for item in payload.interesse]
     )
+
+
+@router.get("/watchlist/ultima-remocao")
+def watchlist_last_removal():
+    """Farmácias da última remoção ainda fora da lista, para o "Desfazer"."""
+    return _preferences_call(WatchlistRecoveryService.last_removal)
+
+
+@router.post("/watchlist/desfazer-remocao", response_model=PreferencesSchema)
+def undo_watchlist_removal(payload: WatchlistUndoPayload):
+    """Devolve só esta farmácia (e suas evidências) da cópia da última remoção."""
+    return _preferences_call(WatchlistRecoveryService.undo_removal, payload.cnpj)
 
 
 @router.put("/ui", response_model=PreferencesSchema)
@@ -112,13 +128,13 @@ def save_nota_tecnica(payload: NotaTecnicaPayload):
 @router.get("/recovery/status")
 def preferences_recovery_status():
     """Expõe apenas existência, validade e contagem, sem CNPJs."""
-    return _preferences_call(PreferencesService.recovery_status)
+    return _preferences_call(WatchlistRecoveryService.recovery_status)
 
 
 @router.post("/recovery", response_model=PreferencesSchema)
-def restore_preferences(payload: PreferencesRecoveryPayload):
-    """Restauração explícita; preserva o arquivo principal anterior."""
-    return _preferences_call(PreferencesService.restore, payload.source)
+def restore_preferences(payload: PreferencesRecoveryPayload, incluir_evidencias_backup: bool = Query(False)):
+    """Restauração explícita da lista e evidências; preserva os arquivos atuais."""
+    return _preferences_call(WatchlistRecoveryService.restore, payload.source, incluir_evidencias_backup)
 
 
 def _metodologia_response() -> dict[str, Any]:

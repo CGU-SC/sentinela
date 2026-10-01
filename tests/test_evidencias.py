@@ -37,6 +37,7 @@ from fastapi.testclient import TestClient
 from backend.api.endpoints import evidencias as evidencias_endpoints
 from backend.api.services.evidencias import (
     EvidenciaDuplicadaError,
+    EvidenciaForaDaListaError,
     EvidenciaNaoEncontradaError,
     EvidenciasError,
     EvidenciasService,
@@ -59,6 +60,11 @@ class EvidenciasBase(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.original_dir = PreferencesService.BASE_DIR
         PreferencesService._set_base_dir(Path(self.temp.name))
+        # Toda evidência pertence a uma farmácia monitorada.
+        PreferencesService._atomic_write(PreferencesService.FILE_PATH, {
+            **PreferencesService.default_preferences(),
+            "watchlist": [{"cnpj": CNPJ_A}, {"cnpj": CNPJ_B}],
+        })
 
     def tearDown(self):
         PreferencesService._set_base_dir(self.original_dir)
@@ -76,6 +82,17 @@ class EvidenciasServiceTests(EvidenciasBase):
         self.assertEqual(a["nota"], "rajada")
         self.assertEqual(len(EvidenciasService.listar()), 2)
         self.assertEqual([i["id"] for i in EvidenciasService.listar(CNPJ_A)], [a["id"]])
+
+    def test_farmacia_fora_da_lista_nao_recebe_evidencia(self):
+        """Outra janela removeu a farmácia: a evidência é recusada, nada é gravado."""
+        PreferencesService._atomic_write(PreferencesService.FILE_PATH, {
+            **PreferencesService.default_preferences(), "watchlist": [{"cnpj": CNPJ_B}],
+        })
+        with self.assertRaises(EvidenciaForaDaListaError):
+            EvidenciasService.criar(dia())
+        self.assertFalse(EvidenciasService._file_path().exists())
+        EvidenciasService.criar(dia(cnpj=CNPJ_B))
+        self.assertEqual(len(EvidenciasService.listar()), 1)
 
     def test_duplicidade_por_tipo(self):
         EvidenciasService.criar(dia())
@@ -156,6 +173,14 @@ class EvidenciasEndpointTests(EvidenciasBase):
         self.assertEqual(self.client.delete(f"/evidencias/{ev['id']}").status_code, 404)
         self.client.post("/evidencias", json=dia())
         self.assertEqual(self.client.delete(f"/evidencias/cnpj/{CNPJ_A}").json(), {"removidas": 1})
+
+    def test_farmacia_fora_da_lista_retorna_409(self):
+        PreferencesService._atomic_write(PreferencesService.FILE_PATH, {
+            **PreferencesService.default_preferences(), "watchlist": [],
+        })
+        r = self.client.post("/evidencias", json=dia())
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("não está nas Farmácias Monitoradas", r.json()["detail"])
 
     def test_validacao_por_tipo(self):
         self.assertEqual(self.client.post("/evidencias", json={**dia(), "tipo": "hora"}).status_code, 422)

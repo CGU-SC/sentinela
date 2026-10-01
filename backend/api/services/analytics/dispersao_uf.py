@@ -1,22 +1,18 @@
 from __future__ import annotations
 
-import threading
-import time
 from datetime import date
 from typing import Optional
 
 import polars as pl
 from fastapi import HTTPException
 
-from data_cache import get_cache_generation, scan_geografico_origem_uf
+from data_cache import scan_geografico_origem_uf
 
+from .cache_geracao import CacheGeracao
 from .geografico import UF_BRASILEIRAS, UF_VIZINHAS
 
 
-_DISPERSAO_CACHE_TTL_SECONDS = 300
-_DISPERSAO_CACHE_MAX_ITEMS = 32
-_DISPERSAO_CACHE_LOCK = threading.Lock()
-_DISPERSAO_ID_CNPJS_CACHE: dict[tuple[object, ...], tuple[float, pl.DataFrame]] = {}
+_DISPERSAO_CACHE = CacheGeracao(max_itens=32, ttl_segundos=300)
 
 
 def _normalize_date(value: date | None) -> str | None:
@@ -31,39 +27,6 @@ def _normalize_percentual(value: float | None) -> float:
             detail="Filtro dispersao_uf_sem_fronteira_limite deve estar entre 0 e 100.",
         )
     return round(percentual, 4)
-
-
-def _cache_key(
-    data_inicio: date | None,
-    data_fim: date | None,
-    percentual_minimo: float | None,
-) -> tuple[object, ...]:
-    return (
-        get_cache_generation(),
-        _normalize_date(data_inicio),
-        _normalize_date(data_fim),
-        _normalize_percentual(percentual_minimo),
-    )
-
-
-def _prune_cache(now: float, generation: object) -> None:
-    stale_keys = [
-        key
-        for key, (created_at, _value) in _DISPERSAO_ID_CNPJS_CACHE.items()
-        if key[0] != generation or now - created_at > _DISPERSAO_CACHE_TTL_SECONDS
-    ]
-    for key in stale_keys:
-        _DISPERSAO_ID_CNPJS_CACHE.pop(key, None)
-
-    if len(_DISPERSAO_ID_CNPJS_CACHE) <= _DISPERSAO_CACHE_MAX_ITEMS:
-        return
-
-    ordered = sorted(
-        _DISPERSAO_ID_CNPJS_CACHE.items(),
-        key=lambda item: item[1][0],
-    )
-    for key, _value in ordered[: len(_DISPERSAO_ID_CNPJS_CACHE) - _DISPERSAO_CACHE_MAX_ITEMS]:
-        _DISPERSAO_ID_CNPJS_CACHE.pop(key, None)
 
 
 def _vizinhanca_df() -> pl.DataFrame:
@@ -148,21 +111,7 @@ def get_dispersao_uf_sem_fronteira_id_cnpjs_df(
     percentual_minimo: Optional[float] = None,
 ) -> pl.DataFrame:
     limite = _normalize_percentual(percentual_minimo)
-    key = _cache_key(data_inicio, data_fim, limite)
-    generation = key[0]
-    now = time.monotonic()
-
-    with _DISPERSAO_CACHE_LOCK:
-        _prune_cache(now, generation)
-        cached = _DISPERSAO_ID_CNPJS_CACHE.get(key)
-        if cached is not None:
-            return cached[1]
-
-    result = _build_dispersao_df(data_inicio, data_fim, limite)
-
-    with _DISPERSAO_CACHE_LOCK:
-        now = time.monotonic()
-        _prune_cache(now, generation)
-        _DISPERSAO_ID_CNPJS_CACHE[key] = (now, result)
-
-    return result
+    return _DISPERSAO_CACHE.obter(
+        (_normalize_date(data_inicio), _normalize_date(data_fim), limite),
+        lambda: _build_dispersao_df(data_inicio, data_fim, limite),
+    )

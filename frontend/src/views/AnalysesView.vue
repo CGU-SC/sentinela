@@ -13,6 +13,7 @@ import AnalysisSidebar from './components/analises/AnalysisSidebar.vue';
 import CrmPrescricoesMap from './components/analises/CrmPrescricoesMap.vue';
 import CrmPrescricoesRanking from './components/analises/CrmPrescricoesRanking.vue';
 import CrmHistoricoDialog from './components/analises/CrmHistoricoDialog.vue';
+import CrmFiltrosAtivos from './components/analises/CrmFiltrosAtivos.vue';
 import KpiSection from './components/KpiSection.vue';
 
 const filterStore = useFilterStore();
@@ -265,6 +266,8 @@ function onRankingSort(event) {
             <span>{{ navigationError }}</span>
           </div>
 
+          <CrmFiltrosAtivos :busca="rankingSearch" @limpar-busca="onRankingSearch('')" />
+
           <CrmPrescricoesMap
             :map-level="mapLevel"
             :map-data="mapData"
@@ -297,7 +300,6 @@ function onRankingSort(event) {
             :page-size="rankingPageSize"
             :sort-field="rankingSortField"
             :sort-order="rankingSortOrder"
-            :search-query="searchInput"
             :applied-query="rankingResponseSearch"
             :tab="rankingTab"
             :mensal="mensalProps"
@@ -308,12 +310,15 @@ function onRankingSort(event) {
             @mensal-sort="onMensalSort"
             @page="onRankingPage"
             @sort="onRankingSort"
-            @search="onRankingSearch"
             @select-medico="abrirHistorico"
           />
         </main>
 
-        <AnalysisSidebar />
+        <AnalysisSidebar
+          :search-query="searchInput"
+          :search-disabled="rankingInitialLoading"
+          @search="onRankingSearch"
+        />
       </div>
     </div>
 
@@ -328,7 +333,7 @@ function onRankingSort(event) {
 </template>
 
 <style scoped>
-.analises-page { --indicator-selector-width: 220px; display: flex; flex-direction: column; gap: 1rem; width: 100%; }
+.analises-page { --indicator-selector-width: 280px; display: flex; flex-direction: column; gap: 1rem; width: 100%; }
 .analises-main { min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 1rem; }
 .analises-layout { display: flex; align-items: flex-start; gap: 1rem; width: 100%; }
 .analysis-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1rem; padding-bottom: 1rem; }

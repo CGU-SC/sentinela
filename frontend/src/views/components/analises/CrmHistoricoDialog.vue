@@ -40,6 +40,8 @@ import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
 import { useFormatting } from '@/composables/useFormatting';
 import CrmAtuacaoDialog from '@/views/components/cnpj/CrmAtuacaoDialog.vue';
+import CrmEvidenciasPanel from '@/views/components/analises/CrmEvidenciasPanel.vue';
+import { CRM_EVIDENCIA_ABA_DO_PONTO } from '@/config/crmEvidencias';
 import MonthRangePicker from '@/views/components/common/MonthRangePicker.vue';
 import { AUDIT_PERIOD } from '@/config/constants';
 
@@ -99,6 +101,13 @@ const COMP_MAX_BASE = AUDIT_PERIOD.END_YEAR * 100 + AUDIT_PERIOD.END_MONTH + 1;
 const periodoModo = ref('analise');
 const personalizado = ref(null); // { inicio, fim } em AAAAMM
 const farmaciaFiltro = ref(null); // id_cnpj
+// Painel "Evidências": aba ativa (os pontos de atenção levam direto a ela).
+const abaEvidencias = ref('unico');
+const painelEvidencias = ref(null);
+function abrirEvidencia(codigo) {
+  const aba = CRM_EVIDENCIA_ABA_DO_PONTO[codigo];
+  if (aba) painelEvidencias.value?.mostrarAba(aba);
+}
 // Cadastro das farmácias já vistas nas respostas (nome da farmácia filtrada
 // mesmo quando ela não atuou no período escolhido).
 const farmaciasConhecidas = ref(new Map());
@@ -109,6 +118,7 @@ function resetFiltros() {
   periodoModo.value = 'analise';
   personalizado.value = null;
   farmaciaFiltro.value = null;
+  abaEvidencias.value = 'unico';
   farmaciasConhecidas.value = new Map();
   ultimaCompetencia.value = null;
 }
@@ -189,6 +199,9 @@ async function carregar() {
     if (controller !== requestController) return;
     if ((data.id_cnpj_filtro ?? null) !== (params.id_cnpj ?? null)) {
       throw new Error('Contrato inválido em crm-medico-historico: farmácia filtrada diferente da solicitada.');
+    }
+    if (typeof data.tem_evidencias !== 'boolean') {
+      throw new Error('Contrato inválido em crm-medico-historico: tem_evidencias ausente.');
     }
     const conhecidas = new Map(farmaciasConhecidas.value);
     for (const f of data.farmacias) conhecidas.set(f.id_cnpj, f);
@@ -428,7 +441,9 @@ const atuacaoPorFarmacia = computed(() => {
   if (!eixo || !d) return mapa;
   const compInicio = compDaData(d.periodo_inicio);
   const compFim = compDaData(d.periodo_fim);
-  const mesPorCompetencia = new Map(d.meses.map((m) => [m.competencia, m]));
+  // P95 de todos os meses do médico (com farmácia filtrada, `meses` traz só os dela).
+  if (!Array.isArray(d.p95_meses)) throw new Error('Contrato inválido em crm-medico-historico: p95_meses ausente.');
+  const mesPorCompetencia = new Map(d.p95_meses.map((m) => [m.competencia, m]));
   const seriePorFarmacia = new Map();
   for (const r of d.farmacia_mes) {
     if (r.competencia < compInicio || r.competencia > compFim) continue;
@@ -450,7 +465,7 @@ const atuacaoPorFarmacia = computed(() => {
       }
       const mes = mesPorCompetencia.get(p.competencia);
       if (!mes) {
-        throw new Error(`Contrato inválido em crm-medico-historico: mês ${p.competencia} sem P95 em meses.`);
+        throw new Error(`Contrato inválido em crm-medico-historico: mês ${p.competencia} sem P95 em p95_meses.`);
       }
       const taxa = Number(p.nu_prescricoes) / dias;
       const altura = crmAlturaAtuacao(taxa / Number(mes.p95_taxa_dia));
@@ -936,16 +951,39 @@ const calorOption = computed(() => {
           <i class="pi pi-info-circle hist-info" v-tooltip.bottom="atencaoTooltip" aria-label="Como os pontos são calculados" />
         </header>
         <ul v-if="dados.pontos_atencao.length" class="hist-atencao">
-          <li v-for="p in dados.pontos_atencao" :key="p.codigo">
+          <li
+            v-for="p in dados.pontos_atencao"
+            :key="p.codigo"
+            :class="{ 'is-evidencia': CRM_EVIDENCIA_ABA_DO_PONTO[p.codigo] }"
+            :role="CRM_EVIDENCIA_ABA_DO_PONTO[p.codigo] ? 'button' : null"
+            :tabindex="CRM_EVIDENCIA_ABA_DO_PONTO[p.codigo] ? 0 : null"
+            :aria-label="CRM_EVIDENCIA_ABA_DO_PONTO[p.codigo] ? `${p.titulo}: ver evidências` : null"
+            @click="abrirEvidencia(p.codigo)"
+            @keydown.enter.prevent="abrirEvidencia(p.codigo)"
+            @keydown.space.prevent="abrirEvidencia(p.codigo)"
+          >
             <i class="pi" :class="CRM_ALERTA_ICONES[p.codigo]" aria-hidden="true" />
             <div>
               <strong>{{ p.titulo }}</strong>
               <span>{{ p.detalhe }}</span>
             </div>
+            <span v-if="CRM_EVIDENCIA_ABA_DO_PONTO[p.codigo]" class="hist-atencao-ver">Ver evidências <i class="pi pi-arrow-down" aria-hidden="true" /></span>
           </li>
         </ul>
         <p v-else class="hist-vazio">Nenhum ponto de atenção no período.</p>
       </section>
+
+      <!-- Evidências: os alertas do CRM em todas as farmácias -->
+      <CrmEvidenciasPanel
+        v-if="dados.tem_evidencias"
+        ref="painelEvidencias"
+        v-model:aba="abaEvidencias"
+        :id-medico="medico.id_medico"
+        :data-inicio="dados.periodo_inicio"
+        :data-fim="dados.periodo_fim"
+        :id-cnpj="dados.id_cnpj_filtro"
+        :cache-version="cacheVersion"
+      />
 
       <!-- Linha do tempo -->
       <section class="hist-panel">
@@ -1252,6 +1290,12 @@ const calorOption = computed(() => {
 .hist-atencao li > i { margin-top: .12rem; color: var(--risk-critical); }
 .hist-atencao strong { display: block; font-size: .76rem; font-weight: 600; color: var(--text-color); }
 .hist-atencao span { font-size: .72rem; color: var(--text-secondary); }
+.hist-atencao li.is-evidencia { position: relative; cursor: pointer; transition: background .15s ease, box-shadow .15s ease; }
+.hist-atencao li.is-evidencia:hover,
+.hist-atencao li.is-evidencia:focus-visible { background: color-mix(in srgb, var(--risk-critical) 11%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--risk-critical) 30%, transparent); outline: none; }
+.hist-atencao .hist-atencao-ver { display: inline-flex; align-items: center; gap: .25rem; margin-left: auto; align-self: center; white-space: nowrap; font-size: .66rem; font-weight: 600; color: var(--primary-color); opacity: .75; }
+.hist-atencao li.is-evidencia:hover .hist-atencao-ver { opacity: 1; }
+.hist-atencao .hist-atencao-ver .pi { font-size: .6rem; }
 
 .hist-legenda { display: flex; flex-wrap: wrap; gap: .35rem 1rem; font-size: .7rem; color: var(--text-secondary); }
 .hist-legenda-item { display: inline-flex; align-items: center; gap: .35rem; }

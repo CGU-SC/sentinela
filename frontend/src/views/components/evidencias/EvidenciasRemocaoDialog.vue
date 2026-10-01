@@ -1,12 +1,10 @@
 <script setup>
 import { computed } from 'vue';
-import { useRouter } from 'vue-router';
 import Dialog from 'primevue/dialog';
 import { useEvidenciasStore } from '@/stores/evidencias';
 
 /** Confirmação global: remover uma farmácia monitorada que tem evidências. */
 const store = useEvidenciasStore();
-const router = useRouter();
 
 const pendente = computed(() => store.remocaoPendente);
 const visivel = computed({
@@ -19,11 +17,6 @@ const quantidadeTexto = computed(() => {
   return `${n} ${n === 1 ? 'evidência marcada' : 'evidências marcadas'}`;
 });
 
-function revisar() {
-  const cnpj = pendente.value?.cnpj;
-  store.responderRemocao(false);
-  router.push({ path: '/listas', query: { aba: 'evidencias', cnpj } });
-}
 </script>
 
 <template>
@@ -53,14 +46,10 @@ function revisar() {
 
     <template #footer>
       <div class="evid-rm-actions">
-        <button type="button" class="evid-rm-btn is-link" @click="revisar">
-          <i class="pi pi-flag" aria-hidden="true" />
-          Revisar evidências
-        </button>
         <span class="evid-rm-spacer" />
         <button type="button" class="evid-rm-btn" @click="store.responderRemocao(false)">Cancelar</button>
         <button type="button" class="evid-rm-btn is-danger" @click="store.responderRemocao(true)">
-          Remover farmácia e evidências
+          Remover
         </button>
       </div>
     </template>
@@ -131,16 +120,6 @@ function revisar() {
 
 .evid-rm-btn:hover {
   border-color: var(--text-muted);
-}
-
-.evid-rm-btn.is-link {
-  border-color: transparent;
-  padding: 0 0.3rem;
-  color: var(--evidence-color);
-}
-
-.evid-rm-btn.is-link:hover {
-  text-decoration: underline;
 }
 
 .evid-rm-btn.is-danger {

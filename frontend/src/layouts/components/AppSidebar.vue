@@ -10,17 +10,23 @@ import {
 import { useFilterStore } from "@/stores/filters";
 import { useGeoStore } from "@/stores/geo";
 import { useSliderPeriodLogic } from "@/composables/useSliderPeriodLogic";
-import { FILTER_OPTIONS } from "@/config/filterOptions";
+import {
+  FILTER_OPTIONS,
+  POPULACAO_MUNICIPIO_ATALHOS,
+  SEQ_DIAS_ATALHOS,
+  SEQ_SEVERIDADES,
+  SEQ_TIPOS,
+} from "@/config/filterOptions";
 import { filterActionTooltip, filterTooltip } from "@/config/filterTooltipConfig";
 import Button from "primevue/button";
 import Checkbox from "primevue/checkbox";
 import Dropdown from "primevue/dropdown";
-import Slider from "primevue/slider";
 import InputText from "primevue/inputtext";
 import AutoComplete from "primevue/autocomplete";
 import DataIntegrityBanner from "@/layouts/components/DataIntegrityBanner.vue";
 import MonthRangePicker from "@/views/components/common/MonthRangePicker.vue";
 import NumberRangePicker from "@/views/components/common/NumberRangePicker.vue";
+import OptionPicker from "@/views/components/common/OptionPicker.vue";
 
 const props = defineProps({
   activeModule: { type: String, required: true },
@@ -178,6 +184,7 @@ const filterTooltips = Object.freeze({
   percentual: filterTooltip("percentual"),
   periodo: filterTooltip("periodo"),
   valorMin: filterTooltip("valorMin"),
+  populacaoMunicipio: filterTooltip("populacaoMunicipio"),
   parTeia: filterTooltip("parTeia"),
   cnaeIncompativel: filterTooltip("cnaeIncompativel"),
   socioIdadeAtipica: filterTooltip("socioIdadeAtipica"),
@@ -186,6 +193,7 @@ const filterTooltips = Object.freeze({
   socioEsocial: filterTooltip("socioEsocial"),
   dispersaoUfSemFronteira: filterTooltip("dispersaoUfSemFronteira"),
   volumeAtipico: filterTooltip("volumeAtipico"),
+  seq: filterTooltip("seq"),
 });
 
 const activeFiltersTooltip = computed(() =>
@@ -351,86 +359,94 @@ function aplicarValorMin([valor]) {
   applyValorMinSemComp();
 }
 
-const volumeAtipicoQuickSelect = [50, 500, 1000, 1500];
+// População do município (seletor com atalhos de porte + faixa aberta).
+const formatarHabitantes = (valor) => Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+const populacaoRotulo = computed(() => {
+  const [min, max] = filterStore.populacaoMunicipio;
+  const atalho = POPULACAO_MUNICIPIO_ATALHOS.find((a) => a.faixa[0] === min && a.faixa[1] === max);
+  if (atalho) return atalho.label;
+  if (max === null) return `≥ ${formatarHabitantes(min)} hab.`;
+  if (min === null) return `≤ ${formatarHabitantes(max)} hab.`;
+  return `${formatarHabitantes(min)} a ${formatarHabitantes(max)} hab.`;
+});
+function aplicarPopulacao([min, max]) {
+  filterStore.populacaoMunicipio = [min, max];
+}
 
-const clampVolumeAtipico = (value) => {
-  const numeric = Number(value) || FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL;
-  return Math.max(
-    FILTER_DEFAULTS.VOLUME_ATIPICO_MIN,
-    Math.min(FILTER_DEFAULTS.VOLUME_ATIPICO_MAX, numeric),
-  );
-};
+// Autorizações em sequência na farmácia (tipo + severidade mínima + faixa de dias).
+const seqDiasRotulo = computed(() => {
+  const [min, max] = filterStore.seqDias;
+  const atalho = SEQ_DIAS_ATALHOS.find((a) => a.faixa[0] === min && a.faixa[1] === max);
+  if (atalho) return atalho.label;
+  const fmt = (v) => Number(v).toLocaleString("pt-BR");
+  if (min !== null && min === max) return `= ${fmt(min)}`;
+  if (max === null) return `≥ ${fmt(min)}`;
+  if (min === null) return `≤ ${fmt(max)}`;
+  return `${fmt(min)} a ${fmt(max)}`;
+});
+const seqAtivo = computed(() => isFilterActive("seqSeveridade") || isFilterActive("seqDias"));
+function limparSeq() {
+  filterStore.seqTipo = FILTER_DEFAULTS.SEQ_TIPO;
+  filterStore.seqSeveridade = FILTER_DEFAULTS.SEQ_SEVERIDADE;
+  filterStore.seqDias = [...FILTER_DEFAULTS.SEQ_DIAS_RANGE];
+}
 
-const applyVolumeAtipico = () => {
+// Aumento semestral atípico (seletor de limite único; [0] = desligado).
+const formatarPercentual = (valor) => `${Number(valor).toLocaleString("pt-BR")}%`;
+const volumeAtipicoAtalhos = [
+  { value: "desligado", label: "Desligado", faixa: [0] },
+  ...[50, 500, 1000, 1500].map((v) => ({ value: `min-${v}`, label: `≥ ${formatarPercentual(v)}`, faixa: [v] })),
+];
+const volumeAtipicoValor = computed(() => (
+  filterStore.volumeAtipicoEnabled ? [filterStore.volumeAtipicoPercentualFilter] : [0]
+));
+const volumeAtipicoRotulo = computed(() => (
+  filterStore.volumeAtipicoEnabled ? `≥ ${formatarPercentual(filterStore.volumeAtipicoPercentualFilter)}` : "Desligado"
+));
+function aplicarVolumeAtipico([valor]) {
+  if (valor === 0) {
+    clearVolumeAtipico();
+    return;
+  }
   filterStore.volumeAtipicoEnabled = true;
-  const clamped = clampVolumeAtipico(
-    filterStore.volumeAtipicoPercentual,
-  );
-  filterStore.volumeAtipicoPercentual = clamped;
-  filterStore.volumeAtipicoPercentualFilter = clamped;
-};
+  filterStore.volumeAtipicoPercentual = valor;
+  filterStore.volumeAtipicoPercentualFilter = valor;
+}
 
-const setVolumeAtipico = (value) => {
-  filterStore.volumeAtipicoEnabled = true;
-  const clamped = clampVolumeAtipico(value);
-  filterStore.volumeAtipicoPercentual = clamped;
-  filterStore.volumeAtipicoPercentualFilter = clamped;
-};
-
-const stepVolumeAtipico = (delta) => {
-  filterStore.volumeAtipicoEnabled = true;
-  const clamped = clampVolumeAtipico(
-    filterStore.volumeAtipicoPercentual + delta,
-  );
-  filterStore.volumeAtipicoPercentual = clamped;
-  filterStore.volumeAtipicoPercentualFilter = clamped;
-};
-
-const clearVolumeAtipico = () => {
+function clearVolumeAtipico() {
   filterStore.volumeAtipicoEnabled = FILTER_DEFAULTS.VOLUME_ATIPICO_ENABLED;
   filterStore.volumeAtipicoPercentual =
     FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL;
   filterStore.volumeAtipicoPercentualFilter =
     FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL;
-};
+}
 
-const dispersaoUfQuickSelect = [10, 20, 30, 50];
-
-const clampDispersaoUfSemFronteira = (value) => {
-  const numeric = Number(value) || FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_PERCENTUAL;
-  return Math.max(
-    FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_MIN,
-    Math.min(FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_MAX, numeric),
-  );
-};
-
-const applyDispersaoUfSemFronteira = () => {
+// Vendas para UFs sem fronteira (seletor de limite único; [0] = desligado).
+const dispersaoUfAtalhos = [
+  { value: "desligado", label: "Desligado", faixa: [0] },
+  ...[10, 20, 30, 50].map((v) => ({ value: `min-${v}`, label: `≥ ${v}%`, faixa: [v] })),
+];
+const dispersaoUfValor = computed(() => (
+  filterStore.dispersaoUfSemFronteiraEnabled ? [filterStore.dispersaoUfSemFronteiraPercentual] : [0]
+));
+const dispersaoUfRotulo = computed(() => (
+  filterStore.dispersaoUfSemFronteiraEnabled ? `≥ ${filterStore.dispersaoUfSemFronteiraPercentual}%` : "Desligado"
+));
+function aplicarDispersaoUf([valor]) {
+  if (valor === 0) {
+    clearDispersaoUfSemFronteira();
+    return;
+  }
   filterStore.dispersaoUfSemFronteiraEnabled = true;
-  filterStore.dispersaoUfSemFronteiraPercentual = clampDispersaoUfSemFronteira(
-    filterStore.dispersaoUfSemFronteiraPercentual,
-  );
-};
+  filterStore.dispersaoUfSemFronteiraPercentual = valor;
+}
 
-const setDispersaoUfSemFronteira = (value) => {
-  filterStore.dispersaoUfSemFronteiraEnabled = true;
-  filterStore.dispersaoUfSemFronteiraPercentual =
-    clampDispersaoUfSemFronteira(value);
-};
-
-const stepDispersaoUfSemFronteira = (delta) => {
-  filterStore.dispersaoUfSemFronteiraEnabled = true;
-  filterStore.dispersaoUfSemFronteiraPercentual =
-    clampDispersaoUfSemFronteira(
-      filterStore.dispersaoUfSemFronteiraPercentual + delta,
-    );
-};
-
-const clearDispersaoUfSemFronteira = () => {
+function clearDispersaoUfSemFronteira() {
   filterStore.dispersaoUfSemFronteiraEnabled =
     FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_ENABLED;
   filterStore.dispersaoUfSemFronteiraPercentual =
     FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_PERCENTUAL;
-};
+}
 
 // Força foco no campo de busca do Dropdown ao abrir
 const onDropdownShow = () => {
@@ -461,6 +477,9 @@ const isFilterActive = (field) => {
     selectedCnpjRaiz: "",
     percentualNaoComprovacaoRange: FILTER_DEFAULTS.PERCENTUAL_RANGE,
     valorMinSemComp: FILTER_DEFAULTS.VALOR_MIN,
+    populacaoMunicipio: FILTER_DEFAULTS.POPULACAO_MUNICIPIO_RANGE,
+    seqSeveridade: FILTER_DEFAULTS.SEQ_SEVERIDADE,
+    seqDias: FILTER_DEFAULTS.SEQ_DIAS_RANGE,
     volumeAtipicoEnabled: FILTER_DEFAULTS.VOLUME_ATIPICO_ENABLED,
     volumeAtipicoPercentual: FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL,
     dispersaoUfSemFronteiraEnabled: FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_ENABLED,
@@ -509,7 +528,10 @@ const activeFilterCount = computed(() => {
     "selectedCnpjRaiz",
     "percentualNaoComprovacaoRange",
     "valorMinSemComp",
+    "populacaoMunicipio",
     "volumeAtipicoEnabled",
+    "seqSeveridade",
+    "seqDias",
     "sliderValue",
     "clusterSelection",
     "rfaSelection",
@@ -535,6 +557,7 @@ const generalFilterCount = computed(() =>
     "sliderValue",
     "percentualNaoComprovacaoRange",
     "valorMinSemComp",
+    "populacaoMunicipio",
   ]),
 );
 
@@ -548,6 +571,8 @@ const integrityFilterCount = computed(() =>
     "selectedSocioFalecido",
     "dispersaoUfSemFronteiraEnabled",
     "volumeAtipicoEnabled",
+    "seqSeveridade",
+    "seqDias",
   ]),
 );
 
@@ -655,9 +680,11 @@ const FILTER_INDEX = [
   { id: "socioBeneficio", section: "integridade", label: "Sócio no CadÚnico/Defeso", keywords: "socio beneficio bolsa familia cadunico seguro defeso pobreza" },
   { id: "socioEsocial", section: "integridade", label: "Sócio com Vínculo eSocial", keywords: "socio esocial vinculo emprego clt vinculo trabalhista" },
   { id: "dispersaoUf", section: "integridade", label: "Vendas para UFs sem Fronteira", keywords: "dispersao uf sem fronteira geografica distancia venda autorizado" },
+  { id: "seq", section: "integridade", label: "Autorizações em sequência", keywords: "sequencia rajada surto unico multiplos crms autorizacoes minutos alerta severidade" },
   { id: "volumeAtipico", section: "integridade", label: "Aumento Semestral Atípico", keywords: "volume atipico crescimento semestral faturamento auditoria aumento anomalo" },
   { id: "percentual", section: "geral", label: "% de não comprovação", keywords: "percentual nao comprovacao risco faixa auditoria" },
   { id: "slider", section: "geral", label: "Período de Análise", keywords: "periodo slider semestral mensal tempo data" },
+  { id: "populacao", section: "geral", label: "População do município", keywords: "populacao habitantes municipio porte pequeno medio grande metropole ibge" },
   { id: "valorMin", section: "geral", label: "Valor Mínimo sem Comprovação", keywords: "valor minimo sem comprovacao reais auditoria financeiro ticket" },
   { id: "busca", section: "geral", label: "Busca Alvo", keywords: "cpf/cnpj alvo busca id cnpj pesquisar rede", routes: ["/alvos/cluster", "/alvos/rede"] },
   { id: "cluster", section: "geral", label: "Target Cluster", keywords: "cluster agrupamento kmeans segmento", routes: ["/alvos/cluster"] },
@@ -1268,6 +1295,50 @@ const clearSearch = () => {
       </div>
 
       <div
+        v-show="shouldDisplayFilter('geral', 'populacao')"
+        class="filter-section"
+        :class="{ 'filter-locked': allFiltersLocked }"
+      >
+        <label class="filter-label">
+          População do município
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro População do município"
+            v-tooltip.right="filterTooltips.populacaoMunicipio"
+          />
+          <button
+            v-if="isFilterActive('populacaoMunicipio')"
+            class="filter-clear-btn"
+            @click="aplicarPopulacao([null, null])"
+            v-tooltip.right="filterTooltips.clear"
+          >
+            <i class="pi pi-eraser" />
+          </button>
+        </label>
+        <div
+          class="slider-container"
+          :class="{ 'filter-active-box': isFilterActive('populacaoMunicipio') }"
+        >
+          <NumberRangePicker
+            aberto
+            :valor="filterStore.populacaoMunicipio"
+            :min="0"
+            :max="Infinity"
+            :passo="10000"
+            :formatar="formatarHabitantes"
+            sufixo="hab."
+            icone="pi-users"
+            :atalhos="POPULACAO_MUNICIPIO_ATALHOS"
+            :rotulo="populacaoRotulo"
+            :disabled="allFiltersLocked"
+            @select-range="aplicarPopulacao"
+          />
+        </div>
+      </div>
+
+      <div
         v-show="shouldDisplayFilter('geral', 'valorMin')"
         class="filter-section"
         :class="{ 'filter-locked': allFiltersLocked }"
@@ -1637,55 +1708,75 @@ const clearSearch = () => {
           class="slider-container"
           :class="{ 'filter-active-box': isFilterActive('dispersaoUfSemFronteiraEnabled') }"
         >
-          <div class="perc-chips" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 0.5rem">
-            <button
-              v-for="value in dispersaoUfQuickSelect"
-              :key="value"
-              class="perc-chip"
-              :class="{
-                active:
-                  filterStore.dispersaoUfSemFronteiraEnabled &&
-                  filterStore.dispersaoUfSemFronteiraPercentual === value,
-              }"
-              @click="setDispersaoUfSemFronteira(value)"
-            >
-              {{ value }}%
-            </button>
-          </div>
-
-          <div class="period-steppers">
-            <button
-              class="period-step-btn"
-              @click="stepDispersaoUfSemFronteira(-1)"
-              :disabled="
-                filterStore.dispersaoUfSemFronteiraPercentual <=
-                FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_MIN
-              "
-            >
-              <i class="pi pi-minus" />
-            </button>
-            <span class="period-label percent-label">
-              mínimo {{ filterStore.dispersaoUfSemFronteiraPercentual }}%
-            </span>
-            <button
-              class="period-step-btn"
-              @click="stepDispersaoUfSemFronteira(1)"
-              :disabled="
-                filterStore.dispersaoUfSemFronteiraPercentual >=
-                FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_MAX
-              "
-            >
-              <i class="pi pi-plus" />
-            </button>
-          </div>
-
-          <Slider
-            v-model="filterStore.dispersaoUfSemFronteiraPercentual"
+          <NumberRangePicker
+            unico
+            :valor="dispersaoUfValor"
+            :sugestao="filterStore.dispersaoUfSemFronteiraEnabled ? null : [FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_PERCENTUAL]"
             :min="FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_MIN"
             :max="FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_MAX"
-            :step="1"
-            class="custom-slider"
-            @slideend="applyDispersaoUfSemFronteira"
+            sufixo="%"
+            rotulo-personalizado="Mínimo personalizado"
+            :atalhos="dispersaoUfAtalhos"
+            :rotulo="dispersaoUfRotulo"
+            :disabled="allFiltersLocked"
+            @select-range="aplicarDispersaoUf"
+          />
+        </div>
+      </div>
+
+      <div
+        v-show="shouldDisplayFilter('integridade', 'seq')"
+        class="filter-section"
+        :class="{ 'filter-locked': allFiltersLocked }"
+      >
+        <label class="filter-label">
+          Autorizações em sequência
+          <i
+            class="pi pi-info-circle filter-info-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Autorizações em sequência"
+            v-tooltip.right="filterTooltips.seq"
+          />
+          <button
+            v-if="seqAtivo"
+            class="filter-clear-btn"
+            @click="limparSeq"
+            v-tooltip.right="filterTooltips.clear"
+          >
+            <i class="pi pi-eraser" />
+          </button>
+        </label>
+        <div class="slider-container seq-filtro" :class="{ 'filter-active-box': seqAtivo }">
+          <span class="seq-filtro-rotulo">Tipo</span>
+          <OptionPicker
+            :valor="filterStore.seqTipo"
+            :opcoes="SEQ_TIPOS"
+            rotulo-acessivel="Tipo das autorizações em sequência"
+            :disabled="allFiltersLocked"
+            @select="filterStore.seqTipo = $event"
+          />
+          <span class="seq-filtro-rotulo">Severidade mínima</span>
+          <OptionPicker
+            :valor="filterStore.seqSeveridade"
+            :opcoes="SEQ_SEVERIDADES"
+            rotulo-acessivel="Severidade mínima das autorizações em sequência"
+            :disabled="allFiltersLocked"
+            @select="filterStore.seqSeveridade = $event"
+          />
+          <span class="seq-filtro-rotulo">Dias com sequência</span>
+          <NumberRangePicker
+            aberto
+            :valor="filterStore.seqDias"
+            :min="0"
+            :max="Infinity"
+            :passo="1"
+            :formatar="(v) => Number(v).toLocaleString('pt-BR')"
+            icone="pi-calendar"
+            :atalhos="SEQ_DIAS_ATALHOS"
+            :rotulo="seqDiasRotulo"
+            :disabled="allFiltersLocked"
+            @select-range="filterStore.seqDias = $event"
           />
         </div>
       </div>
@@ -1714,58 +1805,20 @@ const clearSearch = () => {
           class="slider-container"
           :class="{ 'filter-active-box': isFilterActive('volumeAtipicoEnabled') }"
         >
-          <div
-            class="perc-chips"
-            style="grid-template-columns: repeat(4, 1fr); margin-bottom: 0.5rem"
-          >
-            <button
-              v-for="value in volumeAtipicoQuickSelect"
-              :key="value"
-              class="perc-chip"
-              :class="{
-                'perc-chip-active':
-                  filterStore.volumeAtipicoEnabled &&
-                  filterStore.volumeAtipicoPercentual === value,
-              }"
-              @click="setVolumeAtipico(value)"
-            >
-              {{ value }}%
-            </button>
-          </div>
-          <div class="period-steppers">
-            <div class="period-stepper-group">
-              <button
-                class="period-step-btn"
-                :disabled="
-                  filterStore.volumeAtipicoPercentual <=
-                  FILTER_DEFAULTS.VOLUME_ATIPICO_MIN
-                "
-                @click="stepVolumeAtipico(-10)"
-              >
-                <i class="pi pi-chevron-left" />
-              </button>
-              <span class="period-step-label">
-                {{ filterStore.volumeAtipicoPercentual }}%
-              </span>
-              <button
-                class="period-step-btn"
-                :disabled="
-                  filterStore.volumeAtipicoPercentual >=
-                  FILTER_DEFAULTS.VOLUME_ATIPICO_MAX
-                "
-                @click="stepVolumeAtipico(10)"
-              >
-                <i class="pi pi-chevron-right" />
-              </button>
-            </div>
-          </div>
-          <Slider
-            v-model="filterStore.volumeAtipicoPercentual"
+          <NumberRangePicker
+            unico
+            :valor="volumeAtipicoValor"
+            :sugestao="filterStore.volumeAtipicoEnabled ? null : [FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL]"
             :min="FILTER_DEFAULTS.VOLUME_ATIPICO_MIN"
             :max="FILTER_DEFAULTS.VOLUME_ATIPICO_MAX"
-            :step="10"
-            class="w-full"
-            @slideend="applyVolumeAtipico"
+            :passo="10"
+            :formatar="formatarPercentual"
+            sufixo="%"
+            rotulo-personalizado="Mínimo personalizado"
+            :atalhos="volumeAtipicoAtalhos"
+            :rotulo="volumeAtipicoRotulo"
+            :disabled="volumeAtipicoFilterLocked"
+            @select-range="aplicarVolumeAtipico"
           />
         </div>
       </div>
@@ -1793,6 +1846,12 @@ const clearSearch = () => {
 </template>
 
 <style scoped>
+/* Autorizações em sequência: tipo, severidade e dias, empilhados. */
+.seq-filtro { display: flex; flex-direction: column; gap: 0.35rem; }
+.seq-filtro :deep(.rp-gatilho) { width: 100%; }
+.seq-filtro-rotulo { color: var(--text-muted); font-size: 0.68rem; font-weight: 500; }
+.seq-filtro-rotulo + .rp-gatilho, .seq-filtro-rotulo:not(:first-child) { margin-top: 0.15rem; }
+
 /* SIDEBAR */
 .admin-sidebar {
   position: fixed;
@@ -2485,48 +2544,7 @@ const clearSearch = () => {
 }
 
 
-.perc-chips {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 0.3rem;
-  margin-bottom: 0.5rem;
-}
-
-.perc-chip {
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 0.28rem 0;
-  border-radius: 6px;
-  border: 1px solid var(--sidebar-border);
-  color: var(--sidebar-text);
-  background: var(--sidebar-input-bg);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-}
-
-.perc-chip:hover {
-  border-color: color-mix(in srgb, var(--sidebar-text) 35%, var(--sidebar-border));
-  color: var(--sidebar-text);
-  background: var(--sidebar-input-bg);
-}
-
-.perc-chip:focus {
-  outline: none;
-}
-
-.perc-chip-active {
-  border-color: var(--filter-active-color) !important;
-  color: var(--filter-active-color) !important;
-  background: color-mix(
-    in srgb,
-    var(--filter-active-color) 14%,
-    transparent
-  ) !important;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--filter-active-color) 20%, transparent);
-}
-
-/* Seletor do Período de Análise: mesmo padrão dos campos da sidebar. */
+/* Seletores da sidebar (período, faixas, opções): mesmo padrão dos campos. */
 .slider-container :deep(.rp-gatilho) {
   width: 100%;
   height: 32px;
@@ -2547,109 +2565,6 @@ const clearSearch = () => {
 
 .filter-input {
   margin-bottom: 4px !important;
-}
-
-.period-steppers {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-  gap: 0.25rem;
-}
-
-.period-stepper-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: 1;
-}
-
-.period-step-label {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--sidebar-text);
-  background: var(--sidebar-input-bg);
-  border: 1px solid var(--sidebar-border);
-  border-radius: 4px;
-  padding: 2px 6px;
-  min-width: 62px;
-  flex: 1;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.period-step-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 4px;
-  background: var(--sidebar-input-bg);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s,
-    border-color 0.15s;
-  flex-shrink: 0;
-}
-
-.period-step-btn i {
-  font-size: 0.55rem;
-}
-
-.period-step-btn:hover:not(:disabled) {
-  background: color-mix(
-    in srgb,
-    var(--primary-color) 12%,
-    var(--sidebar-input-bg)
-  );
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-}
-
-.period-step-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-:deep(.p-slider) {
-  background: var(--sidebar-border);
-  height: 4px !important;
-}
-
-:deep(.p-slider .p-slider-range) {
-  background: var(--sidebar-border) !important;
-}
-
-:deep(.p-slider-handle) {
-  border: 2px solid var(--accent-indigo) !important;
-  background: var(--sidebar-bg) !important;
-  width: 14px !important;
-  height: 14px !important;
-  margin-top: -6px !important;
-  transition:
-    background 0.2s,
-    box-shadow 0.2s;
-}
-
-:deep(.p-slider:not(.p-disabled) .p-slider-handle:hover) {
-  background: var(--accent-indigo) !important;
-  box-shadow: 0 0 0 6px
-    color-mix(in srgb, var(--accent-indigo) 20%, transparent) !important;
-}
-
-.filter-active-box :deep(.p-slider-handle) {
-  border-color: var(--filter-active-color) !important;
-}
-
-.filter-active-box :deep(.p-slider:not(.p-disabled) .p-slider-handle:hover) {
-  background: var(--filter-active-color) !important;
-  box-shadow: 0 0 0 6px
-    color-mix(in srgb, var(--filter-active-color) 20%, transparent) !important;
 }
 
 /* FILTROS ATIVOS */

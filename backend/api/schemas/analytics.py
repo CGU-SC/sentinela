@@ -586,6 +586,8 @@ class CrmPrescricoesAnaliseResponse(BaseModel):
     min_medicos_amostra_municipio: Optional[int] = None
     # True quando algum filtro de farmacia (alem de periodo e localizacao) esta ativo.
     filtro_farmacias_ativo: bool = False
+    # True quando algum filtro de medico (Cadastro CFM) esta ativo.
+    filtro_medicos_ativo: bool = False
 
 
 class CrmPrescricoesMensalItemSchema(BaseModel):
@@ -618,6 +620,7 @@ class CrmPrescricoesMensalResponse(BaseModel):
     page_size: int
     linhas: List[CrmPrescricoesMensalItemSchema]
     filtro_farmacias_ativo: bool = False
+    filtro_medicos_ativo: bool = False
 
 
 class CrmSerieMensalMesSchema(BaseModel):
@@ -692,6 +695,11 @@ class CrmHistoricoFarmaciaMesSchema(BaseModel):
     qtd_dias_com_prescricao: int
 
 
+class CrmHistoricoP95MesSchema(BaseModel):
+    competencia: int
+    p95_taxa_dia: float
+
+
 class CrmHistoricoKpisSchema(BaseModel):
     nu_prescricoes: int
     qtd_dias_com_prescricao: int
@@ -714,7 +722,7 @@ class CrmHistoricoKpisSchema(BaseModel):
 class CrmHistoricoAtencaoSchema(BaseModel):
     """Fato calculado que merece atencao do auditor (sem juizo de valor)."""
     codigo: Literal[
-        "nao_localizado_cfm", "antes_inscricao", "rajadas_unico", "distancia",
+        "antes_inscricao", "rajadas_unico", "distancia",
         "sequencia_alta", "concentracao",
     ]
     titulo: str
@@ -762,8 +770,133 @@ class CrmMedicoHistoricoResponse(BaseModel):
     farmacias: List[CrmHistoricoFarmaciaSchema]
     # Farmacia x mes no historico completo (para empilhar e o mapa de calor).
     farmacia_mes: List[CrmHistoricoFarmaciaMesSchema]
+    # P95 nacional de todos os meses do medico (mesmo com farmacia filtrada, quando
+    # `meses` traz so os meses dela): a coluna de atuacao desenha todas as farmacias.
+    p95_meses: List[CrmHistoricoP95MesSchema]
+    # Ha alguma evidencia no periodo (sequencia de unico CRM, de multiplos CRMs
+    # ou farmacias distantes)? O painel "Evidencias" so e montado quando houver.
+    tem_evidencias: bool
     pontos_atencao: List[CrmHistoricoAtencaoSchema]
     limite_concentracao_percentual: float
+
+
+# ── Evidencias do CRM (painel do historico em /analises) ─────────────────────
+class _CrmEvidenciaFarmaciaSchema(BaseModel):
+    id_cnpj: int
+    cnpj: str
+    razao_social: Optional[str] = None
+    municipio: str
+    uf: str
+
+
+class CrmEvidenciaUnicoSchema(_CrmEvidenciaFarmaciaSchema):
+    """Uma janela de autorizacoes em sequencia do proprio CRM numa farmacia."""
+    dt: str
+    hr_janela: Optional[int] = None
+    dt_ini_hora: Optional[datetime] = None
+    dt_fim_hora: Optional[datetime] = None
+    nu_autorizacoes: int
+    nu_minutos: Optional[int] = None
+    taxa_hora: Optional[float] = None
+    id_severidade: int
+
+
+class CrmEvidenciaMultiplosSchema(_CrmEvidenciaFarmaciaSchema):
+    """Janela de autorizacoes em sequencia com varios CRMs em que o medico autorizou."""
+    dt: str
+    hr_janela: Optional[int] = None
+    dt_ini_hora: datetime
+    dt_fim_hora: datetime
+    nu_autorizacoes_crm: int
+    nu_autorizacoes_total: int
+    nu_crms: Optional[int] = None
+    nu_minutos: Optional[int] = None
+    taxa_hora: Optional[float] = None
+    id_severidade: int
+
+
+class CrmEvidenciaDistanciaSchema(BaseModel):
+    """Par de farmacias distantes com prescricao do CRM no mesmo mes."""
+    competencia: int
+    cnpj_a: str
+    razao_social_a: Optional[str] = None
+    no_municipio_a: str
+    sg_uf_a: str
+    dt_ini_a: Optional[str] = None
+    dt_fim_a: Optional[str] = None
+    nu_prescricoes_a: Optional[int] = None
+    vl_autorizacoes_a: Optional[float] = None
+    cnpj_b: str
+    razao_social_b: Optional[str] = None
+    no_municipio_b: str
+    sg_uf_b: str
+    dt_ini_b: Optional[str] = None
+    dt_fim_b: Optional[str] = None
+    nu_prescricoes_b: Optional[int] = None
+    vl_autorizacoes_b: Optional[float] = None
+    vl_autorizacoes_total: Optional[float] = None
+    distancia_km: float
+
+
+class CrmEvidenciasResumoSequenciaSchema(BaseModel):
+    qtd_alertas: int
+    qtd_dias: int
+    qtd_farmacias: int
+    pior_severidade: Optional[int] = None
+    # id_severidade ("1".."4") -> numero de janelas
+    por_severidade: Dict[str, int]
+
+
+class CrmEvidenciasResumoDistanciaSchema(BaseModel):
+    qtd_pares: int
+    qtd_meses: int
+    maior_distancia_km: Optional[float] = None
+
+
+class CrmEvidenciasResponse(BaseModel):
+    id_medico: str
+    periodo_inicio: date
+    periodo_fim: date
+    id_cnpj: Optional[int] = None
+    tipo: Literal["unico", "multiplos", "distancia"]
+    # Resumos das tres abas (contadores das abas e chips de severidade).
+    resumo_unico: CrmEvidenciasResumoSequenciaSchema
+    resumo_multiplos: CrmEvidenciasResumoSequenciaSchema
+    resumo_distancia: CrmEvidenciasResumoDistanciaSchema
+    # Linhas da aba pedida, depois do filtro de severidade (total) e paginadas.
+    total: int
+    page: int
+    page_size: int
+    linhas_unico: List[CrmEvidenciaUnicoSchema] = []
+    linhas_multiplos: List[CrmEvidenciaMultiplosSchema] = []
+    linhas_distancia: List[CrmEvidenciaDistanciaSchema] = []
+
+
+class CrmEvidenciaAutorizacaoSchema(BaseModel):
+    data_hora: datetime
+    num_autorizacao: str
+    id_medico: str
+    no_medico: Optional[str] = None
+    valor_pago: Optional[float] = None
+    # Autorizacao do CRM consultado (as demais sao de outros CRMs na janela).
+    do_crm: bool
+
+
+class CrmEvidenciaAutorizacoesResponse(BaseModel):
+    """Autorizacoes de uma janela de sequencia numa farmacia (Raio-X)."""
+    id_cnpj: int
+    cnpj: str
+    razao_social: Optional[str] = None
+    municipio: str
+    uf: str
+    id_medico: str
+    inicio: datetime
+    fim: datetime
+    qtd_autorizacoes: int
+    qtd_autorizacoes_crm: int
+    qtd_crms: int
+    valor_total: float
+    autorizacoes: List[CrmEvidenciaAutorizacaoSchema]
 
 
 class PrescritoresResponse(BaseModel):

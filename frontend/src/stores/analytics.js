@@ -46,6 +46,12 @@ export function buildAnalyticsParams(filters = {}) {
     cnaeIncompativel = false,
     socioIdadeAtipica = false,
     socioFalecido = false,
+    populacaoMin = null,
+    populacaoMax = null,
+    seqTipo = null,
+    seqSeveridadeMin = null,
+    seqDiasMin = null,
+    seqDiasMax = null,
     volumeAtipicoEnabled = false,
     volumeAtipicoPercentual = null,
     dispersaoUfSemFronteiraEnabled = false,
@@ -74,6 +80,14 @@ export function buildAnalyticsParams(filters = {}) {
   if (cnaeIncompativel) params.cnae_incompativel = cnaeIncompativel;
   if (socioIdadeAtipica) params.socio_idade_atipica = socioIdadeAtipica;
   if (socioFalecido) params.socio_falecido = socioFalecido;
+  if (populacaoMin !== null && populacaoMin !== undefined) params.populacao_min = populacaoMin;
+  if (populacaoMax !== null && populacaoMax !== undefined) params.populacao_max = populacaoMax;
+  if (seqTipo) params.seq_tipo = seqTipo;
+  if (seqSeveridadeMin !== null && seqSeveridadeMin !== undefined) {
+    params.seq_severidade_min = seqSeveridadeMin;
+  }
+  if (seqDiasMin !== null && seqDiasMin !== undefined) params.seq_dias_min = seqDiasMin;
+  if (seqDiasMax !== null && seqDiasMax !== undefined) params.seq_dias_max = seqDiasMax;
   if (volumeAtipicoEnabled) {
     params.volume_atipico = true;
     if (volumeAtipicoPercentual !== null && volumeAtipicoPercentual !== undefined) {
@@ -147,6 +161,7 @@ export const useAnalyticsStore = defineStore('analytics', {
     isLoading: false,
     fatorRiscoLoading: false,
     producaoSemestralLoading: false,
+    producaoSemestralError: null,
     error: null,
     lastSync: null,
     // Chave (JSON dos parâmetros) com que cada seção foi carregada: "KPIs
@@ -323,6 +338,7 @@ export const useAnalyticsStore = defineStore('analytics', {
       producaoSemestralAbortController = new AbortController();
 
       this.producaoSemestralLoading = true;
+      this.producaoSemestralError = null;
       try {
         const params = buildAnalyticsParams(filters);
         const response = await axios.get(API_ENDPOINTS.analyticsProducaoSemestral, {
@@ -334,7 +350,12 @@ export const useAnalyticsStore = defineStore('analytics', {
       } catch (err) {
         if (axios.isCancel(err)) return;
         console.error('Erro ao buscar producao semestral:', err);
+        if (requestId !== producaoSemestralRequestSeq) return;
         this.producaoSemestral = [];
+        const detail = err?.response?.data?.detail;
+        this.producaoSemestralError = typeof detail === 'string'
+          ? detail
+          : 'Não foi possível carregar a produção por semestre.';
       } finally {
         if (requestId === producaoSemestralRequestSeq) {
           this.producaoSemestralLoading = false;

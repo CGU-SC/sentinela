@@ -5,7 +5,8 @@ import { useFilterStore } from '@/stores/filters';
 import { useGeoStore } from '@/stores/geo';
 import { useMunicipalMapStore } from '@/stores/municipalMap';
 import { useRiskIndicatorsStore } from '@/stores/riskIndicators';
-import { getCrmMapLevel } from '@/composables/useCrmPrescricoesAnalysis';
+import { buildCrmAnalysisParams, getCrmMapLevel } from '@/composables/useCrmPrescricoesAnalysis';
+import { useCrmFiltrosMedicoStore } from '@/stores/crmFiltrosMedico';
 import { TIMING } from '@/config/constants';
 import { ensureBrasilUfMap } from '@/composables/echartsMaps';
 
@@ -175,7 +176,7 @@ async function ensureEstablishmentsPage(filterStore) {
 
 async function ensureAnalysesPage(filterStore) {
   const crmStore = useCrmPrescricoesAnalysisStore();
-  const params = { ...buildAnalyticsParams(filterStore.apiParams), map_level: getCrmMapLevel(filterStore) };
+  const params = buildCrmAnalysisParams(filterStore, useCrmFiltrosMedicoStore(), getCrmMapLevel(filterStore));
   const key = JSON.stringify(params);
   await crmStore.activate(params);
   if (crmStore.activeKey !== key || !crmStore.mapResponse || !crmStore.rankingResponse

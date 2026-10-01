@@ -142,7 +142,10 @@ export const useCrmPrescricoesMensalStore = defineStore('crmPrescricoesMensal', 
       }
       this.mensalLoading = true;
       try {
-        const { data } = await axios.get(API_ENDPOINTS.analyticsCrmPrescricoesMensal, { params: requestParams });
+        const { data } = await axios.get(API_ENDPOINTS.analyticsCrmPrescricoesMensal, {
+          params: requestParams,
+          paramsSerializer: { indexes: null },
+        });
         assertMensal(data, page, pageSize);
         lruSet(pageCache, key, data);
         if (requestId !== this.mensalRequestId) return;

@@ -34,6 +34,10 @@ class EvidenciaDuplicadaError(ValueError):
     """O mesmo item já foi marcado para este CNPJ (HTTP 409)."""
 
 
+class EvidenciaForaDaListaError(ValueError):
+    """A farmácia não está nas Farmácias Monitoradas (HTTP 409)."""
+
+
 def _agora() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -166,6 +170,14 @@ class EvidenciasService:
         }
 
         def op(itens):
+            # Toda evidência pertence a uma farmácia da lista. A conferência é no
+            # servidor, sob o mesmo bloqueio: outra janela pode ter removido a farmácia.
+            monitoradas = {item["cnpj"] for item in PreferencesService._read_unlocked()["watchlist"]}
+            if novo["cnpj"] not in monitoradas:
+                raise EvidenciaForaDaListaError(
+                    "Esta farmácia não está nas Farmácias Monitoradas (a lista pode ter sido alterada "
+                    "em outra janela). A evidência não foi salva."
+                )
             chave = _chave(novo)
             if any(_chave(item) == chave for item in itens):
                 raise EvidenciaDuplicadaError("Este item já está na cesta de evidências.")

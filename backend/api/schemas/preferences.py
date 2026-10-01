@@ -15,6 +15,10 @@ class WatchlistPayload(BaseModel):
     interesse: List[WatchlistItemSchema] = Field(default_factory=list)
 
 
+class WatchlistUndoPayload(BaseModel):
+    cnpj: str = Field(pattern=r"^\d{14}$")
+
+
 class PreferencesRecoveryPayload(BaseModel):
     source: Literal["backup", "corrupt"]
 

@@ -1523,8 +1523,17 @@ watch(activeCrmViewMode, (mode) => {
 // o handler tentará novamente assim que os dados chegarem.
 // immediate: a navegação pode chegar antes de este componente montar (ex.: vindo
 // do painel de evidências com a Cronologia ainda fechada e os dados já em cache).
-watch([selectedTimelineEvent, timelineDailyDataset], async ([evt, profile]) => {
-  if (!evt || !profile) return;
+// Só processa com o dataset deste CNPJ já carregado: timelineDailyDataset existe
+// sempre (com `days` vazio antes da carga) e o cache sem flicker pode ainda ser o
+// do CNPJ anterior; nos dois casos o dia "não existiria" e a navegação se perderia.
+const timelineNavegavel = computed(() => (
+  Boolean(crmTimelineDataset.value)
+  && !crmTimelineDatasetLoading.value
+  && String(crmTimelineDatasetLoaded.value ?? '').startsWith(`${String(props.cnpj ?? '').replace(/\D/g, '').padStart(14, '0')}|`)
+));
+watch([selectedTimelineEvent, timelineNavegavel], async ([evt, navegavel]) => {
+  if (!evt || !navegavel) return;
+  const profile = crmTimelineDataset.value;
   // Limpa já: permite nova navegação para o mesmo alvo e evita reprocessar.
   cnpjDetailStore.clearTimelineNavigation();
 

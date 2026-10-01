@@ -120,6 +120,9 @@ export const useEvidenciasStore = defineStore('evidencias', () => {
       itens.value = [...itens.value, data];
       return { evidencia: data, farmaciaAdicionada };
     } catch (cause) {
+      // 409: item repetido ou farmácia que saiu da lista em outra janela. A lista é
+      // relida do servidor; a farmácia não volta sozinha (a remoção pode ter sido de propósito).
+      if (cause?.response?.status === 409) await farmaciaLists.loadFromBackend();
       const detalhe = errorMessage(cause, 'Não foi possível salvar a evidência.');
       throw new Error(farmaciaAdicionada
         ? `${detalhe} A farmácia foi adicionada às Farmácias Monitoradas.`
@@ -184,7 +187,18 @@ export const useEvidenciasStore = defineStore('evidencias', () => {
 
   /** Abre a Cronologia no item. `cnpjAtual` é o CNPJ da tela aberta (ou null). */
   async function irPara(evidencia, router, cnpjAtual = null) {
-    const alvo = alvoNavegacao(evidencia);
+    await abrirNaCronologia(alvoNavegacao(evidencia), router, cnpjAtual);
+  }
+
+  /**
+   * Abre a Cronologia da aba Autorizações de um estabelecimento num dia/hora
+   * ({ cnpj, date: 'AAAA-MM-DD', hour, autorizacao }). Usado pela cesta de
+   * evidências e pelo painel de evidências do histórico do CRM (/analises).
+   */
+  async function abrirNaCronologia(alvo, router, cnpjAtual = null) {
+    if (!/^\d{14}$/.test(alvo?.cnpj ?? '') || !/^\d{4}-\d{2}-\d{2}$/.test(alvo?.date ?? '')) {
+      throw new Error('Destino da Cronologia sem CNPJ ou data válidos.');
+    }
     const destino = { name: 'EstablishmentDetail', params: { cnpj: alvo.cnpj }, query: { s: 'autorizacoes' } };
     if (cnpjAtual === alvo.cnpj) {
       await router.replace(destino);
@@ -209,6 +223,6 @@ export const useEvidenciasStore = defineStore('evidencias', () => {
     itens, loadState, error, painelAberto, remocaoPendente,
     carregar, garantirCarregado, listarDoCnpj, contar, ultimaEm, encontrar,
     marcar, atualizarNota, remover, removerDoCnpj,
-    confirmarRemocaoFarmacia, responderRemocao, irPara, consumirNavegacaoPendente,
+    confirmarRemocaoFarmacia, responderRemocao, irPara, abrirNaCronologia, consumirNavegacaoPendente,
   };
 });

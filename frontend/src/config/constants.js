@@ -74,6 +74,12 @@ export const FILTER_DEFAULTS = {
     PERCENTUAL_RANGE: [0, 100],
     VALOR_MIN:        0,
     VALOR_MAX:        1000000,
+    // [min, max] em habitantes; null = sem limite.
+    POPULACAO_MUNICIPIO_RANGE: [null, null],
+    // Autorizações em sequência na farmácia: tipo, severidade mínima (null = desligado) e dias [min, max].
+    SEQ_TIPO: 'qualquer',
+    SEQ_SEVERIDADE: null,
+    SEQ_DIAS_RANGE: [null, null],
     VOLUME_ATIPICO_ENABLED: false,
     VOLUME_ATIPICO_PERCENTUAL: 50,
     VOLUME_ATIPICO_MIN: 40,

@@ -131,6 +131,7 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       let pending = pendingMaps.get(requestKey);
       if (!pending) {
         pending = axios.get(API_ENDPOINTS.analyticsCrmPrescricoesAnalise, {
+          paramsSerializer: { indexes: null },
           params: {
             ...mapRequestParams(params),
             page: 1,
@@ -153,6 +154,7 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       let pending = pendingRankings.get(requestKey);
       if (!pending) {
         pending = axios.get(API_ENDPOINTS.analyticsCrmPrescricoesAnalise, {
+          paramsSerializer: { indexes: null },
           params: {
             ...params,
             page,

@@ -12,37 +12,19 @@ from ...utils.text_search import apply_token_search
 from .alertas_alvos import build_perfil_filtrado
 from .dispersao_uf import get_dispersao_uf_sem_fronteira_id_cnpjs_df
 from .volume_atipico import get_volume_atipico_id_cnpjs_df
+from .filtros_farmacia import SEM_FILTRO_FARMACIA, FiltrosFarmacia
 
 
 def get_fator_risco_data(
     db: Session,
     data_inicio=None,
     data_fim=None,
-    perc_min=None,
-    perc_max=None,
-    val_min=None,
     uf=None,
     regiao_saude=None,
     municipio=None,
-    situacao_rf=None,
-    conexao_ms=None,
-    porte_empresa=None,
-    grande_rede=None,
-    cnpj_raiz=None,
-    unidade_pf=None,
     regiao_id: Optional[int] = None,
     id_ibge7: Optional[int] = None,
-    volume_atipico: bool = False,
-    volume_atipico_limite: Optional[float] = None,
-    dispersao_uf_sem_fronteira: bool = False,
-    dispersao_uf_sem_fronteira_limite: Optional[float] = None,
-    par_teia: Optional[str] = None,
-    socio_beneficio: Optional[str] = None,
-    socio_esocial: Optional[str] = None,
-    cnae_incompativel: bool = False,
-    socio_idade_atipica: bool = False,
-    socio_falecido: bool = False,
-    estabelecimento: Optional[str] = None,
+    filtros: FiltrosFarmacia = SEM_FILTRO_FARMACIA,
 ) -> FatorRiscoResponseSchema:
     """
     Calcula as faixas de risco (buckets de 10%) via Polars.
@@ -51,9 +33,9 @@ def get_fator_risco_data(
         MIN_DATA = date(2015, 7, 1)
         inicio = max(data_inicio, MIN_DATA) if data_inicio else MIN_DATA
         fim = data_fim if data_fim else date(2199, 12, 31)
-        p_min = perc_min if perc_min is not None else 0.0
-        p_max = perc_max if perc_max is not None else 100.0
-        v_min = float(val_min) if val_min is not None and val_min > 0 else None
+        p_min = filtros.perc_min if filtros.perc_min is not None else 0.0
+        p_max = filtros.perc_max if filtros.perc_max is not None else 100.0
+        v_min = float(filtros.val_min) if filtros.val_min is not None and filtros.val_min > 0 else None
 
         df = get_df()
         perfil_df = get_df_perfil_estabelecimento()
@@ -66,50 +48,45 @@ def get_fator_risco_data(
             perfil_mask = perfil_mask & (pl.col("id_regiao_saude") == str(regiao_id))
         if id_ibge7 is not None:
             perfil_mask = perfil_mask & (pl.col("id_ibge7") == id_ibge7)
-        if situacao_rf and situacao_rf != "Todos":
-            perfil_mask = perfil_mask & (pl.col("situacao_rf") == situacao_rf)
-        if conexao_ms and conexao_ms != "Todos":
-            perfil_mask = perfil_mask & (pl.col("is_conexao_ativa") == (conexao_ms == "Ativa"))
-        if porte_empresa and porte_empresa != "Todos":
-            perfil_mask = perfil_mask & (pl.col("porte_empresa") == porte_empresa)
-        if grande_rede and grande_rede != "Todos":
-            perfil_mask = perfil_mask & (pl.col("is_grande_rede") == (grande_rede == "Sim"))
-        if unidade_pf and unidade_pf != "Todos":
-            perfil_mask = perfil_mask & (pl.col("unidade_pf") == unidade_pf)
-        if cnpj_raiz:
-            if len(cnpj_raiz) == 14:
-                perfil_mask = perfil_mask & (pl.col("cnpj") == cnpj_raiz)
+        if filtros.situacao_rf and filtros.situacao_rf != "Todos":
+            perfil_mask = perfil_mask & (pl.col("situacao_rf") == filtros.situacao_rf)
+        if filtros.conexao_ms and filtros.conexao_ms != "Todos":
+            perfil_mask = perfil_mask & (pl.col("is_conexao_ativa") == (filtros.conexao_ms == "Ativa"))
+        if filtros.porte_empresa and filtros.porte_empresa != "Todos":
+            perfil_mask = perfil_mask & (pl.col("porte_empresa") == filtros.porte_empresa)
+        if filtros.grande_rede and filtros.grande_rede != "Todos":
+            perfil_mask = perfil_mask & (pl.col("is_grande_rede") == (filtros.grande_rede == "Sim"))
+        if filtros.unidade_pf and filtros.unidade_pf != "Todos":
+            perfil_mask = perfil_mask & (pl.col("unidade_pf") == filtros.unidade_pf)
+        if filtros.cnpj_raiz:
+            if len(filtros.cnpj_raiz) == 14:
+                perfil_mask = perfil_mask & (pl.col("cnpj") == filtros.cnpj_raiz)
             else:
-                perfil_mask = perfil_mask & (pl.col("cnpj").str.slice(0, 8) == cnpj_raiz)
+                perfil_mask = perfil_mask & (pl.col("cnpj").str.slice(0, 8) == filtros.cnpj_raiz)
 
         perfil_filtrado = apply_token_search(
             perfil_df.filter(perfil_mask),
-            estabelecimento,
+            filtros.estabelecimento,
             ("cnpj", "razao_social", "nome_fantasia"),
         )
         perfil_filtrado = build_perfil_filtrado(
             perfil_filtrado,
-            par_teia=par_teia,
-            socio_beneficio=socio_beneficio,
-            socio_esocial=socio_esocial,
-            socio_falecido=socio_falecido,
-            cnae_incompativel=cnae_incompativel,
-            socio_idade_atipica=socio_idade_atipica,
+            filtros=filtros,
             data_referencia=fim,
-            volume_atipico=volume_atipico,
+            periodo_inicio=inicio,
             volume_atipico_inicio=inicio,
+            periodo_fim=fim,
             volume_atipico_fim=fim,
-            volume_atipico_limite=volume_atipico_limite,
         )
         period_df = (
             df.filter(mov_mask)
             .join(perfil_filtrado.select("id_cnpj"), on="id_cnpj", how="semi")
         )
-        if dispersao_uf_sem_fronteira:
+        if filtros.dispersao_uf_sem_fronteira:
             id_cnpjs_dispersao_df = get_dispersao_uf_sem_fronteira_id_cnpjs_df(
                 inicio,
                 fim,
-                dispersao_uf_sem_fronteira_limite,
+                filtros.dispersao_uf_sem_fronteira_limite,
             )
             period_df = period_df.join(id_cnpjs_dispersao_df.select("id_cnpj"), on="id_cnpj", how="semi")
 

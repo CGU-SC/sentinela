@@ -23,11 +23,13 @@ from data_cache import (
     scan_crm_medico_territorio_mes,
     get_dados_medico_df,
 )
+from .crm_filtros_medico import SEM_FILTRO_MEDICO, FiltrosMedico
 from ...schemas.analytics import (
     CrmPrescricoesAnaliseResponse,
     CrmPrescricoesMapaItemSchema,
     CrmPrescricoesRankingItemSchema,
 )
+from .filtros_farmacia import SEM_FILTRO_FARMACIA, FiltrosFarmacia
 MIN_DATA = date(2015, 7, 1)
 MAX_DATA = date(2024, 12, 31)
 # Abaixo deste numero de medicos ativos no periodo, o municipio aparece como
@@ -827,6 +829,7 @@ def _montar_resposta_ranking(
     manager_map: Optional[list[CrmPrescricoesMapaItemSchema]],
     prescricoes_filtradas: Optional[Callable[[list[str]], pl.DataFrame]] = None,
     prescricoes_filtradas_completas: Optional[Callable[[], pl.DataFrame]] = None,
+    filtro_medicos_ativo: bool = False,
 ) -> CrmPrescricoesAnaliseResponse:
     """Pagina o ranking agregado (1 linha por medico) e completa nome/CRM da pagina.
 
@@ -851,6 +854,7 @@ def _montar_resposta_ranking(
             mapa=manager_map or [],
             ranking=[],
             filtro_farmacias_ativo=farmacias_filtradas,
+            filtro_medicos_ativo=filtro_medicos_ativo,
         )
 
     if sort_field in RANKING_FILTERED_SORT_FIELDS:
@@ -908,6 +912,7 @@ def _montar_resposta_ranking(
             mapa=manager_map or [],
             ranking=[],
             filtro_farmacias_ativo=farmacias_filtradas,
+            filtro_medicos_ativo=filtro_medicos_ativo,
         )
 
     medico_ids = ranking_scope.select("id_medico")
@@ -975,6 +980,7 @@ def _montar_resposta_ranking(
         mapa=manager_map or [],
         ranking=ranking,
         filtro_farmacias_ativo=farmacias_filtradas,
+        filtro_medicos_ativo=filtro_medicos_ativo,
     )
 
 
@@ -994,58 +1000,42 @@ def escopo_territorial(
     return "brasil", None
 
 
-def montar_filtros_farmacia(
-    *,
-    perc_min: Optional[float],
-    perc_max: Optional[float],
-    val_min: Optional[float],
-    situacao_rf: Optional[str],
-    conexao_ms: Optional[str],
-    porte_empresa: Optional[str],
-    grande_rede: Optional[str],
-    cnpj_raiz: Optional[str],
-    unidade_pf: Optional[str],
-    estabelecimento: Optional[str],
-    par_teia: Optional[str],
-    socio_beneficio: Optional[str],
-    socio_esocial: Optional[str],
-    cnae_incompativel: bool,
-    socio_idade_atipica: bool,
-    socio_falecido: bool,
-    volume_atipico: bool,
-    volume_atipico_limite: Optional[float],
-    dispersao_uf_sem_fronteira: bool,
-    dispersao_uf_sem_fronteira_limite: Optional[float],
-) -> tuple[bool, dict[str, object]]:
+def montar_filtros_farmacia(filtros: FiltrosFarmacia) -> tuple[bool, dict[str, object]]:
     """(filtro de farmacia ativo?, filtros normalizados para crm_analysis_filtrado).
 
     Com filtro de farmacia, o universo e o das farmacias filtradas (as mesmas de
     /estabelecimentos): ver crm_analysis_filtrado. Valores neutros viram None.
     """
-    filtros: dict[str, object] = {
-        "situacao_rf": situacao_rf if _filtro_ativo(situacao_rf, neutral={"Todos"}) else None,
-        "conexao_ms": conexao_ms if _filtro_ativo(conexao_ms, neutral={"Todos"}) else None,
-        "porte_empresa": porte_empresa if _filtro_ativo(porte_empresa, neutral={"Todos"}) else None,
-        "grande_rede": grande_rede if _filtro_ativo(grande_rede, neutral={"Todos"}) else None,
-        "cnpj_raiz": cnpj_raiz if _filtro_ativo(cnpj_raiz) else None,
-        "estabelecimento": estabelecimento if _filtro_ativo(estabelecimento) else None,
-        "unidade_pf": unidade_pf if _filtro_ativo(unidade_pf, neutral={"Todos"}) else None,
-        "par_teia": par_teia if _filtro_ativo(par_teia) else None,
-        "socio_beneficio": socio_beneficio if _filtro_ativo(socio_beneficio) else None,
-        "socio_esocial": socio_esocial if _filtro_ativo(socio_esocial) else None,
-        "cnae_incompativel": cnae_incompativel,
-        "socio_idade_atipica": socio_idade_atipica,
-        "socio_falecido": socio_falecido,
-        "dispersao_uf_sem_fronteira": dispersao_uf_sem_fronteira,
-        "dispersao_uf_sem_fronteira_limite": dispersao_uf_sem_fronteira_limite if dispersao_uf_sem_fronteira else None,
-        "perc_min": perc_min if perc_min is not None and float(perc_min) != 0 else None,
-        "perc_max": perc_max if perc_max is not None and float(perc_max) != 100 else None,
-        "val_min": val_min if val_min is not None and float(val_min) > 0 else None,
-        "volume_atipico": volume_atipico,
-        "volume_atipico_limite": volume_atipico_limite if volume_atipico else None,
+    normalizados: dict[str, object] = {
+        "situacao_rf": filtros.situacao_rf if _filtro_ativo(filtros.situacao_rf, neutral={"Todos"}) else None,
+        "conexao_ms": filtros.conexao_ms if _filtro_ativo(filtros.conexao_ms, neutral={"Todos"}) else None,
+        "porte_empresa": filtros.porte_empresa if _filtro_ativo(filtros.porte_empresa, neutral={"Todos"}) else None,
+        "grande_rede": filtros.grande_rede if _filtro_ativo(filtros.grande_rede, neutral={"Todos"}) else None,
+        "cnpj_raiz": filtros.cnpj_raiz if _filtro_ativo(filtros.cnpj_raiz) else None,
+        "estabelecimento": filtros.estabelecimento if _filtro_ativo(filtros.estabelecimento) else None,
+        "unidade_pf": filtros.unidade_pf if _filtro_ativo(filtros.unidade_pf, neutral={"Todos"}) else None,
+        "par_teia": filtros.par_teia if _filtro_ativo(filtros.par_teia) else None,
+        "socio_beneficio": filtros.socio_beneficio if _filtro_ativo(filtros.socio_beneficio) else None,
+        "socio_esocial": filtros.socio_esocial if _filtro_ativo(filtros.socio_esocial) else None,
+        "cnae_incompativel": filtros.cnae_incompativel,
+        "socio_idade_atipica": filtros.socio_idade_atipica,
+        "socio_falecido": filtros.socio_falecido,
+        "populacao_min": filtros.populacao_min,
+        "populacao_max": filtros.populacao_max,
+        "seq_tipo": filtros.seq_tipo,
+        "seq_severidade_min": filtros.seq_severidade_min,
+        "seq_dias_min": filtros.seq_dias_min,
+        "seq_dias_max": filtros.seq_dias_max,
+        "dispersao_uf_sem_fronteira": filtros.dispersao_uf_sem_fronteira,
+        "dispersao_uf_sem_fronteira_limite": filtros.dispersao_uf_sem_fronteira_limite if filtros.dispersao_uf_sem_fronteira else None,
+        "perc_min": filtros.perc_min if filtros.perc_min is not None and float(filtros.perc_min) != 0 else None,
+        "perc_max": filtros.perc_max if filtros.perc_max is not None and float(filtros.perc_max) != 100 else None,
+        "val_min": filtros.val_min if filtros.val_min is not None and float(filtros.val_min) > 0 else None,
+        "volume_atipico": filtros.volume_atipico,
+        "volume_atipico_limite": filtros.volume_atipico_limite if filtros.volume_atipico else None,
     }
-    ativo = any(valor is not None and valor is not False for valor in filtros.values())
-    return ativo, filtros
+    ativo = any(valor is not None and valor is not False for valor in normalizados.values())
+    return ativo, normalizados
 
 
 def ranking_agregado_escopo(
@@ -1143,29 +1133,11 @@ def get_crm_prescricoes_analise(
     map_only: bool = False,
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
-    perc_min: Optional[float] = None,
-    perc_max: Optional[float] = None,
-    val_min: Optional[float] = None,
     uf: Optional[str] = None,
     regiao_id: Optional[int] = None,
     id_ibge7: Optional[int] = None,
-    situacao_rf: Optional[str] = None,
-    conexao_ms: Optional[str] = None,
-    porte_empresa: Optional[str] = None,
-    grande_rede: Optional[str] = None,
-    cnpj_raiz: Optional[str] = None,
-    unidade_pf: Optional[str] = None,
-    estabelecimento: Optional[str] = None,
-    par_teia: Optional[str] = None,
-    socio_beneficio: Optional[str] = None,
-    socio_esocial: Optional[str] = None,
-    cnae_incompativel: bool = False,
-    socio_idade_atipica: bool = False,
-    socio_falecido: bool = False,
-    volume_atipico: bool = False,
-    volume_atipico_limite: Optional[float] = None,
-    dispersao_uf_sem_fronteira: bool = False,
-    dispersao_uf_sem_fronteira_limite: Optional[float] = None,
+    filtros: FiltrosFarmacia = SEM_FILTRO_FARMACIA,
+    filtros_medico: FiltrosMedico = SEM_FILTRO_MEDICO,
 ) -> CrmPrescricoesAnaliseResponse:
     if page < 1:
         raise HTTPException(status_code=422, detail="page deve ser maior ou igual a 1.")
@@ -1185,34 +1157,16 @@ def get_crm_prescricoes_analise(
         raise HTTPException(status_code=422, detail="O mapa da região exige regiao_id.")
 
     inicio, fim = _period_bounds(data_inicio, data_fim)
-    filtro_farmacias_ativo, filtros_farmacia = montar_filtros_farmacia(
-        perc_min=perc_min,
-        perc_max=perc_max,
-        val_min=val_min,
-        situacao_rf=situacao_rf,
-        conexao_ms=conexao_ms,
-        porte_empresa=porte_empresa,
-        grande_rede=grande_rede,
-        cnpj_raiz=cnpj_raiz,
-        unidade_pf=unidade_pf,
-        estabelecimento=estabelecimento,
-        par_teia=par_teia,
-        socio_beneficio=socio_beneficio,
-        socio_esocial=socio_esocial,
-        cnae_incompativel=cnae_incompativel,
-        socio_idade_atipica=socio_idade_atipica,
-        socio_falecido=socio_falecido,
-        volume_atipico=volume_atipico,
-        volume_atipico_limite=volume_atipico_limite,
-        dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
-        dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
-    )
+    filtro_farmacias_ativo, filtros_farmacia = montar_filtros_farmacia(filtros)
 
+    # Filtros de farmacia e/ou de medico: universo filtrado (crm_analysis_filtrado).
+    universo_filtrado = filtro_farmacias_ativo or filtros_medico.ativo
     try:
-        if (include_map or map_only) and filtro_farmacias_ativo:
+        if (include_map or map_only) and universo_filtrado:
             from .crm_analysis_filtrado import mapa_filtrado
             manager_map, map_qtd_medicos, map_referencia = mapa_filtrado(
                 filtros=filtros_farmacia,
+                medicos=filtros_medico,
                 map_level=nivel_mapa,
                 inicio=inicio,
                 fim=fim,
@@ -1265,15 +1219,17 @@ def get_crm_prescricoes_analise(
             limiar_p95_max=float(limiares.select(pl.col("p95_taxa_dia").max()).item()),
             min_medicos_amostra_municipio=CRM_MAPA_MIN_MEDICOS_ATIVOS_MUNICIPIO,
             filtro_farmacias_ativo=filtro_farmacias_ativo,
+            filtro_medicos_ativo=filtros_medico.ativo,
         )
 
-    if filtro_farmacias_ativo:
+    if universo_filtrado:
         from .crm_analysis_filtrado import ranking_filtrado
         if page < 1 or page_size < 1 or page_size > 100:
             raise HTTPException(status_code=422, detail="Pagina ou tamanho de pagina invalido.")
         try:
             ranking_aggregated, prescricoes_filtradas, prescricoes_filtradas_completas = ranking_filtrado(
                 filtros=filtros_farmacia,
+                medicos=filtros_medico,
                 inicio=inicio,
                 fim=fim,
                 uf=uf,
@@ -1285,7 +1241,7 @@ def get_crm_prescricoes_analise(
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"Indice CRM de farmacias indisponivel: {exc}",
+                detail=f"Indice CRM de farmacias/medicos indisponivel: {exc}",
             ) from exc
         return _montar_resposta_ranking(
             ranking_aggregated,
@@ -1301,6 +1257,7 @@ def get_crm_prescricoes_analise(
             manager_map=manager_map,
             prescricoes_filtradas=prescricoes_filtradas,
             prescricoes_filtradas_completas=prescricoes_filtradas_completas,
+            filtro_medicos_ativo=filtros_medico.ativo,
         )
 
     try:

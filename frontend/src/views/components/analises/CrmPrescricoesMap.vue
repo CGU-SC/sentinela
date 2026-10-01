@@ -12,6 +12,8 @@ import { useGeoStore } from '@/stores/geo';
 import { useThemeStore } from '@/stores/theme';
 import { useChartTheme } from '@/config/chartTheme';
 import { CRM_INTENSIDADE_INDICE_SCALE } from '@/config/colors';
+import { CRM_FAIXAS } from '@/config/crmFiltrosMedico';
+import { useCrmFiltrosMedicoStore } from '@/stores/crmFiltrosMedico';
 import { analysisTooltip } from '@/config/analysisTooltipConfig';
 import { useStableMapSize } from '@/composables/useStableMapSize';
 import { useFormatting } from '@/composables/useFormatting';
@@ -35,6 +37,7 @@ const props = defineProps({
 
 const emit = defineEmits(['select-uf', 'select-municipio', 'back']);
 const geoStore = useGeoStore();
+const filtrosMedicoStore = useCrmFiltrosMedicoStore();
 const themeStore = useThemeStore();
 const { chartTheme } = useChartTheme();
 const { formatTitleCase } = useFormatting();
@@ -66,10 +69,29 @@ function indiceAtivo(row) {
 }
 
 const mapTitle = computed(() => isNational.value ? 'Brasil' : props.mapLevel === 'regiao' ? 'Região de Saúde' : `Municípios de ${props.uf}`);
+// Faixas de producao (taxa/dia, total de prescricoes) sao avaliadas com os numeros
+// do medico no recorte do mapa (UF ou regiao inteira), nao em cada municipio. Com
+// municipio selecionado, o ranking usa os numeros no municipio: os totais diferem.
+const faixaProducaoAtiva = computed(() => Object.entries(CRM_FAIXAS).some(([tipo, config]) => (
+  config.grupo === 'producao'
+  && (filtrosMedicoStore.faixas[tipo].min !== null || filtrosMedicoStore.faixas[tipo].max !== null)
+)));
+const avisoRecorteFaixa = computed(() => !isNational.value && faixaProducaoAtiva.value);
+const recorteFaixaTexto = computed(() => {
+  if (props.mapLevel !== 'regiao') return `na UF ${props.uf} inteira`;
+  return props.selectedRegiaoNome
+    ? `na Região de Saúde ${formatTitleCase(props.selectedRegiaoNome)} inteira`
+    : 'na Região de Saúde inteira';
+});
+const municipioDiverge = computed(() => (
+  avisoRecorteFaixa.value && props.mapLevel === 'regiao' && props.selectedIbge7 != null
+));
+
 // Subtitulo curto: a explicacao completa fica no tooltip do titulo.
 const mapSubtitle = computed(() => {
   const partes = [mapTitle.value, `comparado à ${referenciaTexto.value}`];
   if (props.mapMeta?.filtro_farmacias_ativo) partes.push('farmácias filtradas');
+  if (avisoRecorteFaixa.value) partes.push(`taxa/prescrições avaliadas ${recorteFaixaTexto.value}`);
   return partes.join(' · ');
 });
 const mapInfoTooltip = computed(() => {
@@ -88,6 +110,16 @@ const mapInfoTooltip = computed(() => {
     extraSections.push({
       label: 'Farmácias filtradas',
       text: 'Com filtros de farmácia, contam só os médicos que prescreveram em pelo menos uma farmácia filtrada do território em algum mês do período. Entre eles, têm taxa elevada os que tiveram pelo menos um mês acima do P95 no território, considerando todas as prescrições do médico ali.',
+    });
+  }
+  if (avisoRecorteFaixa.value) {
+    const municipio = props.selectedMunicipioNome ? formatTitleCase(props.selectedMunicipioNome) : 'no município selecionado';
+    extraSections.push({
+      label: 'Taxa diária e total de prescrições',
+      text: `Com esses filtros, cada município do mapa conta os médicos cujos números ${recorteFaixaTexto.value} estão na faixa, e não os números do médico só naquele município.`
+        + (municipioDiverge.value
+          ? ` O ranking usa os números do médico em ${municipio}; por isso o número do município no mapa pode ser maior que o do ranking.`
+          : ''),
     });
   }
   return analysisTooltip('crmMap', { extraSections });

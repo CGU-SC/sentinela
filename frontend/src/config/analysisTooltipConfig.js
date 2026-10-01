@@ -6,6 +6,154 @@
  */
 
 const ANALYSIS_TOOLTIP_COPY = Object.freeze({
+  crmFiltrosMedico: {
+    title: 'Filtros dos médicos',
+    body: 'Restringem os médicos do mapa, do ranking e da aba Por mês. Somam-se aos filtros da barra lateral esquerda (período, território e farmácias).',
+    icon: 'pi-filter',
+    sections: [
+      {
+        label: 'Duração',
+        text: 'Valem enquanto o sistema estiver aberto; não são salvos entre sessões.',
+      },
+    ],
+  },
+  crmFiltroBusca: {
+    title: 'Buscar médico',
+    body: 'Filtra o ranking e a aba Por mês pelo nome do médico ou pelo número do CRM. O mapa não muda com a busca.',
+    icon: 'pi-search',
+    sections: [
+      {
+        label: 'CRM com UF',
+        text: 'Aceita 800/SC, 800-SC, 800 SC, CRM-SC 800 e formatos parecidos: busca o CRM exato daquela UF. Só o número (800) busca o início do número em todas as UFs.',
+      },
+    ],
+  },
+  crmFiltroSituacaoCfm: {
+    title: 'Situação no CFM',
+    body: 'Localizado: o CRM consta no cadastro do CFM. Não localizado: o CRM usado nas prescrições não consta no cadastro.',
+    icon: 'pi-id-card',
+  },
+  crmFiltroUfCrm: {
+    title: 'UF do CRM',
+    body: 'UF de registro do CRM usado nas prescrições (a UF do CRM, não a da farmácia). Vale também para CRMs não localizados no CFM. Marque uma ou mais.',
+    icon: 'pi-map-marker',
+  },
+  crmFiltroAntesInscricao: {
+    title: 'Prescreveu antes da 1ª inscrição',
+    body: 'Médicos com prescrição, no período, em algum mês anterior ao mês da 1ª inscrição no CFM. Mesma regra do ponto de atenção do histórico do CRM.',
+    icon: 'pi-calendar-times',
+    sections: [
+      {
+        label: 'Sem data de inscrição',
+        text: 'Médicos localizados sem data de inscrição no cadastro não podem ser avaliados e não entram neste filtro.',
+      },
+    ],
+  },
+  crmFiltroTaxaDia: {
+    title: 'Taxa diária',
+    body: 'Prescrições ÷ dias com prescrição do médico no período, no recorte da página (Brasil, UF, região ou município): o mesmo número da coluna TAXA / DIA do ranking.',
+    icon: 'pi-chart-bar',
+    sections: [
+      {
+        label: 'Faixa',
+        text: 'Escolha um atalho ou use a faixa personalizada (De / Até). Os limites são inclusivos; deixe um lado vazio para filtrar só "a partir de" ou "até". Aplica no botão Aplicar ou com Enter. Aceita decimais com vírgula (ex.: 30,5).',
+      },
+      {
+        label: 'Aba Por mês',
+        text: 'Cada linha é um mês: a faixa vale para a taxa daquele mês (coluna TAXA / DIA da aba). No mapa, no Resumo e na Linha do tempo, vale a taxa do período.',
+      },
+    ],
+  },
+  crmFiltroPrescricoes: {
+    title: 'Total de prescrições',
+    body: 'Prescrições do médico no período, no recorte da página: o mesmo número da coluna PRODUÇÃO do ranking.',
+    icon: 'pi-file',
+    sections: [
+      {
+        label: 'Faixa',
+        text: 'Escolha um atalho ou use a faixa personalizada (De / Até). Os limites são inclusivos; deixe um lado vazio para filtrar só "a partir de" ou "até". Aplica no botão Aplicar ou com Enter.',
+      },
+      {
+        label: 'Aba Por mês',
+        text: 'Cada linha é um mês: a faixa vale para as prescrições daquele mês (coluna PRODUÇÃO da aba). No mapa, no Resumo e na Linha do tempo, vale o total do período.',
+      },
+    ],
+  },
+  crmFiltroExclusividade: {
+    title: 'Exclusividade na farmácia principal',
+    body: 'Prescrições do médico na farmácia onde ele mais prescreveu ÷ total de prescrições dele no Brasil, no período. É a coluna Exclusividade da aba CRMs do estabelecimento, olhando a farmácia principal do médico.',
+    icon: 'pi-building',
+    sections: [
+      {
+        label: 'Abrangência',
+        text: 'Calculada com todas as farmácias do médico no Brasil, independentemente do recorte territorial e dos filtros de farmácia da barra lateral. Vale para o mapa, o Resumo, a Linha do tempo e a aba Por mês (escolhe os médicos).',
+      },
+      {
+        label: 'Leitura',
+        text: 'Valor alto, sozinho, não indica irregularidade: um médico de bairro pode concentrar quase tudo numa farmácia. O sinal ganha peso com volume alto e muitas prescrições por dia. 100% = o médico prescreveu em uma única farmácia no período.',
+      },
+      {
+        label: 'Tempo',
+        text: 'A primeira consulta de cada período calcula a exclusividade de todos os médicos (alguns segundos); depois, mudar a faixa ou outros filtros é imediato.',
+      },
+    ],
+  },
+  crmFiltroFarmacias: {
+    title: 'Nº de farmácias onde atuou',
+    body: 'Quantidade de farmácias distintas com prescrição do médico no período, em todo o Brasil. É o mesmo número do indicador "farmácias" do histórico do CRM.',
+    icon: 'pi-sitemap',
+    sections: [
+      {
+        label: 'Abrangência',
+        text: 'Conta todas as farmácias do médico no Brasil, independentemente do recorte territorial e dos filtros de farmácia da barra lateral. Vale para o mapa, o Resumo, a Linha do tempo e a aba Por mês (escolhe os médicos).',
+      },
+      {
+        label: 'Leitura',
+        text: 'Metade dos médicos atua em até cerca de 20 farmácias no período. Os extremos merecem atenção: uma única farmácia (combine com a exclusividade) ou centenas de farmácias.',
+      },
+    ],
+  },
+  crmFiltroMunicipios: {
+    title: 'Nº de municípios onde atuou',
+    body: 'Quantidade de municípios distintos onde ficam as farmácias com prescrição do médico no período, em todo o Brasil. É o mesmo número do indicador "municípios" do histórico do CRM.',
+    icon: 'pi-map-marker',
+    sections: [
+      {
+        label: 'Abrangência',
+        text: 'Conta todos os municípios do médico no Brasil, independentemente do recorte territorial e dos filtros de farmácia da barra lateral. Vale para o mapa, o Resumo, a Linha do tempo e a aba Por mês (escolhe os médicos).',
+      },
+      {
+        label: 'Leitura',
+        text: 'Metade dos médicos atua em até cerca de 8 municípios no período. Muitos municípios, sobretudo distantes entre si, merecem atenção; compare com o ponto de atenção "farmácias distantes" no histórico do CRM.',
+      },
+    ],
+  },
+  crmFiltroSequenciaSeveridade: {
+    title: 'Autorizações em sequência · severidade',
+    body: 'Dias em que o médico teve muitas prescrições em poucos minutos numa farmácia (único CRM), o mesmo ponto de atenção do histórico do CRM. A severidade escolhida define quais dias contam: "Grave ou pior" conta os dias graves, críticos e extremos.',
+    icon: 'pi-bolt',
+    sections: [
+      {
+        label: 'Com os dias',
+        text: 'Sozinha, a severidade traz os médicos com pelo menos 1 dia nesse nível. Junto com "Dias com sequência", os dias são contados nesse nível (ex.: grave ou pior + ≥ 10 = 10 ou mais dias graves, críticos ou extremos).',
+      },
+      {
+        label: 'Abrangência',
+        text: 'Todas as farmácias do médico no Brasil, no período, independentemente do recorte e dos filtros de farmácia. Escolhe os médicos em todas as abas.',
+      },
+    ],
+  },
+  crmFiltroSequenciaDias: {
+    title: 'Dias com sequência',
+    body: 'Quantidade de dias, no período, com autorizações em sequência do médico (único CRM), na severidade mínima escolhida acima (sem ela, qualquer severidade).',
+    icon: 'pi-calendar',
+    sections: [
+      {
+        label: 'Leitura',
+        text: 'Cerca de 5% dos médicos têm algum dia de sequência; entre eles, metade tem até 3 dias e 10% passam de 44 dias. Médicos sem nenhuma sequência contam como 0 dias.',
+      },
+    ],
+  },
   crmMap: {
     title: 'Médicos com taxa elevada',
     body: 'Percentual de médicos ativos que tiveram pelo menos um mês com taxa elevada no período.',
@@ -159,13 +307,46 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
     body: 'Fatos calculados sobre o período filtrado, sem juízo de valor. Servem para orientar a análise do auditor.',
     icon: 'pi-exclamation-circle',
     sections: [
-      { label: 'CRM não localizado no CFM', text: 'O CRM não consta no cadastro do CFM. Sem a data de 1ª inscrição, o ponto "antes da inscrição" não pode ser avaliado.' },
       { label: 'Antes da inscrição no CFM', text: 'Meses com prescrição anteriores à data da 1ª inscrição do médico no CFM.' },
       { label: 'Autorizações em sequência (único CRM)', text: 'Dias em que o CRM teve muitas prescrições em poucos minutos numa farmácia (mesmos alertas da aba Autorizações do estabelecimento). Mostra quantos dias, em quantas farmácias e a pior severidade.' },
       { label: 'Farmácias distantes no mesmo mês', text: 'Meses em que o CRM prescreveu, no mesmo mês, em farmácias muito distantes entre si. Mostra a maior distância encontrada. Com farmácia filtrada, não é avaliado.' },
       { label: 'Meses consecutivos com taxa elevada', text: 'A maior sequência de meses seguidos com taxa elevada (a partir de 2 meses).' },
       { label: 'Concentração em uma farmácia', text: 'A farmácia principal concentra ao menos o limite definido (50%) das prescrições do período.' },
     ],
+  },
+  crmHistoricoEvidencias: {
+    title: 'Evidências',
+    body: 'Os alertas do CRM em todas as farmácias, uma linha por janela: os mesmos do painel do médico na aba Autorizações de cada estabelecimento. Respeitam o período e a farmácia escolhidos no topo do modal.',
+    icon: 'pi-list',
+    sections: [
+      { label: 'Severidade', text: 'Clique numa severidade para ver só as janelas dela; clique de novo para voltar a todas.' },
+      { label: 'Autorizações da janela', text: 'O ícone no fim da linha abre as autorizações daquela janela (todos os CRMs da farmácia no intervalo), com as deste CRM destacadas. Dali também dá para abrir a Cronologia do estabelecimento.' },
+      { label: 'Exportar', text: 'O Excel traz as três evidências (uma aba cada), completas, no período e na farmácia escolhidos.' },
+    ],
+  },
+  crmEvidenciasUnico: {
+    title: 'Sequências (único CRM)',
+    body: 'Janelas em que o próprio CRM teve muitas autorizações em poucos minutos numa farmácia.',
+    icon: 'pi-bolt',
+    sections: [
+      { label: 'Janela', text: 'Minutos entre a primeira e a última autorização da sequência.' },
+      { label: 'Taxa/hora', text: 'Ritmo da sequência, em autorizações por hora.' },
+    ],
+  },
+  crmEvidenciasMultiplos: {
+    title: 'Sequências (múltiplos CRMs)',
+    body: 'Janelas em que vários CRMs diferentes tiveram muitas autorizações em poucos minutos numa farmácia e este CRM autorizou ao menos uma vez dentro da janela.',
+    icon: 'pi-users',
+    sections: [
+      { label: 'Aut. do CRM', text: 'Autorizações deste CRM dentro da janela.' },
+      { label: 'Total da janela', text: 'Autorizações de todos os CRMs na janela, na farmácia.' },
+      { label: 'CRMs', text: 'Quantidade de CRMs diferentes na janela.' },
+    ],
+  },
+  crmEvidenciasDistancia: {
+    title: 'Farmácias distantes',
+    body: 'Pares de farmácias muito distantes entre si em que o CRM prescreveu no mesmo mês. Com uma farmácia escolhida no topo, aparecem os pares que a envolvem.',
+    icon: 'pi-directions',
   },
 });
 
@@ -300,13 +481,18 @@ export function crmMesTooltip(ponto, p95) {
 
 /** Ícone de cada ponto de atenção do CRM (modal do histórico e ranking). */
 export const CRM_ALERTA_ICONES = Object.freeze({
-  nao_localizado_cfm: 'pi-id-card',
   antes_inscricao: 'pi-calendar-times',
   rajadas_unico: 'pi-bolt',
   distancia: 'pi-directions',
   sequencia_alta: 'pi-chart-line',
   concentracao: 'pi-building',
 });
+
+/** Controle "antes da 1ª inscrição" desabilitado com "Não localizado" marcado. */
+export const CRM_ANTES_INSCRICAO_INDISPONIVEL_TOOLTIP = 'Indisponível para médicos não localizados: eles não têm data de inscrição no CFM.';
+
+/** Ícone do selo "Não localizado no CFM" da coluna MÉDICO / CRM do ranking. */
+export const CRM_NAO_LOCALIZADO_ICONE = 'pi-id-card';
 
 /** Selo da coluna MÉDICO / CRM do ranking quando o CRM não consta no cadastro do CFM. */
 export const CRM_NAO_LOCALIZADO_TOOLTIP = 'CRM não consta no cadastro do CFM. Sem a data de 1ª inscrição, não é possível conferir prescrições anteriores à inscrição.';

@@ -174,6 +174,24 @@ const FILTER_TOOLTIP_COPY = Object.freeze({
       },
     ],
   },
+  seq: {
+    title: 'Autorizações em sequência',
+    body: 'Filtra estabelecimentos com dias de muitas autorizações em poucos minutos, no período de análise. É o mesmo alerta e a mesma contagem de dias da Cronologia da aba Autorizações do estabelecimento.',
+    sections: [
+      {
+        label: 'Tipo',
+        text: 'Único CRM: o mesmo médico concentra as autorizações. Múltiplos CRMs: vários médicos diferentes no mesmo intervalo. Qualquer: soma os dias dos dois tipos, contando uma vez o dia que tiver os dois.',
+      },
+      {
+        label: 'Severidade mínima',
+        text: 'Define quais dias contam: "Grave ou pior" conta os dias graves, críticos e extremos. Sozinha, traz os estabelecimentos com pelo menos 1 dia nesse nível.',
+      },
+      {
+        label: 'Dias com sequência',
+        text: 'Quantidade de dias com o alerta no período, na severidade escolhida (sem ela, qualquer severidade). Cerca de metade dos estabelecimentos tem ao menos 1 dia; use a quantidade de dias ou a severidade para destacar os casos relevantes.',
+      },
+    ],
+  },
   volumeAtipico: {
     title: 'Aumento semestral atípico',
     body: 'Filtra estabelecimentos com crescimento percentual atípico e aumento absoluto mínimo de R$ 10.000 em relação ao semestre anterior.',
@@ -209,6 +227,20 @@ const FILTER_TOOLTIP_COPY = Object.freeze({
       {
         label: 'Como escolher',
         text: 'Use um atalho (período completo, 2020 a 2024 ou um ano) ou escolha o intervalo na grade: clique no mês inicial e depois no final.',
+      },
+    ],
+  },
+  populacaoMunicipio: {
+    title: 'População do município',
+    body: 'Filtra estabelecimentos pela população do município onde ficam, segundo o cadastro de municípios do IBGE usado pelo sistema.',
+    sections: [
+      {
+        label: 'Porte do município',
+        text: 'Pequeno porte: até 50 mil habitantes. Médio: 50 mil a 100 mil. Grande: 100 mil a 900 mil. Metrópole: acima de 900 mil.',
+      },
+      {
+        label: 'Como escolher',
+        text: 'Use um atalho ou informe uma faixa personalizada ("De" e "Até", em habitantes) e clique em Aplicar. Os limites são inclusivos; deixe um lado vazio para não limitar.',
       },
     ],
   },

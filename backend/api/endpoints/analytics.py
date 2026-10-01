@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Literal, Optional
-from datetime import date
+from datetime import date, datetime
 from database import get_db, engine
 from ..schemas.analytics import (
     CrmPerfilExportRequest,
@@ -26,11 +26,15 @@ from ..schemas.analytics import (
     CrmPrescricoesMensalResponse,
     CrmPrescricoesSerieMensalResponse,
     CrmMedicoHistoricoResponse,
+    CrmEvidenciasResponse,
+    CrmEvidenciaAutorizacoesResponse,
     CrmRankingAlertasResponse,
     NotaTecnicaReadinessResponse,
     NotaTecnicaPrepareResponse,
 )
 from ..services.analytics import AnalyticsService
+from ..services.analytics.filtros_farmacia import FiltrosFarmacia
+from ..services.analytics.crm_filtros_medico import FiltrosMedico, montar_filtros_medico
 from fastapi.responses import Response, StreamingResponse
 from loguru import logger
 from request_logging import FrontendPerformanceEvent, log_frontend_performance
@@ -42,24 +46,57 @@ import urllib.parse
 router = APIRouter()
 
 
-@router.get("/crm-prescricoes-analise", response_model=CrmPrescricoesAnaliseResponse)
-def get_crm_prescricoes_analise(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(15, ge=1, le=100),
-    medico_query: Optional[str] = Query(None, max_length=120),
-    sort_field: str = Query("taxa_prescricoes_dia"),
-    sort_order: Literal["asc", "desc"] = Query("desc"),
-    include_map: bool = Query(True),
-    map_only: bool = Query(False),
-    map_level: str = Query("uf", description="Nível do mapa: uf, municipio ou regiao."),
-    data_inicio: Optional[date] = Query(None),
-    data_fim: Optional[date] = Query(None),
+def _crm_filtros_medico(
+    situacao_cfm: Optional[Literal["localizado", "nao_localizado"]] = Query(
+        None, description="Situacao no cadastro do CFM (ausente = todos).",
+    ),
+    uf_crm: Optional[List[str]] = Query(
+        None, description="UFs do CRM (sufixo do id_medico); repetir o parametro para varias.",
+    ),
+    antes_inscricao: bool = Query(
+        False, description="So medicos com prescricao no periodo antes do mes da 1a inscricao no CFM.",
+    ),
+    taxa_dia_min: Optional[float] = Query(None, description="Taxa diaria minima no recorte (inclusiva)."),
+    taxa_dia_max: Optional[float] = Query(None, description="Taxa diaria maxima no recorte (inclusiva)."),
+    prescricoes_min: Optional[int] = Query(None, description="Total minimo de prescricoes no recorte (inclusivo)."),
+    prescricoes_max: Optional[int] = Query(None, description="Total maximo de prescricoes no recorte (inclusivo)."),
+    exclusividade_min: Optional[float] = Query(None, description="Exclusividade minima (%) na farmacia principal (inclusiva)."),
+    exclusividade_max: Optional[float] = Query(None, description="Exclusividade maxima (%) na farmacia principal (inclusiva)."),
+    farmacias_min: Optional[int] = Query(None, description="Minimo de farmacias onde o medico atuou no periodo (inclusivo)."),
+    farmacias_max: Optional[int] = Query(None, description="Maximo de farmacias onde o medico atuou no periodo (inclusivo)."),
+    municipios_min: Optional[int] = Query(None, description="Minimo de municipios onde o medico atuou no periodo (inclusivo)."),
+    municipios_max: Optional[int] = Query(None, description="Maximo de municipios onde o medico atuou no periodo (inclusivo)."),
+    sequencia_severidade_min: Optional[int] = Query(
+        None, description="Severidade minima das sequencias de autorizacoes (unico CRM): 1 alta, 2 grave, 3 critica, 4 extrema.",
+    ),
+    sequencia_dias_min: Optional[int] = Query(None, description="Minimo de dias com sequencia no periodo (inclusivo)."),
+    sequencia_dias_max: Optional[int] = Query(None, description="Maximo de dias com sequencia no periodo (inclusivo)."),
+) -> FiltrosMedico:
+    """Filtros de medico (Cadastro CFM, Producao e Atuacao nas farmacias) de /analises, validados."""
+    return montar_filtros_medico(
+        situacao_cfm=situacao_cfm,
+        uf_crm=uf_crm,
+        antes_inscricao=antes_inscricao,
+        taxa_dia_min=taxa_dia_min,
+        taxa_dia_max=taxa_dia_max,
+        prescricoes_min=prescricoes_min,
+        prescricoes_max=prescricoes_max,
+        exclusividade_min=exclusividade_min,
+        exclusividade_max=exclusividade_max,
+        farmacias_min=farmacias_min,
+        farmacias_max=farmacias_max,
+        municipios_min=municipios_min,
+        municipios_max=municipios_max,
+        sequencia_severidade_min=sequencia_severidade_min,
+        sequencia_dias_min=sequencia_dias_min,
+        sequencia_dias_max=sequencia_dias_max,
+    )
+
+
+def filtros_farmacia(
     perc_min: Optional[float] = Query(None),
     perc_max: Optional[float] = Query(None),
     val_min: Optional[float] = Query(None),
-    uf: Optional[str] = Query(None),
-    regiao_id: Optional[int] = Query(None),
-    id_ibge7: Optional[int] = Query(None),
     situacao_rf: Optional[str] = Query(None),
     conexao_ms: Optional[str] = Query(None),
     porte_empresa: Optional[str] = Query(None),
@@ -73,29 +110,22 @@ def get_crm_prescricoes_analise(
     cnae_incompativel: bool = Query(False),
     socio_idade_atipica: bool = Query(False),
     socio_falecido: bool = Query(False),
+    populacao_min: Optional[int] = Query(None, ge=0, description="Populacao minima do municipio da farmacia (inclusiva)."),
+    populacao_max: Optional[int] = Query(None, ge=0, description="Populacao maxima do municipio da farmacia (inclusiva)."),
+    seq_tipo: Optional[Literal["unico", "multiplo", "qualquer"]] = Query(None, description="Tipo das autorizacoes em sequencia na farmacia: unico (mesmo CRM), multiplo (varios CRMs) ou qualquer."),
+    seq_severidade_min: Optional[int] = Query(None, description="Severidade minima das autorizacoes em sequencia na farmacia, do tipo escolhido em seq_tipo: 1 alta, 2 grave, 3 critica, 4 extrema."),
+    seq_dias_min: Optional[int] = Query(None, description="Minimo de dias com autorizacoes em sequencia na farmacia, do tipo escolhido em seq_tipo, no periodo (inclusivo)."),
+    seq_dias_max: Optional[int] = Query(None, description="Maximo de dias com autorizacoes em sequencia na farmacia, do tipo escolhido em seq_tipo, no periodo (inclusivo)."),
     volume_atipico: bool = Query(False),
     volume_atipico_limite: Optional[float] = Query(None),
     dispersao_uf_sem_fronteira: bool = Query(False),
     dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
-):
-    """Retorna o percentual mensal de CRMs anômalos por UF/município e o ranking de médicos."""
-    return AnalyticsService.get_crm_prescricoes_analise(
-        page=page,
-        page_size=page_size,
-        medico_query=medico_query,
-        sort_field=sort_field,
-        sort_order=sort_order,
-        include_map=include_map,
-        map_only=map_only,
-        map_level=map_level,
-        data_inicio=data_inicio,
-        data_fim=data_fim,
+) -> FiltrosFarmacia:
+    """Filtros de farmacia das telas de analise: declarados uma vez, repassados como objeto."""
+    return FiltrosFarmacia(
         perc_min=perc_min,
         perc_max=perc_max,
         val_min=val_min,
-        uf=uf,
-        regiao_id=regiao_id,
-        id_ibge7=id_ibge7,
         situacao_rf=situacao_rf,
         conexao_ms=conexao_ms,
         porte_empresa=porte_empresa,
@@ -109,6 +139,12 @@ def get_crm_prescricoes_analise(
         cnae_incompativel=cnae_incompativel,
         socio_idade_atipica=socio_idade_atipica,
         socio_falecido=socio_falecido,
+        populacao_min=populacao_min,
+        populacao_max=populacao_max,
+        seq_tipo=seq_tipo,
+        seq_severidade_min=seq_severidade_min,
+        seq_dias_min=seq_dias_min,
+        seq_dias_max=seq_dias_max,
         volume_atipico=volume_atipico,
         volume_atipico_limite=volume_atipico_limite,
         dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
@@ -116,51 +152,42 @@ def get_crm_prescricoes_analise(
     )
 
 
-def _crm_filtros_farmacia(
-    perc_min: Optional[float] = Query(None),
-    perc_max: Optional[float] = Query(None),
-    val_min: Optional[float] = Query(None),
-    situacao_rf: Optional[str] = Query(None),
-    conexao_ms: Optional[str] = Query(None),
-    porte_empresa: Optional[str] = Query(None),
-    grande_rede: Optional[str] = Query(None),
-    cnpj_raiz: Optional[str] = Query(None),
-    unidade_pf: Optional[str] = Query(None),
-    estabelecimento: Optional[str] = Query(None),
-    par_teia: Optional[str] = Query(None),
-    socio_beneficio: Optional[str] = Query(None),
-    socio_esocial: Optional[str] = Query(None),
-    cnae_incompativel: bool = Query(False),
-    socio_idade_atipica: bool = Query(False),
-    socio_falecido: bool = Query(False),
-    volume_atipico: bool = Query(False),
-    volume_atipico_limite: Optional[float] = Query(None),
-    dispersao_uf_sem_fronteira: bool = Query(False),
-    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
-) -> dict:
-    """Filtros de farmacia da tela /analises (mesmos de /crm-prescricoes-analise)."""
-    return {
-        "perc_min": perc_min,
-        "perc_max": perc_max,
-        "val_min": val_min,
-        "situacao_rf": situacao_rf,
-        "conexao_ms": conexao_ms,
-        "porte_empresa": porte_empresa,
-        "grande_rede": grande_rede,
-        "cnpj_raiz": cnpj_raiz,
-        "unidade_pf": unidade_pf,
-        "estabelecimento": estabelecimento,
-        "par_teia": par_teia,
-        "socio_beneficio": socio_beneficio,
-        "socio_esocial": socio_esocial,
-        "cnae_incompativel": cnae_incompativel,
-        "socio_idade_atipica": socio_idade_atipica,
-        "socio_falecido": socio_falecido,
-        "volume_atipico": volume_atipico,
-        "volume_atipico_limite": volume_atipico_limite,
-        "dispersao_uf_sem_fronteira": dispersao_uf_sem_fronteira,
-        "dispersao_uf_sem_fronteira_limite": dispersao_uf_sem_fronteira_limite,
-    }
+@router.get("/crm-prescricoes-analise", response_model=CrmPrescricoesAnaliseResponse)
+def get_crm_prescricoes_analise(
+    filtros: FiltrosFarmacia = Depends(filtros_farmacia),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=100),
+    medico_query: Optional[str] = Query(None, max_length=120),
+    sort_field: str = Query("taxa_prescricoes_dia"),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
+    include_map: bool = Query(True),
+    map_only: bool = Query(False),
+    map_level: str = Query("uf", description="Nível do mapa: uf, municipio ou regiao."),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+    uf: Optional[str] = Query(None),
+    regiao_id: Optional[int] = Query(None),
+    id_ibge7: Optional[int] = Query(None),
+    filtros_medico: FiltrosMedico = Depends(_crm_filtros_medico),
+):
+    """Retorna o percentual mensal de CRMs anômalos por UF/município e o ranking de médicos."""
+    return AnalyticsService.get_crm_prescricoes_analise(
+        page=page,
+        page_size=page_size,
+        medico_query=medico_query,
+        sort_field=sort_field,
+        sort_order=sort_order,
+        include_map=include_map,
+        map_only=map_only,
+        map_level=map_level,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        uf=uf,
+        regiao_id=regiao_id,
+        id_ibge7=id_ibge7,
+        filtros=filtros,
+        filtros_medico=filtros_medico,
+    )
 
 
 @router.get("/crm-prescricoes-mensal", response_model=CrmPrescricoesMensalResponse)
@@ -175,7 +202,8 @@ def get_crm_prescricoes_mensal(
     uf: Optional[str] = Query(None),
     regiao_id: Optional[int] = Query(None),
     id_ibge7: Optional[int] = Query(None),
-    filtros: dict = Depends(_crm_filtros_farmacia),
+    filtros: FiltrosFarmacia = Depends(filtros_farmacia),
+    filtros_medico: FiltrosMedico = Depends(_crm_filtros_medico),
 ):
     """Uma linha por medico e mes (aba "Por mês" do ranking de /analises)."""
     return AnalyticsService.get_crm_prescricoes_mensal(
@@ -189,7 +217,8 @@ def get_crm_prescricoes_mensal(
         uf=uf,
         regiao_id=regiao_id,
         id_ibge7=id_ibge7,
-        **filtros,
+        filtros_medico=filtros_medico,
+        filtros_farmacia=filtros,
     )
 
 
@@ -221,6 +250,53 @@ def get_crm_prescricoes_alertas(
 ):
     """Pontos de atencao dos medicos de uma pagina do ranking (icone de alertas)."""
     return AnalyticsService.get_crm_medicos_alertas(ids=ids, data_inicio=data_inicio, data_fim=data_fim)
+
+
+@router.get("/crm-medico-evidencias", response_model=CrmEvidenciasResponse)
+def get_crm_medico_evidencias(
+    id_medico: str = Query(..., description="CRM no formato numero/UF, ex.: 26188/SC."),
+    tipo: Literal["unico", "multiplos", "distancia"] = Query(..., description="Evidencia da tabela pedida."),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+    id_cnpj: Optional[int] = Query(None, description="Filtra as evidencias por uma farmacia (id_cnpj)."),
+    severidade: Optional[int] = Query(None, description="So sequencias desta severidade: 1 alta, 2 grave, 3 critica, 4 extrema."),
+    sort_field: Optional[str] = Query(None, description="unico/multiplos: data, severidade, taxa_hora, autorizacoes; distancia: distancia, data."),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=100),
+):
+    """Evidencias do CRM em todas as farmacias: sequencias (unico e multiplos CRMs) e farmacias distantes."""
+    return AnalyticsService.get_crm_medico_evidencias(
+        id_medico=id_medico, tipo=tipo, data_inicio=data_inicio, data_fim=data_fim, id_cnpj=id_cnpj,
+        severidade=severidade, sort_field=sort_field, sort_order=sort_order, page=page, page_size=page_size,
+    )
+
+
+@router.get("/crm-medico-evidencias/autorizacoes", response_model=CrmEvidenciaAutorizacoesResponse)
+def get_crm_evidencia_autorizacoes(
+    id_cnpj: int = Query(..., description="Farmacia da janela (id_cnpj)."),
+    id_medico: str = Query(..., description="CRM consultado (numero/UF): as autorizacoes dele vem marcadas."),
+    inicio: datetime = Query(..., description="Inicio da janela (AAAA-MM-DDTHH:MM:SS)."),
+    fim: datetime = Query(..., description="Fim da janela (mesmo dia)."),
+):
+    """Autorizacoes (todos os CRMs) de uma janela de sequencia numa farmacia, do Raio-X."""
+    return AnalyticsService.get_crm_evidencia_autorizacoes(id_cnpj=id_cnpj, id_medico=id_medico, inicio=inicio, fim=fim)
+
+
+@router.get("/crm-medico-evidencias/exportar")
+def export_crm_medico_evidencias(
+    id_medico: str = Query(..., description="CRM no formato numero/UF, ex.: 26188/SC."),
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+    id_cnpj: Optional[int] = Query(None, description="Filtra as evidencias por uma farmacia (id_cnpj)."),
+):
+    """Baixa as tres evidencias do CRM no periodo em Excel (uma aba por evidencia)."""
+    filename, content = AnalyticsService.export_crm_medico_evidencias_xlsx(id_medico, data_inicio, data_fim, id_cnpj)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+    )
 
 
 @router.get("/crm-medico-historico", response_model=CrmMedicoHistoricoResponse)
@@ -300,21 +376,12 @@ def get_socios_farmacia(cnpj: str):
 
 @router.get("/alertas-panorama", response_model=AlertasPanoramaResponse)
 def get_alertas_panorama(
+    filtros: FiltrosFarmacia = Depends(filtros_farmacia),
     uf: Optional[str] = Query(None),
     regiao_id: Optional[int] = Query(None),
     id_ibge7: Optional[int] = Query(None),
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
-    par_teia: Optional[str] = Query(None),
-    socio_beneficio: Optional[str] = Query(None),
-    socio_esocial: Optional[str] = Query(None),
-    cnae_incompativel: bool = Query(False),
-    socio_idade_atipica: bool = Query(False),
-    socio_falecido: bool = Query(False),
-    volume_atipico: bool = Query(False),
-    volume_atipico_limite: Optional[float] = Query(None),
-    dispersao_uf_sem_fronteira: bool = Query(False),
-    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
 ):
     """Panorama agregado de alertas de integridade para o dashboard, filtrado por escopo, filtros de integridade e período."""
     return AnalyticsService.get_alertas_panorama(
@@ -323,16 +390,7 @@ def get_alertas_panorama(
         id_ibge7=id_ibge7,
         data_inicio=data_inicio,
         data_fim=data_fim,
-        par_teia=par_teia,
-        socio_beneficio=socio_beneficio,
-        socio_esocial=socio_esocial,
-        cnae_incompativel=cnae_incompativel,
-        socio_idade_atipica=socio_idade_atipica,
-        socio_falecido=socio_falecido,
-        volume_atipico=volume_atipico,
-        volume_atipico_limite=volume_atipico_limite,
-        dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
-        dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
+        filtros=filtros,
     )
 
 @router.get("/cnpj/{cnpj}/alertas-integridade", response_model=IntegrityAlertsResponse)
@@ -422,34 +480,15 @@ def get_teia_batch_level4(
 
 @router.get("/resumo", response_model=AnalyticsResponse)
 def get_analytics_summary(
+    filtros: FiltrosFarmacia = Depends(filtros_farmacia),
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
-    perc_min: Optional[float] = Query(None),
-    perc_max: Optional[float] = Query(None),
-    val_min: Optional[float] = Query(None),
     uf: Optional[str] = Query(None),
     regiao_saude: Optional[str] = Query(None),
     municipio: Optional[str] = Query(None),
     id_ibge7: Optional[int] = Query(None),
-    situacao_rf: Optional[str] = Query(None),
-    conexao_ms: Optional[str] = Query(None),
-    porte_empresa: Optional[str] = Query(None),
-    grande_rede: Optional[str] = Query(None),
-    cnpj_raiz: Optional[str] = Query(None),
-    unidade_pf: Optional[str] = Query(None),
-    estabelecimento: Optional[str] = Query(None),
     cnpjs: Optional[List[str]] = Query(None),
     regiao_id: Optional[int] = Query(None),
-    volume_atipico: bool = Query(False),
-    volume_atipico_limite: Optional[float] = Query(None),
-    dispersao_uf_sem_fronteira: bool = Query(False),
-    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
-    par_teia: Optional[str] = Query(None),
-    socio_beneficio: Optional[str] = Query(None),
-    socio_esocial: Optional[str] = Query(None),
-    cnae_incompativel: bool = Query(False),
-    socio_idade_atipica: bool = Query(False),
-    socio_falecido: bool = Query(False),
     secoes: List[Literal["kpis", "ufs", "municipios", "cnpjs"]] = Query(
         ...,
         description="Secoes do resumo a calcular. 'cnpjs' exige o filtro cnpjs.",
@@ -460,39 +499,20 @@ def get_analytics_summary(
         raise HTTPException(status_code=400, detail="Use regiao_id para filtros regionais; regiao_saude textual e apenas label.")
     if municipio and municipio != "Todos":
         raise HTTPException(status_code=400, detail="Use id_ibge7 para filtros municipais; municipio textual e apenas label.")
-    return AnalyticsService.get_dashboard_data(db, data_inicio, data_fim, perc_min, perc_max, val_min, uf, regiao_saude, municipio, situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, unidade_pf, cnpjs, regiao_id=regiao_id, id_ibge7=id_ibge7, volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, estabelecimento=estabelecimento, secoes=secoes)
+    return AnalyticsService.get_dashboard_data(db, data_inicio, data_fim, uf, regiao_saude, municipio, cnpjs, regiao_id=regiao_id, id_ibge7=id_ibge7, filtros=filtros, secoes=secoes)
 
 
 @router.get("/producao-semestral", response_model=ProducaoSemestralResponse)
 def get_producao_semestral(
+    filtros: FiltrosFarmacia = Depends(filtros_farmacia),
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
-    perc_min: Optional[float] = Query(None),
-    perc_max: Optional[float] = Query(None),
-    val_min: Optional[float] = Query(None),
     uf: Optional[str] = Query(None),
     regiao_saude: Optional[str] = Query(None),
     municipio: Optional[str] = Query(None),
     id_ibge7: Optional[int] = Query(None),
-    situacao_rf: Optional[str] = Query(None),
-    conexao_ms: Optional[str] = Query(None),
-    porte_empresa: Optional[str] = Query(None),
-    grande_rede: Optional[str] = Query(None),
-    cnpj_raiz: Optional[str] = Query(None),
-    unidade_pf: Optional[str] = Query(None),
-    estabelecimento: Optional[str] = Query(None),
     cnpjs: Optional[List[str]] = Query(None),
     regiao_id: Optional[int] = Query(None),
-    volume_atipico: bool = Query(False),
-    volume_atipico_limite: Optional[float] = Query(None),
-    dispersao_uf_sem_fronteira: bool = Query(False),
-    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
-    par_teia: Optional[str] = Query(None),
-    socio_beneficio: Optional[str] = Query(None),
-    socio_esocial: Optional[str] = Query(None),
-    cnae_incompativel: bool = Query(False),
-    socio_idade_atipica: bool = Query(False),
-    socio_falecido: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     """Retorna valor de producao semestral e acumulado para o dashboard Home."""
@@ -504,67 +524,30 @@ def get_producao_semestral(
         db,
         data_inicio,
         data_fim,
-        perc_min,
-        perc_max,
-        val_min,
         uf,
-        situacao_rf,
-        conexao_ms,
-        porte_empresa,
-        grande_rede,
-        cnpj_raiz,
-        unidade_pf,
         cnpjs,
         regiao_id=regiao_id,
         id_ibge7=id_ibge7,
-        volume_atipico=volume_atipico,
-        volume_atipico_limite=volume_atipico_limite,
-        dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
-        dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
-        par_teia=par_teia,
-        socio_beneficio=socio_beneficio,
-        socio_esocial=socio_esocial,
-        cnae_incompativel=cnae_incompativel,
-        socio_idade_atipica=socio_idade_atipica,
-        estabelecimento=estabelecimento,
+        filtros=filtros,
     )
 
 @router.get("/faixas-risco", response_model=FatorRiscoResponseSchema)
 def get_resultado_faixas_risco(
+    filtros: FiltrosFarmacia = Depends(filtros_farmacia),
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
-    perc_min: Optional[float] = Query(None),
-    perc_max: Optional[float] = Query(None),
-    val_min: Optional[float] = Query(None),
     uf: Optional[str] = Query(None),
     regiao_saude: Optional[str] = Query(None),
     municipio: Optional[str] = Query(None),
     id_ibge7: Optional[int] = Query(None),
-    situacao_rf: Optional[str] = Query(None),
-    conexao_ms: Optional[str] = Query(None),
-    porte_empresa: Optional[str] = Query(None),
-    grande_rede: Optional[str] = Query(None),
-    cnpj_raiz: Optional[str] = Query(None),
-    unidade_pf: Optional[str] = Query(None),
-    estabelecimento: Optional[str] = Query(None),
     regiao_id: Optional[int] = Query(None),
-    volume_atipico: bool = Query(False),
-    volume_atipico_limite: Optional[float] = Query(None),
-    dispersao_uf_sem_fronteira: bool = Query(False),
-    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
-    par_teia: Optional[str] = Query(None),
-    socio_beneficio: Optional[str] = Query(None),
-    socio_esocial: Optional[str] = Query(None),
-    cnae_incompativel: bool = Query(False),
-    socio_idade_atipica: bool = Query(False),
-    socio_falecido: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     if regiao_saude and regiao_saude != "Todos":
         raise HTTPException(status_code=400, detail="Use regiao_id para filtros regionais; regiao_saude textual e apenas label.")
     if municipio and municipio != "Todos":
         raise HTTPException(status_code=400, detail="Use id_ibge7 para filtros municipais; municipio textual e apenas label.")
-    return AnalyticsService.get_fator_risco_data(db, data_inicio, data_fim, perc_min, perc_max, val_min, uf, regiao_saude, municipio, situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, unidade_pf, regiao_id=regiao_id, id_ibge7=id_ibge7, volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, estabelecimento=estabelecimento)
+    return AnalyticsService.get_fator_risco_data(db, data_inicio, data_fim, uf=uf, regiao_saude=regiao_saude, municipio=municipio, regiao_id=regiao_id, id_ibge7=id_ibge7, filtros=filtros)
 
 @router.get("/cnpj/{cnpj}/evolucao", response_model=EvolucaoFinanceiraResponse)
 def get_evolucao_financeira(
@@ -876,6 +859,7 @@ def export_crm_prescritores(cnpj: str, body: CrmPerfilExportRequest):
 
 @router.get("/indicadores-analise", response_model=IndicadorAnaliseResponse)
 def get_indicadores_analise(
+    filtros: FiltrosFarmacia = Depends(filtros_farmacia),
     indicador: str = Query(..., description="Chave do indicador (ex: 'auditado', 'teto', 'vendas_rapidas')"),
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
@@ -883,27 +867,7 @@ def get_indicadores_analise(
     regiao_saude: Optional[str] = Query(None),
     municipio: Optional[str] = Query(None),
     id_ibge7: Optional[int] = Query(None),
-    situacao_rf: Optional[str] = Query(None),
-    conexao_ms: Optional[str] = Query(None),
-    porte_empresa: Optional[str] = Query(None),
-    grande_rede: Optional[str] = Query(None),
-    cnpj_raiz: Optional[str] = Query(None),
-    estabelecimento: Optional[str] = Query(None),
-    unidade_pf: Optional[str] = Query(None),
-    perc_min: Optional[float] = Query(None),
-    perc_max: Optional[float] = Query(None),
-    val_min: Optional[float] = Query(None),
     regiao_id: Optional[int] = Query(None),
-    par_teia: Optional[str] = Query(None),
-    socio_beneficio: Optional[str] = Query(None),
-    socio_esocial: Optional[str] = Query(None),
-    cnae_incompativel: bool = Query(False),
-    socio_idade_atipica: bool = Query(False),
-    socio_falecido: bool = Query(False),
-    dispersao_uf_sem_fronteira: bool = Query(False),
-    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
-    volume_atipico: bool = Query(False),
-    volume_atipico_limite: Optional[float] = Query(None)
 ):
     """
     Análise cruzada de um indicador: retorna KPIs, mapa municipal e CNPJs ranqueados.
@@ -915,17 +879,13 @@ def get_indicadores_analise(
         raise HTTPException(status_code=400, detail="Use id_ibge7 para filtros municipais; municipio textual e apenas label.")
     return AnalyticsService.get_indicadores_analise(
         indicador, data_inicio, data_fim, uf, regiao_saude, municipio,
-        situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, estabelecimento, unidade_pf,
-        perc_min=perc_min, perc_max=perc_max, val_min=val_min, regiao_id=regiao_id, id_ibge7=id_ibge7, par_teia=par_teia,
-        socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido,
-        dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
-        dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
-        volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite
+        regiao_id=regiao_id, id_ibge7=id_ibge7, filtros=filtros,
     )
 
 
 @router.get("/indicadores-analise/cnpjs", response_model=IndicadorCnpjPageResponse)
 def get_indicadores_analise_cnpjs(
+    filtros: FiltrosFarmacia = Depends(filtros_farmacia),
     indicador: str = Query(..., description="Chave do indicador (ex: 'percentual_nao_comprovacao', 'teto')"),
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
@@ -933,27 +893,7 @@ def get_indicadores_analise_cnpjs(
     regiao_saude: Optional[str] = Query(None),
     municipio: Optional[str] = Query(None),
     id_ibge7: Optional[int] = Query(None),
-    situacao_rf: Optional[str] = Query(None),
-    conexao_ms: Optional[str] = Query(None),
-    porte_empresa: Optional[str] = Query(None),
-    grande_rede: Optional[str] = Query(None),
-    cnpj_raiz: Optional[str] = Query(None),
-    estabelecimento: Optional[str] = Query(None),
-    unidade_pf: Optional[str] = Query(None),
-    perc_min: Optional[float] = Query(None),
-    perc_max: Optional[float] = Query(None),
-    val_min: Optional[float] = Query(None),
     regiao_id: Optional[int] = Query(None),
-    par_teia: Optional[str] = Query(None),
-    socio_beneficio: Optional[str] = Query(None),
-    socio_esocial: Optional[str] = Query(None),
-    cnae_incompativel: bool = Query(False),
-    socio_idade_atipica: bool = Query(False),
-    socio_falecido: bool = Query(False),
-    dispersao_uf_sem_fronteira: bool = Query(False),
-    dispersao_uf_sem_fronteira_limite: Optional[float] = Query(None),
-    volume_atipico: bool = Query(False),
-    volume_atipico_limite: Optional[float] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     sort_field: str = Query("val_sem_comp"),
@@ -966,11 +906,8 @@ def get_indicadores_analise_cnpjs(
         raise HTTPException(status_code=400, detail="Use id_ibge7 para filtros municipais; municipio textual e apenas label.")
     return AnalyticsService.get_indicadores_analise_cnpjs(
         indicador, data_inicio, data_fim, uf, regiao_saude, municipio,
-        situacao_rf, conexao_ms, porte_empresa, grande_rede, cnpj_raiz, estabelecimento, unidade_pf,
-        perc_min=perc_min, perc_max=perc_max, val_min=val_min, regiao_id=regiao_id,
-        id_ibge7=id_ibge7, par_teia=par_teia, socio_beneficio=socio_beneficio, socio_esocial=socio_esocial, cnae_incompativel=cnae_incompativel, socio_idade_atipica=socio_idade_atipica, socio_falecido=socio_falecido, dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira, dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite, page=page, page_size=page_size,
-        sort_field=sort_field, sort_order=sort_order,
-        volume_atipico=volume_atipico, volume_atipico_limite=volume_atipico_limite
+        regiao_id=regiao_id, id_ibge7=id_ibge7, filtros=filtros,
+        page=page, page_size=page_size, sort_field=sort_field, sort_order=sort_order,
     )
 
 

@@ -31,24 +31,80 @@ function errorMessage(error, fallback) {
     : fallback;
 }
 
+function validateUltimaRemocao(data) {
+  if (!data || !Array.isArray(data.farmacias) || (data.removido_em !== null && typeof data.removido_em !== 'string')
+    || data.farmacias.some((item) => typeof item?.cnpj !== 'string' || typeof item.razaoSocial !== 'string'
+      || !Number.isInteger(item.evidencias_count) || item.evidencias_count < 0)) {
+    throw new Error('O servidor não informou o contrato da última remoção.');
+  }
+}
+
+function validateRecoveryOptions(data) {
+  for (const source of ['backup', 'corrupt']) {
+    const copy = data?.[source];
+    const counts = ['watchlist_count', 'evidencias_count', 'missing_watchlist_count', 'missing_evidencias_count',
+      'farmacias_mantidas_count'];
+    if (!copy || typeof copy.exists !== 'boolean' || typeof copy.valid !== 'boolean'
+      || !['joint', 'separate'].includes(copy.kind) || typeof copy.evidencias_backup_valid !== 'boolean'
+      || counts.some((key) => copy[key] !== null && (!Number.isInteger(copy[key]) || copy[key] < 0))) {
+      throw new Error('O servidor não informou o contrato de recuperação da lista e das evidências.');
+    }
+  }
+}
+
 export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
   const interesse = ref([]);
   const localSnapshot = ref(readLocalSnapshot());
   const recoveryOptions = ref(null);
+  const recoveryError = ref('');
+  /** Farmácias da última remoção ainda fora da lista (para o "Desfazer"). */
+  const ultimaRemocao = ref([]);
+  const ultimaRemocaoError = ref('');
   const loadState = ref('loading');
   const saving = ref(false);
   const error = ref('');
   const localRecoveryAvailable = computed(() => localSnapshot.value.length > 0
     && interesse.value.length === 0);
   const canEdit = computed(() => loadState.value === 'ready' && !saving.value);
+  /**
+   * O aviso de recuperação só aparece em incidente: cópia inválida, evidência
+   * perdida de farmácia monitorada, lista que não abre ou que ficou vazia, ou
+   * farmácias só na cópia isolada. Remover uma farmácia de propósito também
+   * deixa a farmácia só na cópia de segurança, mas isso é coberto pelo "Desfazer".
+   */
+  const recoveryAvailable = computed(() => Boolean(recoveryOptions.value?.principal?.evidencias_error)
+    || ['backup', 'corrupt'].some((source) => {
+    const copy = recoveryOptions.value?.[source];
+    if (!copy?.exists) return false;
+    const listaPerdida = copy.watchlist_count > 0
+      && (loadState.value === 'error' || (loadState.value === 'ready' && interesse.value.length === 0));
+    return !copy.valid || Boolean(copy.evidencias_error) || copy.missing_evidencias_count > 0 || listaPerdida
+      || (source === 'corrupt' && copy.missing_watchlist_count > 0);
+    }));
 
   async function loadRecoveryOptions() {
+    recoveryError.value = '';
     try {
       const { data } = await axios.get(API_ENDPOINTS.preferencesRecoveryStatus);
+      validateRecoveryOptions(data);
       recoveryOptions.value = data;
     } catch (cause) {
       console.warn('[farmaciaLists] Não foi possível consultar cópias de recuperação:', cause);
       recoveryOptions.value = null;
+      recoveryError.value = errorMessage(cause, 'Não foi possível consultar as cópias da lista e das evidências. Verifique se o servidor está atualizado.');
+    }
+  }
+
+  async function loadUltimaRemocao() {
+    ultimaRemocaoError.value = '';
+    try {
+      const { data } = await axios.get(API_ENDPOINTS.preferencesWatchlistUltimaRemocao);
+      validateUltimaRemocao(data);
+      ultimaRemocao.value = data.farmacias;
+    } catch (cause) {
+      console.warn('[farmaciaLists] Não foi possível consultar a última remoção:', cause);
+      ultimaRemocao.value = [];
+      ultimaRemocaoError.value = errorMessage(cause, 'Não foi possível consultar a última remoção para desfazê-la.');
     }
   }
 
@@ -71,8 +127,17 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
       error.value = errorMessage(cause, 'Não foi possível carregar as Farmácias Monitoradas. Nenhuma lista foi alterada.');
       console.error('[farmaciaLists] Falha ao carregar lista:', cause);
     }
-    if (loadState.value === 'error' || localRecoveryAvailable.value) {
-      await loadRecoveryOptions();
+    await loadRecoveryOptions();
+    if (loadState.value === 'ready') await loadUltimaRemocao();
+  }
+
+  async function refreshEvidencias(action) {
+    const evidencias = useEvidenciasStore();
+    // Aguarda uma consulta anterior antes de buscar o estado após a gravação.
+    await evidencias.garantirCarregado();
+    await evidencias.carregar();
+    if (evidencias.loadState !== 'ready') {
+      error.value = `${action} no servidor, mas não foi possível atualizar as evidências na tela. Recarregue a página.`;
     }
   }
 
@@ -80,6 +145,7 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
     if (!canEdit.value) return false;
     saving.value = true;
     error.value = '';
+    const removed = interesse.value.some((item) => !next.some((candidate) => candidate.cnpj === item.cnpj));
     try {
       const { data } = await axios.put(API_ENDPOINTS.preferencesWatchlist, { interesse: next });
       if (!Array.isArray(data?.watchlist)) {
@@ -88,6 +154,9 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
       interesse.value = data.watchlist;
       localSnapshot.value = data.watchlist;
       writeLocalSnapshot(data.watchlist);
+      if (removed) await refreshEvidencias('A remoção foi concluída');
+      await loadRecoveryOptions();
+      await loadUltimaRemocao();
       return true;
     } catch (cause) {
       error.value = errorMessage(cause, 'Não foi possível salvar as Farmácias Monitoradas. A alteração não foi confirmada.');
@@ -112,9 +181,8 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
 
   /**
    * Toda farmácia com evidência está na lista. Remover uma farmácia com
-   * evidências exige confirmação e apaga as evidências junto — primeiro as
-   * evidências, depois a farmácia: se a segunda etapa falhar, a farmácia fica
-   * na lista sem evidências, o que ainda respeita a regra.
+   * evidências exige confirmação. O servidor guarda uma cópia conjunta e
+   * atualiza a lista e as evidências sob o mesmo bloqueio.
    * Retorna true (removida), false (falha, ver `error`) ou null (cancelado).
    */
   async function removerInteresse(cnpj, razaoSocial) {
@@ -132,12 +200,6 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
         || cnpj;
       const confirmado = await evidencias.confirmarRemocaoFarmacia(cnpj, nome);
       if (!confirmado) return null;
-      try {
-        await evidencias.removerDoCnpj(cnpj);
-      } catch (cause) {
-        error.value = `${cause.message} A farmácia não foi removida.`;
-        return false;
-      }
     }
     return saveList(interesse.value.filter((item) => item.cnpj !== cnpj));
   }
@@ -161,21 +223,52 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
     interesse.value.find((item) => item.cnpj === cnpj)?.observacao || '',
   );
 
-  async function restoreFromFile(source) {
+  async function restoreFromFile(source, includeEvidenceBackup = false) {
     if (!['backup', 'corrupt'].includes(source) || saving.value) return false;
     saving.value = true;
     error.value = '';
     try {
-      const { data } = await axios.post(API_ENDPOINTS.preferencesRecovery, { source });
+      const { data } = await axios.post(API_ENDPOINTS.preferencesRecovery, { source }, {
+        params: { incluir_evidencias_backup: includeEvidenceBackup },
+      });
       if (!Array.isArray(data?.watchlist)) throw new Error('Restauração sem lista válida.');
       interesse.value = data.watchlist;
       localSnapshot.value = data.watchlist;
       writeLocalSnapshot(data.watchlist);
       loadState.value = 'ready';
+      await refreshEvidencias('A restauração foi concluída');
       await loadRecoveryOptions();
+      await loadUltimaRemocao();
       return true;
     } catch (cause) {
       error.value = errorMessage(cause, 'Não foi possível restaurar a lista. Os arquivos originais foram preservados.');
+      return false;
+    } finally {
+      saving.value = false;
+    }
+  }
+
+  /** Devolve só esta farmácia (registro e evidências) da cópia da última remoção. */
+  async function desfazerRemocao(cnpj) {
+    if (!canEdit.value) return false;
+    const removida = ultimaRemocao.value.find((item) => item.cnpj === cnpj);
+    if (!removida) return false;
+    saving.value = true;
+    error.value = '';
+    try {
+      const { data } = await axios.post(API_ENDPOINTS.preferencesWatchlistDesfazerRemocao, { cnpj });
+      if (!Array.isArray(data?.watchlist)) throw new Error('O servidor não confirmou a lista restaurada.');
+      interesse.value = data.watchlist;
+      localSnapshot.value = data.watchlist;
+      writeLocalSnapshot(data.watchlist);
+      if (removida.evidencias_count > 0) await refreshEvidencias('A remoção foi desfeita');
+      await loadRecoveryOptions();
+      await loadUltimaRemocao();
+      return true;
+    } catch (cause) {
+      error.value = errorMessage(cause, 'Não foi possível desfazer a remoção. A lista não foi alterada.');
+      console.error('[farmaciaLists] Falha ao desfazer remoção:', cause);
+      await loadUltimaRemocao();
       return false;
     } finally {
       saving.value = false;
@@ -190,9 +283,9 @@ export const useFarmaciaListsStore = defineStore('farmaciaLists', () => {
   loadFromBackend();
 
   return {
-    interesse, loadState, saving, error, canEdit, recoveryOptions,
-    localRecoveryAvailable, localSnapshot, isInteresse, getObservacao,
-    loadFromBackend, loadRecoveryOptions, toggleInteresse, adicionarInteresse, removerInteresse, setObservacao,
-    restoreFromFile, restoreFromLocal,
+    interesse, loadState, saving, error, canEdit, recoveryOptions, recoveryError, recoveryAvailable,
+    localRecoveryAvailable, localSnapshot, isInteresse, getObservacao, ultimaRemocao, ultimaRemocaoError,
+    loadFromBackend, loadRecoveryOptions, loadUltimaRemocao, toggleInteresse, adicionarInteresse, removerInteresse,
+    setObservacao, desfazerRemocao, restoreFromFile, restoreFromLocal,
   };
 });

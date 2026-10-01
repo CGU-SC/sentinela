@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
 
 import polars as pl
 
@@ -18,6 +17,7 @@ from .geografico import UF_VIZINHAS, UF_BRASILEIRAS, LIMIAR_ALERTA_UF_NAO_VIZINH
 from .dispersao_uf import get_dispersao_uf_sem_fronteira_id_cnpjs_df
 from .volume_atipico import get_volume_atipico_id_cnpjs_df
 from .alertas_alvos import build_perfil_filtrado
+from .filtros_farmacia import SEM_FILTRO_FARMACIA, FiltrosFarmacia
 
 
 # ---------------------------------------------------------------------------
@@ -356,16 +356,7 @@ def get_alertas_panorama(
     id_ibge7: int | None = None,
     data_inicio: date | None = None,
     data_fim: date | None = None,
-    par_teia: Optional[str] = None,
-    socio_beneficio: Optional[str] = None,
-    socio_esocial: Optional[str] = None,
-    cnae_incompativel: bool = False,
-    socio_idade_atipica: bool = False,
-    socio_falecido: bool = False,
-    volume_atipico: bool = False,
-    volume_atipico_limite: Optional[float] = None,
-    dispersao_uf_sem_fronteira: bool = False,
-    dispersao_uf_sem_fronteira_limite: float | None = None,
+    filtros: FiltrosFarmacia = SEM_FILTRO_FARMACIA,
 ) -> AlertasPanoramaResponse:
     """
     Agrega contagens de alertas de integridade por tipo, filtradas pelo escopo
@@ -379,26 +370,21 @@ def get_alertas_panorama(
     perfil_df = get_df_perfil_estabelecimento()
     perfil_filtrado = build_perfil_filtrado(
         perfil_df,
-        par_teia=par_teia,
-        socio_beneficio=socio_beneficio,
-        socio_esocial=socio_esocial,
-        socio_falecido=socio_falecido,
-        cnae_incompativel=cnae_incompativel,
-        socio_idade_atipica=socio_idade_atipica,
+        filtros=filtros,
         data_referencia=data_ref,
-        volume_atipico=volume_atipico,
+        periodo_inicio=data_inicio,
         volume_atipico_inicio=data_inicio,
+        periodo_fim=data_fim,
         volume_atipico_fim=data_fim,
-        volume_atipico_limite=volume_atipico_limite,
     )
 
     id_cnpjs = _filtrar_id_cnpjs_por_escopo(perfil_filtrado, uf, regiao_id, id_ibge7)
-    if dispersao_uf_sem_fronteira:
+    if filtros.dispersao_uf_sem_fronteira:
         id_cnpjs_dispersao = (
             get_dispersao_uf_sem_fronteira_id_cnpjs_df(
                 data_inicio,
                 data_fim,
-                dispersao_uf_sem_fronteira_limite,
+                filtros.dispersao_uf_sem_fronteira_limite,
             )
             .select(pl.col("id_cnpj").cast(pl.Int64))
             .unique()

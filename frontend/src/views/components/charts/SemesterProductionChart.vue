@@ -14,7 +14,7 @@ import { PALETTE } from '@/config/colors';
 use([CanvasRenderer, BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, AxisPointerComponent]);
 
 const analyticsStore = useAnalyticsStore();
-const { producaoSemestral, producaoSemestralLoading } = storeToRefs(analyticsStore);
+const { producaoSemestral, producaoSemestralLoading, producaoSemestralError } = storeToRefs(analyticsStore);
 const { formatBRL, formatCurrencyFull } = useFormatting();
 const { chartTheme, chartDataColors } = useChartTheme();
 
@@ -242,12 +242,16 @@ const chartOption = computed(() => {
       </div>
       <div class="header-total">
         <span>Total sem comprovação</span>
-        <strong>{{ formatBRL(totalSemComprovacao) }}</strong>
+        <strong>{{ producaoSemestralError ? '—' : formatBRL(totalSemComprovacao) }}</strong>
       </div>
     </div>
 
     <div class="chart-wrapper">
-      <VChart v-if="chartRows.length" class="echart" :option="chartOption" autoresize />
+      <div v-if="producaoSemestralError" class="empty-state error-state" role="alert">
+        <i class="pi pi-exclamation-triangle"></i>
+        <span>{{ producaoSemestralError }}</span>
+      </div>
+      <VChart v-else-if="chartRows.length" class="echart" :option="chartOption" autoresize />
       <div v-else class="empty-state">
         <i class="pi pi-chart-bar"></i>
         <span>Sem dados semestrais para o escopo atual</span>
@@ -344,6 +348,13 @@ const chartOption = computed(() => {
   gap: 0.55rem;
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+/* Erro da API: distinto de "sem dados" (filtro inválido ou dado indisponível). */
+.error-state {
+  padding: 0 1.5rem;
+  text-align: center;
+  color: var(--color-error);
 }
 
 .is-refreshing {

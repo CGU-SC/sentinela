@@ -5,7 +5,7 @@ import Column from 'primevue/column';
 import { useFormatting } from '@/composables/useFormatting';
 import { useFrozenData } from '@/composables/useFrozenData';
 import {
-  analysisTooltip, crmMesTooltip, crmFaixaP95, CRM_ALERTA_ICONES, CRM_NAO_LOCALIZADO_TOOLTIP,
+  analysisTooltip, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP,
 } from '@/config/analysisTooltipConfig';
 import { DATA_NEUTRAL, CRM_TAXA_P95_TONS, CRM_ALERTA_BADGE_TONS } from '@/config/colors';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
@@ -31,7 +31,6 @@ const props = defineProps({
   isRefreshing: { type: Boolean, default: false },
   isStale: { type: Boolean, default: false },
   farmaciasFiltradas: { type: Boolean, default: false },
-  searchQuery: { type: String, default: '' },
   appliedQuery: { type: String, default: '' },
   /** Aba ativa: 'resumo' | 'linha' | 'mes' */
   tab: { type: String, default: 'resumo' },
@@ -43,7 +42,7 @@ const props = defineProps({
   alertas: { type: Object, required: true },
 });
 
-const emit = defineEmits(['page', 'sort', 'search', 'select-medico', 'update:tab', 'mensal-page', 'mensal-sort']);
+const emit = defineEmits(['page', 'sort', 'select-medico', 'update:tab', 'mensal-page', 'mensal-sort']);
 
 const TABS = [
   { value: 'resumo', label: 'Resumo' },
@@ -141,8 +140,6 @@ const barrasPorMedico = computed(() => {
   }
   return mapa;
 });
-const highRateTooltip = `Taxa de pelo menos ${CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD} prescrições por dia no período selecionado. Destaque visual, sem classificação de irregularidade.`;
-
 function isHighDailyRate(row) {
   return Number(row.taxa_prescricoes_dia) >= CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD;
 }
@@ -154,7 +151,7 @@ function formatPercent(value) {
 // "800 sc" ou "CRM-SC 800" destacam "800/SC" na linha do CRM.
 const destaque = computed(() => destaqueBuscaMedico(props.appliedQuery));
 const naoLocalizadoTooltip = CRM_NAO_LOCALIZADO_TOOLTIP;
-const naoLocalizadoIcone = CRM_ALERTA_ICONES.nao_localizado_cfm;
+const naoLocalizadoIcone = CRM_NAO_LOCALIZADO_ICONE;
 
 function doctorLabel(row) {
   if (!row.localizado_cfm) return 'Não localizado no CFM';
@@ -235,29 +232,6 @@ const subtitulo = computed(() => {
           :aria-selected="tab === opcao.value"
           @click="emit('update:tab', opcao.value)"
         >{{ opcao.label }}</button>
-      </div>
-      <div class="ranking-search">
-        <i class="pi pi-search" aria-hidden="true" />
-        <input
-          type="text"
-          role="searchbox"
-          :value="searchQuery"
-          maxlength="120"
-          placeholder="Nome, CRM ou CRM/UF"
-          aria-label="Buscar médico por nome, CRM ou CRM/UF no ranking"
-          :disabled="isLoading"
-          @input="emit('search', $event.target.value)"
-        />
-        <button
-          type="button"
-          aria-label="Limpar busca de médicos"
-          :aria-hidden="!searchQuery"
-          :disabled="!searchQuery"
-          :class="{ 'is-hidden': !searchQuery }"
-          @click="emit('search', '')"
-        >
-          <i class="pi pi-eraser" aria-hidden="true" />
-        </button>
       </div>
     </header>
 
@@ -376,7 +350,6 @@ const subtitulo = computed(() => {
             <span
               class="rate-value"
               :class="{ 'rate-value--high': isHighDailyRate(data) }"
-              v-tooltip.bottom="isHighDailyRate(data) ? highRateTooltip : null"
             >{{ Number(data.taxa_prescricoes_dia).toFixed(2).replace('.', ',') }}</span>
           </template>
         </Column>
@@ -467,16 +440,6 @@ const subtitulo = computed(() => {
 .ranking-title-row h2 { margin: 0; color: var(--text-color-85); font-size: .82rem; font-weight: 600; line-height: 1.1; text-transform: uppercase; letter-spacing: .05em; }
 .ranking-heading span { display: block; margin-top: .16rem; color: var(--text-muted); font-size: .68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ranking-heading .ranking-status--error { color: var(--risk-high); }
-.ranking-search { display: flex; align-items: center; gap: .45rem; box-sizing: border-box; width: 15.5rem; min-width: 12rem; height: 36px; padding: .4rem .55rem; border: 1px solid var(--card-border); border-radius: 7px; color: var(--text-muted); }
-.ranking-search:focus-within { border-color: var(--primary-color); }
-.ranking-search > i { font-size: .78rem; }
-.ranking-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-color-85); font: inherit; font-size: .73rem; }
-.ranking-search input::placeholder { color: var(--text-muted); }
-.ranking-search button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--color-error); opacity: .7; cursor: pointer; }
-.ranking-search button.is-hidden { visibility: hidden; }
-.ranking-search button .pi { font-size: .75rem; }
-.ranking-search button:hover, .ranking-search button:focus-visible { opacity: 1; }
-.ranking-search button:focus-visible { outline: 2px solid var(--color-error); outline-offset: 2px; border-radius: 3px; }
 /* :deep: também no cabeçalho da tabela da aba "Por mês". */
 .crm-ranking-panel :deep(.info-icon) { color: var(--text-muted); font-size: .8rem; opacity: .7; }
 .crm-ranking-panel :deep(.info-icon:hover) { opacity: 1; }

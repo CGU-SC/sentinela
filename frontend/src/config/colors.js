@@ -215,6 +215,15 @@ export const CRM_IDENTITY_PALETTE = {
 // ordem fixa, validada com scripts/validate_palette.js (claro e escuro: todas as
 // checagens passam; no claro, 3 cores ficam abaixo de 3:1 com o fundo, por isso
 // a tabela de farmácias repete a cor e o valor). A 6ª série ("outras") é neutra.
+// Severidade das autorizações em sequência (id_severidade 1..4): as mesmas cores
+// da Cronologia da aba Autorizações do estabelecimento (selos de severidade).
+export const CRM_SEVERIDADE_SEQUENCIA_CORES = Object.freeze({
+  1: '#eab308', // alta
+  2: '#f59e0b', // grave
+  3: '#f97316', // crítica
+  4: '#ef4444', // extrema
+});
+
 export const CRM_FARMACIA_SERIES = {
   light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"],
   dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"],

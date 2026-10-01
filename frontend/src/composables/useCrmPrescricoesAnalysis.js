@@ -2,6 +2,7 @@ import { computed, onScopeDispose, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useFilterStore } from '@/stores/filters';
 import { useCrmPrescricoesAnalysisStore } from '@/stores/crmPrescricoesAnalysis';
+import { useCrmFiltrosMedicoStore } from '@/stores/crmFiltrosMedico';
 import { buildAnalyticsParams } from '@/stores/analytics';
 
 // Filtros de texto esperam o fim da digitacao; selecoes pedem imediatamente.
@@ -13,10 +14,24 @@ export function getCrmMapLevel(filterStore) {
   return 'uf';
 }
 
+/**
+ * Parâmetros das consultas de CRM de /analises: filtros globais (farmácias,
+ * território, período) + filtros de médico da página + nível do mapa.
+ * Fonte única da chave de cache (página e preparação da rota usam a mesma).
+ */
+export function buildCrmAnalysisParams(filterStore, filtrosMedicoStore, mapLevel) {
+  return {
+    ...buildAnalyticsParams(filterStore.apiParams),
+    ...filtrosMedicoStore.apiParams,
+    map_level: mapLevel,
+  };
+}
+
 export function useCrmPrescricoesAnalysis(mapLevel) {
   const filterStore = useFilterStore();
+  const filtrosMedicoStore = useCrmFiltrosMedicoStore();
   const analysisStore = useCrmPrescricoesAnalysisStore();
-  const params = computed(() => ({ ...buildAnalyticsParams(filterStore.apiParams), map_level: mapLevel.value }));
+  const params = computed(() => buildCrmAnalysisParams(filterStore, filtrosMedicoStore, mapLevel.value));
   const paramsKey = computed(() => JSON.stringify(params.value));
   let timer = null;
   let firstRun = true;

@@ -35,6 +35,8 @@ from ...schemas.analytics import (
 )
 from . import crm_analysis as base
 from . import crm_analysis_filtrado as filtrado
+from .crm_filtros_medico import SEM_FILTRO_MEDICO, FiltrosMedico
+from .filtros_farmacia import SEM_FILTRO_FARMACIA, FiltrosFarmacia
 
 # Coluna escolhida + desempates fixos (para a paginacao ser estavel).
 MENSAL_SORT_COLUMNS: dict[str, list[tuple[str, bool]]] = {
@@ -141,7 +143,8 @@ def get_crm_prescricoes_mensal(
     uf: Optional[str] = None,
     regiao_id: Optional[int] = None,
     id_ibge7: Optional[int] = None,
-    **filtros_farmacia_brutos,
+    filtros_medico: FiltrosMedico = SEM_FILTRO_MEDICO,
+    filtros_farmacia: FiltrosFarmacia = SEM_FILTRO_FARMACIA,
 ) -> CrmPrescricoesMensalResponse:
     if page < 1:
         raise HTTPException(status_code=422, detail="page deve ser maior ou igual a 1.")
@@ -153,15 +156,20 @@ def get_crm_prescricoes_mensal(
         raise HTTPException(status_code=422, detail="sort_order deve ser asc ou desc.")
 
     inicio, fim = base._period_bounds(data_inicio, data_fim)
-    filtro_ativo, filtros = base.montar_filtros_farmacia(**filtros_farmacia_brutos)
+    filtro_ativo, filtros = base.montar_filtros_farmacia(filtros_farmacia)
     nivel, identificador = base.escopo_territorial(uf, regiao_id, id_ibge7)
     escopo = base._scope_label(uf=uf, regiao_id=regiao_id, id_ibge7=id_ibge7)
     termo = base._normalizar_busca_medico(medico_query or "")
 
+    # Nesta aba a linha e o medico x mes: as faixas de producao filtram os meses
+    # (taxa e prescricoes do mes, as colunas exibidas); os demais filtros de
+    # medico, os de farmacia e a busca escolhem os medicos.
+    filtros_medicos_selecao = filtros_medico.sem_faixas()
     ids: Optional[pl.Series] = None
-    if filtro_ativo:
+    if filtro_ativo or filtros_medicos_selecao.ativo:
         ids = filtrado.ids_medicos_filtrados(
-            filtros=filtros, inicio=inicio, fim=fim, uf=uf, regiao_id=regiao_id, id_ibge7=id_ibge7,
+            filtros=filtros, medicos=filtros_medicos_selecao,
+            inicio=inicio, fim=fim, uf=uf, regiao_id=regiao_id, id_ibge7=id_ibge7,
         )
     busca = base.ids_busca_medico(termo)
     if busca is not None:
@@ -169,9 +177,16 @@ def get_crm_prescricoes_mensal(
 
     limiares = base._limiares_do_periodo(inicio, fim)
     brutos = _meses_brutos(inicio, fim, uf, regiao_id, id_ibge7)
+    filtro_meses = filtros_medico.expressao_faixas(
+        taxa=pl.col("nu_prescricoes").cast(pl.Float64) / pl.col("qtd_dias_com_prescricao").cast(pl.Float64),
+        prescricoes=pl.col("nu_prescricoes"),
+    )
+    if filtro_meses is not None:
+        # Antes da contagem e da paginacao: total e paginas ja saem filtrados.
+        brutos = brutos.filter(filtro_meses)
     chave_recorte = (
         "mensal", nivel, identificador, filtrado._chave_filtros(filtros) if filtro_ativo else None,
-        termo, inicio, fim,
+        filtros_medico.chave, termo, inicio, fim,
     )
     colunas = [sort_field, *(nome for nome, _ in MENSAL_SORT_COLUMNS[sort_field])]
     descendente = [sort_order == "desc", *(desc for _, desc in MENSAL_SORT_COLUMNS[sort_field])]
@@ -189,13 +204,13 @@ def get_crm_prescricoes_mensal(
         # Recorte inteiro (dezenas de milhoes de linhas no Brasil): le do disco
         # em streaming; total e paginas ja calculados ficam no cache.
         linhas = _com_taxa(brutos, limiares)
-        total = filtrado._em_cache(
+        total = filtrado._CACHE.obter(
             (*chave_recorte, "total"),
             lambda: int(brutos.select(pl.len()).collect(engine="streaming").item()),
         )
 
         def obter_pagina(offset: int, limite: int) -> pl.DataFrame:
-            return filtrado._em_cache(
+            return filtrado._CACHE.obter(
                 (*chave_recorte, "pagina", sort_field, sort_order, page, page_size),
                 lambda: pagina_de(linhas, offset, limite),
             )
@@ -220,6 +235,7 @@ def get_crm_prescricoes_mensal(
             page_size=page_size,
             linhas=itens,
             filtro_farmacias_ativo=filtro_ativo,
+            filtro_medicos_ativo=filtros_medico.ativo,
         )
 
     offset = (page - 1) * page_size

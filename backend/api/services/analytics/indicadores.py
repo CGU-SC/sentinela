@@ -75,6 +75,7 @@ from ...schemas.analytics import (
     GtinDetalhamentoMensalSummary,
     GtinDetalhamentoMensalItem,
 )
+from .filtros_farmacia import SEM_FILTRO_FARMACIA, FiltrosFarmacia
 
 def _optional_float(value: object) -> float | None:
     if value is None or isinstance(value, bool):
@@ -241,6 +242,12 @@ _INDICADOR_SCOPE_FILTER_FIELDS = (
     ("cnae_incompativel", _normalize_cache_bool),
     ("socio_idade_atipica", _normalize_cache_bool),
     ("socio_falecido", _normalize_cache_bool),
+    ("populacao_min", _normalize_cache_int),
+    ("populacao_max", _normalize_cache_int),
+    ("seq_tipo", _normalize_cache_text),
+    ("seq_severidade_min", _normalize_cache_int),
+    ("seq_dias_min", _normalize_cache_int),
+    ("seq_dias_max", _normalize_cache_int),
     ("dispersao_uf_sem_fronteira", _normalize_cache_bool),
     ("dispersao_uf_sem_fronteira_limite", _normalize_cache_float),
     ("perc_min", _normalize_cache_float),
@@ -589,11 +596,18 @@ def _build_indicador_scope_base(
     cnae_incompativel: bool = False,
     socio_idade_atipica: bool = False,
     socio_falecido: bool = False,
+    populacao_min: int | None = None,
+    populacao_max: int | None = None,
+    seq_tipo: str | None = None,
+    seq_severidade_min: int | None = None,
+    seq_dias_min: int | None = None,
+    seq_dias_max: int | None = None,
     dispersao_uf_sem_fronteira: bool = False,
     dispersao_uf_sem_fronteira_limite: float | None = None,
     volume_atipico: bool = False,
     volume_atipico_limite: float | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
+    filtros = FiltrosFarmacia.de_mapeamento(locals())
     min_data = date(2015, 7, 1)
     max_data = date(2199, 12, 31)
     inicio = max(data_inicio, min_data) if data_inicio else min_data
@@ -649,22 +663,19 @@ def _build_indicador_scope_base(
     scope_base = _apply_estabelecimento_search(scope_base.filter(mask), estabelecimento)
     scope_base = build_perfil_filtrado(
         scope_base,
-        par_teia=par_teia,
-        socio_beneficio=socio_beneficio,
-        socio_esocial=socio_esocial,
-        socio_falecido=socio_falecido,
-        cnae_incompativel=cnae_incompativel,
-        socio_idade_atipica=socio_idade_atipica,
+        filtros=filtros,
         data_referencia=fim,
-        volume_atipico=volume_atipico,
+        periodo_inicio=inicio,
         volume_atipico_inicio=inicio,
+        periodo_fim=fim,
         volume_atipico_fim=fim,
-        volume_atipico_limite=volume_atipico_limite,
     )
-    if perc_min is not None:
-        scope_base = scope_base.filter(pl.col("_perc_val_sem_comp_exato") >= perc_min)
-    if perc_max is not None:
-        scope_base = scope_base.filter(pl.col("_perc_val_sem_comp_exato") <= perc_max)
+    perc_min_efetivo = perc_min if perc_min is not None else 0.0
+    perc_max_efetivo = perc_max if perc_max is not None else 100.0
+    scope_base = scope_base.filter(
+        (pl.col("_perc_val_sem_comp_exato") >= perc_min_efetivo)
+        & (pl.col("_perc_val_sem_comp_exato") <= perc_max_efetivo)
+    )
     scope_base = scope_base.drop("_perc_val_sem_comp_exato")
     if val_min is not None:
         scope_base = scope_base.filter(pl.col("total_sem_comprovacao") >= val_min)
@@ -844,6 +855,12 @@ def _build_indicador_dataset_cached(
     cnae_incompativel: bool = False,
     socio_idade_atipica: bool = False,
     socio_falecido: bool = False,
+    populacao_min: int | None = None,
+    populacao_max: int | None = None,
+    seq_tipo: str | None = None,
+    seq_severidade_min: int | None = None,
+    seq_dias_min: int | None = None,
+    seq_dias_max: int | None = None,
     dispersao_uf_sem_fronteira: bool = False,
     dispersao_uf_sem_fronteira_limite: float | None = None,
     volume_atipico: bool = False,
@@ -1309,28 +1326,9 @@ def get_indicadores_analise(
     uf: str | None = None,
     regiao_saude: str | None = None,
     municipio: str | None = None,
-    situacao_rf: str | None = None,
-    conexao_ms: str | None = None,
-    porte_empresa: str | None = None,
-    grande_rede: str | None = None,
-    cnpj_raiz: str | None = None,
-    estabelecimento: str | None = None,
-    unidade_pf: str | None = None,
-    perc_min: float | None = None,
-    perc_max: float | None = None,
-    val_min: float | None = None,
     regiao_id: int | None = None,
     id_ibge7: int | None = None,
-    par_teia: str | None = None,
-    socio_beneficio: str | None = None,
-    socio_esocial: str | None = None,
-    dispersao_uf_sem_fronteira: bool = False,
-    dispersao_uf_sem_fronteira_limite: float | None = None,
-    volume_atipico: bool = False,
-    volume_atipico_limite: float | None = None,
-    cnae_incompativel: bool = False,
-    socio_idade_atipica: bool = False,
-    socio_falecido: bool = False,
+    filtros: FiltrosFarmacia = SEM_FILTRO_FARMACIA,
 ) -> IndicadorAnaliseResponse:
     """
     Análise cruzada de um indicador de risco: retorna KPIs, mapa municipal
@@ -1345,15 +1343,7 @@ def get_indicadores_analise(
         uf: Sigla da UF ou None.
         regiao_saude: Nome da Região de Saúde ou None.
         municipio: Nome do município ou None.
-        situacao_rf: Situação na Receita Federal ou None.
-        conexao_ms: 'Ativa' | 'Inativa' | None.
-        porte_empresa: Porte CNPJ ou None.
-        grande_rede: 'Sim' | 'Não' | None.
-        cnpj_raiz: 8 ou 14 dígitos ou None.
-        unidade_pf: Nome da Unidade PF ou None.
-        perc_min: Limiar mínimo de não comprovação (%)
-        perc_max: Limiar máximo de não comprovação (%)
-        val_min: Valor bruto mínimo sem comprovação (R$)
+        filtros: Filtros de farmácia (cadastro, % e valor sem comprovação, integridade...).
 
     Returns:
         IndicadorAnaliseResponse com kpis e municipios.
@@ -1373,28 +1363,9 @@ def get_indicadores_analise(
             data_inicio=data_inicio,
             data_fim=data_fim,
             uf=uf,
-            situacao_rf=situacao_rf,
-            conexao_ms=conexao_ms,
-            porte_empresa=porte_empresa,
-            grande_rede=grande_rede,
-            cnpj_raiz=cnpj_raiz,
-            estabelecimento=estabelecimento,
-            unidade_pf=unidade_pf,
-            perc_min=perc_min,
-            perc_max=perc_max,
-            val_min=val_min,
             regiao_id=regiao_id,
             id_ibge7=id_ibge7,
-            par_teia=par_teia,
-            socio_beneficio=socio_beneficio,
-            socio_esocial=socio_esocial,
-            cnae_incompativel=cnae_incompativel,
-            socio_idade_atipica=socio_idade_atipica,
-            socio_falecido=socio_falecido,
-            dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
-            dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
-            volume_atipico=volume_atipico,
-            volume_atipico_limite=volume_atipico_limite,
+            **filtros.como_dict(),
         )
 
         if df_joined.is_empty():
@@ -1511,32 +1482,13 @@ def get_indicadores_analise_cnpjs(
     uf: str | None = None,
     regiao_saude: str | None = None,
     municipio: str | None = None,
-    situacao_rf: str | None = None,
-    conexao_ms: str | None = None,
-    porte_empresa: str | None = None,
-    grande_rede: str | None = None,
-    cnpj_raiz: str | None = None,
-    estabelecimento: str | None = None,
-    unidade_pf: str | None = None,
-    perc_min: float | None = None,
-    perc_max: float | None = None,
-    val_min: float | None = None,
     regiao_id: int | None = None,
     id_ibge7: int | None = None,
-    par_teia: str | None = None,
-    socio_beneficio: str | None = None,
-    socio_esocial: str | None = None,
-    dispersao_uf_sem_fronteira: bool = False,
-    dispersao_uf_sem_fronteira_limite: float | None = None,
-    volume_atipico: bool = False,
-    volume_atipico_limite: float | None = None,
-    cnae_incompativel: bool = False,
-    socio_idade_atipica: bool = False,
-    socio_falecido: bool = False,
     page: int = 1,
     page_size: int = 20,
     sort_field: str = "val_sem_comp",
     sort_order: str | int | None = "desc",
+    filtros: FiltrosFarmacia = SEM_FILTRO_FARMACIA,
 ) -> IndicadorCnpjPageResponse:
     try:
         df_joined, _perfil_df, _df_risco, c_val, c_mr, rr_col, score_col = _build_indicador_dataset_cached(
@@ -1544,28 +1496,9 @@ def get_indicadores_analise_cnpjs(
             data_inicio=data_inicio,
             data_fim=data_fim,
             uf=uf,
-            situacao_rf=situacao_rf,
-            conexao_ms=conexao_ms,
-            porte_empresa=porte_empresa,
-            grande_rede=grande_rede,
-            cnpj_raiz=cnpj_raiz,
-            estabelecimento=estabelecimento,
-            unidade_pf=unidade_pf,
-            perc_min=perc_min,
-            perc_max=perc_max,
-            val_min=val_min,
             regiao_id=regiao_id,
             id_ibge7=id_ibge7,
-            par_teia=par_teia,
-            socio_beneficio=socio_beneficio,
-            socio_esocial=socio_esocial,
-            cnae_incompativel=cnae_incompativel,
-            socio_idade_atipica=socio_idade_atipica,
-            socio_falecido=socio_falecido,
-            dispersao_uf_sem_fronteira=dispersao_uf_sem_fronteira,
-            dispersao_uf_sem_fronteira_limite=dispersao_uf_sem_fronteira_limite,
-            volume_atipico=volume_atipico,
-            volume_atipico_limite=volume_atipico_limite,
+            **filtros.como_dict(),
         )
 
         normalized_order, descending = _normalizar_sort_order(sort_order)
@@ -1642,4 +1575,3 @@ def get_indicadores_analise_cnpjs(
         print(f"ERRO EM get_indicadores_analise_cnpjs (indicador={indicador}): {e}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Erro interno ao paginar CNPJs do indicador.")
-

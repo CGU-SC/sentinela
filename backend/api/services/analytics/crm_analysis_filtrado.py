@@ -1,4 +1,4 @@
-"""Mapa e ranking de medicos (tela /analises) com filtros de farmacia.
+"""Mapa e ranking de medicos (tela /analises) com filtros de farmacia e de medico.
 
 Com qualquer filtro alem de periodo e localizacao, o universo passa a ser o das
 farmacias filtradas -- exatamente as mesmas de /estabelecimentos. Regra "no
@@ -14,15 +14,17 @@ periodo":
   do ranking sem filtro); a coluna extra traz as prescricoes nas farmacias
   filtradas do escopo e a fatia delas no total do medico.
 
+Filtros de medico (crm_filtros_medico) restringem esse universo: entram so os
+medicos que tambem passam neles. Sem filtro de farmacia, o universo de
+farmacias e o de todas as farmacias (mesmos numeros do mapa sem filtro).
+
 Os conjuntos de medicos vem do indice de bitmaps (crm_indice_bitmaps), montado
 na sincronizacao a partir dos modulos CRM.
 """
 
-import threading
-from collections import OrderedDict
 from datetime import date
 from collections.abc import Mapping
-from typing import Callable, Optional, TypeVar, cast
+from typing import Callable, Optional
 
 import polars as pl
 from fastapi import HTTPException
@@ -30,24 +32,22 @@ from pyroaring import BitMap
 
 from crm_indice_bitmaps import IndiceBitmaps, IndiceDesatualizado, chave_territorio, obter_indice
 from data_cache import (
-    get_cache_generation,
+    get_df_perfil_estabelecimento,
     get_localidades_df,
     scan_crm_farmacia_medico_ano,
     scan_crm_medico_dim,
     scan_crm_medico_estabelecimento_mes,
 )
 from . import crm_analysis as base
+from .cache_geracao import CacheGeracao
+from .crm_filtros_medico import FiltrosMedico, Recorte, chave_medicos, medicos_filtrados
 from .indicadores import get_indicador_scope_base_cached
+from .filtros_farmacia import CAMPOS_FILTROS_FARMACIA
 
 # Filtros que definem as farmacias (os de localizacao ficam de fora: o recorte
 # geografico e feito pelo territorio do mapa/ranking).
-FILTROS_FARMACIA = (
-    "situacao_rf", "conexao_ms", "porte_empresa", "grande_rede", "cnpj_raiz",
-    "estabelecimento", "unidade_pf", "par_teia", "socio_beneficio", "socio_esocial",
-    "cnae_incompativel", "socio_idade_atipica", "socio_falecido",
-    "dispersao_uf_sem_fronteira", "dispersao_uf_sem_fronteira_limite",
-    "perc_min", "perc_max", "val_min", "volume_atipico", "volume_atipico_limite",
-)
+# Os mesmos campos do objeto de filtros (chave de cache e "filtro de farmacia ativo?").
+FILTROS_FARMACIA = CAMPOS_FILTROS_FARMACIA
 
 _COLUNA_TERRITORIO = {
     "uf": "uf",
@@ -55,34 +55,21 @@ _COLUNA_TERRITORIO = {
     "municipio": "id_municipio",
 }
 
-_T = TypeVar("_T")
-
-_CACHE_MAX_ITENS = 32
-_CACHE: "OrderedDict[tuple[object, ...], object]" = OrderedDict()
-_CACHE_LOCK = threading.Lock()
-
-
-def _em_cache(chave: tuple[object, ...], calcular: Callable[[], _T]) -> _T:
-    """Cache LRU por geracao dos modulos (descarta geracoes antigas)."""
-    geracao = get_cache_generation()
-    chave = (geracao, *chave)
-    with _CACHE_LOCK:
-        for antiga in [k for k in _CACHE if k[0] != geracao]:
-            del _CACHE[antiga]
-        if chave in _CACHE:
-            _CACHE.move_to_end(chave)
-            return cast(_T, _CACHE[chave])
-    valor = calcular()
-    with _CACHE_LOCK:
-        _CACHE[chave] = valor
-        _CACHE.move_to_end(chave)
-        while len(_CACHE) > _CACHE_MAX_ITENS:
-            _CACHE.popitem(last=False)
-    return valor
+_CACHE = CacheGeracao(max_itens=32)
 
 
 def _chave_filtros(filtros: Mapping[str, object]) -> tuple[object, ...]:
     return tuple((nome, filtros.get(nome)) for nome in FILTROS_FARMACIA)
+
+
+def _recorte(uf: Optional[str], regiao_id: Optional[int], id_ibge7: Optional[int]) -> Recorte:
+    """Recorte da pagina normalizado (UF "Todos" = sem UF)."""
+    return (uf if uf and uf != "Todos" else None, regiao_id, id_ibge7)
+
+
+def filtro_farmacia_ativo(filtros: Mapping[str, object]) -> bool:
+    """True quando algum filtro de farmacia (normalizado) esta ligado."""
+    return any(filtros.get(nome) is not None and filtros.get(nome) is not False for nome in FILTROS_FARMACIA)
 
 
 def _indice() -> IndiceBitmaps:
@@ -94,10 +81,22 @@ def _indice() -> IndiceBitmaps:
 
 # ── Farmacias e medicos delas ────────────────────────────────────────────────
 def _farmacias(filtros: Mapping[str, object], inicio: date, fim: date) -> pl.DataFrame:
-    """id_cnpj e territorio das farmacias filtradas (mesma base de /estabelecimentos)."""
+    """
+    id_cnpj e territorio das farmacias do universo.
+
+    Com filtro de farmacia: as filtradas (mesma base de /estabelecimentos).
+    So com filtro de medico: todas as farmacias do cadastro, o mesmo universo da
+    analise sem filtros. A base de /estabelecimentos corta farmacias sem venda ou
+    sem movimento no periodo, e ligar um filtro de medico nao pode mudar a base.
+    """
     def calcular() -> pl.DataFrame:
-        scope = get_indicador_scope_base_cached(data_inicio=inicio, data_fim=fim, **filtros)
-        base._require_columns(scope, {"id_cnpj", "uf", "id_regiao_saude", "id_ibge7"}, "Base de farmacias filtradas")
+        if filtro_farmacia_ativo(filtros):
+            scope = get_indicador_scope_base_cached(data_inicio=inicio, data_fim=fim, **filtros)
+            origem = "Base de farmacias filtradas"
+        else:
+            scope = get_df_perfil_estabelecimento()
+            origem = "Perfil dos estabelecimentos"
+        base._require_columns(scope, {"id_cnpj", "uf", "id_regiao_saude", "id_ibge7"}, origem)
         farmacias = scope.select([
             pl.col("id_cnpj").cast(pl.Int32),
             pl.col("uf").cast(pl.Utf8),
@@ -107,7 +106,7 @@ def _farmacias(filtros: Mapping[str, object], inicio: date, fim: date) -> pl.Dat
         if farmacias.select(pl.any_horizontal(pl.all().is_null()).any()).item():
             raise HTTPException(status_code=503, detail="Farmacias filtradas sem UF, regiao ou municipio.")
         return farmacias
-    return _em_cache(("farmacias", _chave_filtros(filtros), inicio, fim), calcular)
+    return _CACHE.obter(("farmacias", _chave_filtros(filtros), inicio, fim), calcular)
 
 
 def _cnpjs(farmacias: pl.DataFrame, nivel: str, territorio: Optional[str]) -> list[int]:
@@ -116,7 +115,22 @@ def _cnpjs(farmacias: pl.DataFrame, nivel: str, territorio: Optional[str]) -> li
     return farmacias.filter(pl.col(_COLUNA_TERRITORIO[nivel]) == territorio).get_column("id_cnpj").to_list()
 
 
-def _medicos_por_territorio(filtros, nivel: str, inicio: date, fim: date) -> dict[str, BitMap]:
+def _medicos_por_territorio(
+    filtros, medicos: FiltrosMedico, recorte: Recorte, nivel: str, inicio: date, fim: date,
+) -> dict[str, BitMap]:
+    """Por territorio do nivel: medicos das farmacias filtradas dele que passam nos filtros de medico."""
+    por_territorio = _medicos_farmacias_por_territorio(filtros, nivel, inicio, fim)
+    if not medicos.ativo:
+        return por_territorio
+
+    def calcular() -> dict[str, BitMap]:
+        selecionados = medicos_filtrados(medicos, inicio, fim, recorte)
+        return {territorio: bitmap & selecionados for territorio, bitmap in por_territorio.items()}
+
+    return _CACHE.obter(("medicos_filtrados", nivel, _chave_filtros(filtros), chave_medicos(medicos, recorte), inicio, fim), calcular)
+
+
+def _medicos_farmacias_por_territorio(filtros, nivel: str, inicio: date, fim: date) -> dict[str, BitMap]:
     """Por territorio do nivel: medicos com prescricao nas farmacias filtradas dele."""
     def calcular() -> dict[str, BitMap]:
         indice = _indice()
@@ -130,23 +144,25 @@ def _medicos_por_territorio(filtros, nivel: str, inicio: date, fim: date) -> dic
             territorio: indice.uniao_farmacias(cnpjs, anos, meses)
             for territorio, cnpjs in grupos.iter_rows()
         }
-    return _em_cache(("medicos", nivel, _chave_filtros(filtros), inicio, fim), calcular)
+    return _CACHE.obter(("medicos", nivel, _chave_filtros(filtros), inicio, fim), calcular)
 
 
-def _medicos_escopo(filtros, nivel: str, territorio: Optional[str], inicio: date, fim: date) -> BitMap:
-    """Medicos com prescricao nas farmacias filtradas do escopo (nivel de base.escopo_territorial)."""
+def _medicos_escopo(
+    filtros, medicos: FiltrosMedico, recorte: Recorte, nivel: str, territorio: Optional[str], inicio: date, fim: date,
+) -> BitMap:
+    """Medicos do universo filtrado no escopo (nivel de base.escopo_territorial)."""
     if nivel == "brasil":
-        por_uf = _medicos_por_territorio(filtros, "uf", inicio, fim)
-        return _em_cache(
-            ("medicos_brasil", _chave_filtros(filtros), inicio, fim),
+        por_uf = _medicos_por_territorio(filtros, medicos, recorte, "uf", inicio, fim)
+        return _CACHE.obter(
+            ("medicos_brasil", _chave_filtros(filtros), chave_medicos(medicos, recorte), inicio, fim),
             lambda: BitMap().union(*por_uf.values()),
         )
     if territorio is None:
         raise ValueError(f"Escopo {nivel} sem territorio.")
-    return _medicos_por_territorio(filtros, nivel, inicio, fim).get(territorio, BitMap())
+    return _medicos_por_territorio(filtros, medicos, recorte, nivel, inicio, fim).get(territorio, BitMap())
 
 
-def _contagens(filtros, nivel: str, inicio: date, fim: date) -> pl.DataFrame:
+def _contagens(filtros, medicos: FiltrosMedico, recorte: Recorte, nivel: str, inicio: date, fim: date) -> pl.DataFrame:
     """Por territorio (uf ou municipio): medicos ativos e de alta intensidade."""
     def calcular() -> pl.DataFrame:
         indice = _indice()
@@ -154,11 +170,11 @@ def _contagens(filtros, nivel: str, inicio: date, fim: date) -> pl.DataFrame:
         linhas = [
             (
                 territorio,
-                len(medicos),
-                medicos.intersection_cardinality(indice.alta(chave_territorio(nivel, territorio), anos, meses)),
+                len(medicos_territorio),
+                medicos_territorio.intersection_cardinality(indice.alta(chave_territorio(nivel, territorio), anos, meses)),
             )
-            for territorio, medicos in _medicos_por_territorio(filtros, nivel, inicio, fim).items()
-            if medicos
+            for territorio, medicos_territorio in _medicos_por_territorio(filtros, medicos, recorte, nivel, inicio, fim).items()
+            if medicos_territorio
         ]
         return pl.DataFrame(
             linhas,
@@ -169,13 +185,14 @@ def _contagens(filtros, nivel: str, inicio: date, fim: date) -> pl.DataFrame:
             },
             orient="row",
         )
-    return _em_cache(("contagens", nivel, _chave_filtros(filtros), inicio, fim), calcular)
+    return _CACHE.obter(("contagens", nivel, _chave_filtros(filtros), chave_medicos(medicos, recorte), inicio, fim), calcular)
 
 
 # ── Mapa ──────────────────────────────────────────────────────────────────────
 def mapa_filtrado(
     *,
     filtros: Mapping[str, object],
+    medicos: FiltrosMedico,
     map_level: str,
     inicio: date,
     fim: date,
@@ -183,9 +200,10 @@ def mapa_filtrado(
     regiao_id: Optional[int],
     id_ibge7: Optional[int],
 ):
-    """Mesmo contrato de base._build_manager_map, com o universo das farmacias filtradas."""
+    """Mesmo contrato de base._build_manager_map, com o universo filtrado (farmacias e medicos)."""
+    recorte = _recorte(uf, regiao_id, id_ibge7)
     if map_level == "uf":
-        contagens = _contagens(filtros, "uf", inicio, fim).rename({"id_geografico": "uf"})
+        contagens = _contagens(filtros, medicos, recorte, "uf", inicio, fim).rename({"id_geografico": "uf"})
         ufs = (
             get_localidades_df().select(pl.col("sg_uf").cast(pl.Utf8).alias("uf")).unique()
             .join(contagens, on="uf", how="left")
@@ -203,7 +221,7 @@ def mapa_filtrado(
         )
         referencia = {"percentual_referencia_brasil": percentual_brasil}
         # Mapa por UF: escopo e a UF selecionada ou o Brasil.
-        qtd = len(_medicos_escopo(filtros, *base.escopo_territorial(uf, None, None), inicio, fim))
+        qtd = len(_medicos_escopo(filtros, medicos, recorte, *base.escopo_territorial(uf, None, None), inicio, fim))
         return base._map_items_from_summary(summary, "uf", percentual_brasil=percentual_brasil), qtd, referencia
 
     localidades = get_localidades_df()
@@ -216,7 +234,7 @@ def mapa_filtrado(
         pl.col("no_municipio").cast(pl.Utf8),
     ]).unique("id_ibge7")
     contagens = (
-        _contagens(filtros, "municipio", inicio, fim)
+        _contagens(filtros, medicos, recorte, "municipio", inicio, fim)
         .with_columns(pl.col("id_geografico").cast(pl.Int64).alias("id_ibge7"))
         .drop("id_geografico")
     )
@@ -250,7 +268,7 @@ def mapa_filtrado(
     nivel_escopo, territorio_escopo = base.escopo_territorial(uf, regiao_id, id_ibge7)
     if nivel_escopo == "brasil":
         raise HTTPException(status_code=422, detail="O mapa geografico exige UF, regiao de saude ou municipio.")
-    qtd = len(_medicos_escopo(filtros, nivel_escopo, territorio_escopo, inicio, fim))
+    qtd = len(_medicos_escopo(filtros, medicos, recorte, nivel_escopo, territorio_escopo, inicio, fim))
 
     summary = (
         geo_scope
@@ -330,44 +348,53 @@ def _prescricoes_nas_farmacias(
 def ranking_filtrado(
     *,
     filtros: Mapping[str, object],
+    medicos: FiltrosMedico,
     inicio: date,
     fim: date,
     uf: Optional[str],
     regiao_id: Optional[int],
     id_ibge7: Optional[int],
-) -> tuple[pl.DataFrame, Callable[[list[str]], pl.DataFrame], Callable[[], pl.DataFrame]]:
-    """Ranking do escopo restrito aos medicos das farmacias filtradas.
+) -> tuple[
+    pl.DataFrame,
+    Optional[Callable[[list[str]], pl.DataFrame]],
+    Optional[Callable[[], pl.DataFrame]],
+]:
+    """Ranking do escopo restrito ao universo filtrado (farmacias e medicos).
 
-    Devolve o agregado, a soma dos medicos da pagina e a soma completa sob
-    demanda para ordenar pelas colunas das farmacias filtradas.
+    Devolve o agregado e, so com filtro de farmacia, a soma dos medicos da
+    pagina e a soma completa sob demanda (colunas "Farmacias filtradas").
     """
     nivel, territorio = base.escopo_territorial(uf, regiao_id, id_ibge7)
+    recorte = _recorte(uf, regiao_id, id_ibge7)
 
     def calcular() -> pl.DataFrame:
-        medicos = _medicos_escopo(filtros, nivel, territorio, inicio, fim)
-        ids = _indice().ids_medico(medicos)
+        selecionados = _medicos_escopo(filtros, medicos, recorte, nivel, territorio, inicio, fim)
+        ids = _indice().ids_medico(selecionados)
         completo = base.ranking_agregado_escopo(
             inicio=inicio, fim=fim, uf=uf, regiao_id=regiao_id, id_ibge7=id_ibge7,
         )
         agregado = completo.filter(pl.col("id_medico").is_in(ids))
-        if agregado.height != len(medicos):
+        if agregado.height != len(selecionados):
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    f"{len(medicos) - agregado.height} medicos das farmacias filtradas fora do ranking do escopo. "
+                    f"{len(selecionados) - agregado.height} medicos do universo filtrado fora do ranking do escopo. "
                     "Sincronize os modulos CRM e o indice de bitmaps da mesma execucao."
                 ),
             )
         return agregado
 
-    agregado = _em_cache(("ranking", nivel, territorio, _chave_filtros(filtros), inicio, fim), calcular)
+    agregado = _CACHE.obter(("ranking", nivel, territorio, _chave_filtros(filtros), chave_medicos(medicos, recorte), inicio, fim), calcular)
+    if not filtro_farmacia_ativo(filtros):
+        # So filtro de medico: sem colunas de farmacias filtradas.
+        return agregado, None, None
     cnpjs = _cnpjs(_farmacias(filtros, inicio, fim), nivel, territorio)
     def prescricoes_pagina(id_medicos: list[str]) -> pl.DataFrame:
         return _prescricoes_nas_farmacias(id_medicos, cnpjs, inicio, fim)
 
     def prescricoes_completas() -> pl.DataFrame:
-        return _em_cache(
-            ("ranking_prescricoes_completas", nivel, territorio, _chave_filtros(filtros), inicio, fim),
+        return _CACHE.obter(
+            ("ranking_prescricoes_completas", nivel, territorio, _chave_filtros(filtros), chave_medicos(medicos, recorte), inicio, fim),
             lambda: _prescricoes_nas_farmacias(
                 agregado.get_column("id_medico").to_list(), cnpjs, inicio, fim,
             ),
@@ -379,17 +406,19 @@ def ranking_filtrado(
 def ids_medicos_filtrados(
     *,
     filtros: Mapping[str, object],
+    medicos: FiltrosMedico,
     inicio: date,
     fim: date,
     uf: Optional[str],
     regiao_id: Optional[int],
     id_ibge7: Optional[int],
 ) -> pl.Series:
-    """id_medico dos medicos com prescricao nas farmacias filtradas do escopo, no periodo."""
+    """id_medico dos medicos do universo filtrado (farmacias e medicos) no escopo, no periodo."""
     nivel, territorio = base.escopo_territorial(uf, regiao_id, id_ibge7)
+    recorte = _recorte(uf, regiao_id, id_ibge7)
 
     def calcular() -> pl.Series:
-        medicos = _medicos_escopo(filtros, nivel, territorio, inicio, fim)
-        return _indice().ids_medico(medicos).cast(pl.Utf8).alias("id_medico")
+        selecionados = _medicos_escopo(filtros, medicos, recorte, nivel, territorio, inicio, fim)
+        return _indice().ids_medico(selecionados).cast(pl.Utf8).alias("id_medico")
 
-    return _em_cache(("ids_medicos", nivel, territorio, _chave_filtros(filtros), inicio, fim), calcular)
+    return _CACHE.obter(("ids_medicos", nivel, territorio, _chave_filtros(filtros), chave_medicos(medicos, recorte), inicio, fim), calcular)
