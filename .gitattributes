@@ -1,0 +1,3 @@
+# Manifestos de atualizacao: bytes assinados com Ed25519. Sem conversao de fim de
+# linha, para o checkout nunca alterar o que foi assinado e publicado.
+docs/updates/** -text
