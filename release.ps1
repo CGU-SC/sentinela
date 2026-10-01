@@ -18,8 +18,10 @@ $versionData = Get-Content $versionFile -Raw -Encoding utf8 | ConvertFrom-Json
 $version = $versionData.version
 Write-Host "Versao detectada em version.json: v$version"
 
-# Read manifest.json and validate
-$manifestFile = "docs/updates/manifest.json"
+# Read manifest.json (serie 2.x) and validate.
+# O manifesto legado docs/updates/manifest.json fica congelado em 1.7.0 para a serie 1.x:
+# o script de assinatura recusa altera-lo e confere sua assinatura a cada release.
+$manifestFile = "docs/updates/v2/manifest.json"
 if (-not (Test-Path $manifestFile)) {
     Write-Error "manifest.json nao encontrado"
     exit 1
@@ -29,7 +31,7 @@ if ($manifestData.latest_version -ne $version) {
     Write-Error "Versao desalinhada! version.json=$version manifest.json=$($manifestData.latest_version)"
     exit 1
 }
-Write-Host "manifest.json alinhado com version.json"
+Write-Host "manifest.json (v2) alinhado com version.json"
 
 # Read and validate CHANGELOG.md
 $changelogFile = "CHANGELOG.md"
@@ -62,7 +64,7 @@ Pop-Location
 Write-Host "Frontend compilado com sucesso."
 
 # Step 2: Sign manifest
-Write-Host "[2/5] Signing manifest.json..."
+Write-Host "[2/5] Signing manifest.json (v2) e conferindo o manifesto legado..."
 python.exe .\src\scripts\sign_update_manifest.py
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Falha ao assinar o manifesto."

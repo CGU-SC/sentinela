@@ -16,7 +16,7 @@
 
 /* Painel */
 .rp-painel .p-overlaypanel-content { padding: 0; }
-.rp-corpo { display: flex; color: var(--text-color); font-size: .76rem; }
+.rp-corpo { display: flex; color: var(--text-color); font-size: .8125rem; }
 .rp-atalhos { display: flex; flex-direction: column; gap: .15rem; min-width: 11.5rem; margin: 0; padding: .6rem; border-right: 1px solid var(--card-border); list-style: none; }
 .rp-atalho { display: flex; align-items: center; justify-content: space-between; gap: .5rem; width: 100%; padding: .45rem .6rem; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; cursor: pointer; }
 .rp-atalho:hover, .rp-atalho:focus-visible { background: color-mix(in srgb, var(--text-color) 6%, transparent); color: var(--text-color); outline: none; }

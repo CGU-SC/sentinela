@@ -508,6 +508,30 @@ export const CRM_NAO_LOCALIZADO_TOOLTIP = 'CRM não consta no cadastro do CFM. S
  * @param {Array<{codigo:string, titulo:string, detalhe:string, competencias:number[]}>} pontos
  * @param {{ periodo: string, competencia?: number|null }} opcoes
  */
+/**
+ * Tooltip do nome do médico cortado com reticências no ranking de CRMs.
+ * @param {string} nome
+ * @param {string} crm - ex.: "CRM 5123/SC"
+ */
+export function crmMedicoNomeTooltip(nome, crm) {
+  if (!nome) throw new Error('Tooltip de médico sem nome.');
+  return {
+    value: `
+      <div class="analysis-tooltip-content">
+        <div class="analysis-tooltip-heading">
+          <i class="pi pi-user" aria-hidden="true"></i>
+          <span>${escapeTooltipHtml(nome)}</span>
+        </div>
+        <p class="analysis-tooltip-body">${escapeTooltipHtml(crm)}</p>
+      </div>
+    `,
+    escape: false,
+    class: 'analysis-info-tooltip',
+    showDelay: 120,
+    hideDelay: 80,
+  };
+}
+
 export function crmAlertasTooltip(pontos, { periodo, competencia = null }) {
   if (!pontos?.length) throw new Error('Tooltip de alertas de CRM sem pontos de atenção.');
   const itens = pontos.map((ponto) => {

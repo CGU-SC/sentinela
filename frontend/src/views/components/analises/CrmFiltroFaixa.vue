@@ -54,7 +54,7 @@ function aplicar([min, max]) {
   <div class="filtro filtro-faixa" :class="{ 'is-ativo': ativo }">
     <div class="filtro-rotulo">
       <span>{{ config.label }}</span>
-      <i class="pi pi-info-circle filtro-info" v-tooltip.left="tooltip" tabindex="0" :aria-label="`Sobre ${config.label.toLowerCase()}`" />
+      <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="tooltip" tabindex="0" :aria-label="`Sobre ${config.label.toLowerCase()}`" />
       <button
         v-if="ativo"
         type="button"
@@ -86,8 +86,8 @@ function aplicar([min, max]) {
 <style scoped>
 .filtro { display: flex; flex-direction: column; gap: 0.4rem; }
 .filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); font-size: 0.7rem; font-weight: 500; }
-.filtro-info { color: var(--text-muted); font-size: 0.75rem; opacity: 0.75; cursor: help; }
+.filtro-info { color: var(--text-muted); font-size: 0.8rem; opacity: 0.75; cursor: help; }
 .filtro-info:hover, .filtro-info:focus-visible { opacity: 1; }
 /* Botão do seletor ocupa a largura do bloco, como na barra lateral esquerda. */
-.filtro-faixa :deep(.rp-gatilho) { width: 100%; color: var(--sidebar-text); }
+.filtro-faixa :deep(.rp-gatilho) { width: 100%; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }
 </style>

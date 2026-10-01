@@ -192,7 +192,7 @@ const chartOption = computed(() => {
       <h3>Estabelecimentos por faixa de não comprovação</h3>
       <div class="spacer"></div>
       <i
-        class="pi pi-info-circle info-icon"
+        class="pi pi-info-circle info-icon help-icon"
         v-tooltip.top="riskChartInfoTooltip"
       />
     </div>

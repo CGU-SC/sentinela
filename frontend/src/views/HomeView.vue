@@ -437,7 +437,7 @@ function handleRefreshCheck(event) {
                 {{ alerta.qtd_cnpjs }}
                 <i
                   v-tooltip.top="getAlertaHtmlTooltip(alerta)"
-                  class="pi pi-info-circle alert-cell__info"
+                  class="pi pi-info-circle alert-cell__info help-icon"
                   :aria-label="`Critério do alerta ${alerta.titulo}`"
                 />
               </span>

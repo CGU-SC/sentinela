@@ -76,7 +76,7 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
       <section class="selector-group filtros-medico" aria-labelledby="filtros-medico-titulo">
         <div class="filtros-cabecalho">
           <span id="filtros-medico-titulo" class="group-title">Filtros dos médicos</span>
-          <i class="pi pi-info-circle filtro-info" v-tooltip.left="painelTooltip" tabindex="0" aria-label="Sobre os filtros dos médicos" />
+          <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="painelTooltip" tabindex="0" aria-label="Sobre os filtros dos médicos" />
         </div>
         <div class="filtro-bloco">
           <div class="filtro-bloco-titulo"><i class="pi pi-id-card" aria-hidden="true" />Cadastro CFM</div>
@@ -84,7 +84,7 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
           <div class="filtro filtro-busca-bloco" :class="{ 'is-ativo': temBusca }">
             <div class="filtro-rotulo">
               <label for="filtro-busca-medico">Buscar médico</label>
-              <i class="pi pi-info-circle filtro-info" v-tooltip.left="buscaTooltip" tabindex="0" aria-label="Sobre a busca de médico" />
+              <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="buscaTooltip" tabindex="0" aria-label="Sobre a busca de médico" />
             </div>
             <div class="filtro-busca" :class="{ 'is-disabled': searchDisabled }">
               <i class="pi pi-search" aria-hidden="true" />
@@ -114,7 +114,7 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
           <div class="filtro" :class="{ 'is-ativo': situacaoCfm !== null }">
             <div class="filtro-rotulo">
               <span id="filtro-situacao-cfm">Situação no CFM</span>
-              <i class="pi pi-info-circle filtro-info" v-tooltip.left="situacaoTooltip" tabindex="0" aria-label="Sobre a situação no CFM" />
+              <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="situacaoTooltip" tabindex="0" aria-label="Sobre a situação no CFM" />
               <button
                 v-if="situacaoCfm !== null"
                 type="button"
@@ -139,7 +139,7 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
           <div class="filtro" :class="{ 'is-ativo': ufsCrm.length > 0 }">
             <div class="filtro-rotulo">
               <span id="filtro-uf-crm">UF do CRM</span>
-              <i class="pi pi-info-circle filtro-info" v-tooltip.left="ufTooltip" tabindex="0" aria-label="Sobre a UF do CRM" />
+              <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="ufTooltip" tabindex="0" aria-label="Sobre a UF do CRM" />
               <button
                 v-if="ufsCrm.length > 0"
                 type="button"
@@ -166,7 +166,7 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
           <div class="filtro filtro--switch" :class="{ 'is-ativo': antesInscricao }">
             <div class="filtro-rotulo">
               <label for="filtro-antes-inscricao">Prescreveu antes da 1ª inscrição</label>
-              <i class="pi pi-info-circle filtro-info" v-tooltip.left="antesTooltip" tabindex="0" aria-label="Sobre prescrições antes da inscrição" />
+              <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="antesTooltip" tabindex="0" aria-label="Sobre prescrições antes da inscrição" />
             </div>
             <span v-tooltip.left="antesInscricaoDisponivel ? null : CRM_ANTES_INSCRICAO_INDISPONIVEL_TOOLTIP">
               <InputSwitch
@@ -189,7 +189,7 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
           <div class="filtro" :class="{ 'is-ativo': sequenciaSeveridadeMin !== null }">
             <div class="filtro-rotulo">
               <span>Severidade mínima</span>
-              <i class="pi pi-info-circle filtro-info" v-tooltip.left="sequenciaTooltip" tabindex="0" aria-label="Sobre as autorizações em sequência" />
+              <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="sequenciaTooltip" tabindex="0" aria-label="Sobre as autorizações em sequência" />
               <button
                 v-if="sequenciaSeveridadeMin !== null"
                 type="button"
@@ -315,29 +315,44 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
 /* ── Filtros dos médicos ─────────────────────────────────────────────────── */
 .filtros-medico { margin-top: 0.35rem; border-top: 1px solid var(--card-border); }
 .filtros-cabecalho { display: flex; align-items: center; justify-content: space-between; padding-right: 1rem; }
-.filtro-info { color: var(--text-muted); font-size: 0.75rem; opacity: 0.75; cursor: help; }
+.filtro-info { color: var(--text-muted); font-size: 0.8rem; opacity: 0.75; cursor: help; }
 .filtro-info:hover, .filtro-info:focus-visible { opacity: 1; }
 /* Mesma caixa dos seletores (.rp-gatilho): fundo, raio, recuo e tamanho do texto. */
 .filtro-busca { display: flex; align-items: center; gap: 0.45rem; box-sizing: border-box; height: 34px; padding: 0 0.7rem; border: 1px solid var(--card-border); border-radius: 6px; background: var(--card-bg); color: var(--text-muted); transition: border-color 0.15s ease; }
 .filtro-busca:focus-within { border-color: var(--primary-color); }
 .filtro-busca.is-disabled { opacity: 0.6; }
 .filtro-busca > .pi { font-size: 0.75rem; }
-.filtro-busca input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--sidebar-text); font: inherit; font-size: 0.76rem; }
+.filtro-busca input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-color-85); font: inherit; font-size: 0.8125rem; font-weight: 400; }
 .filtro-busca input::placeholder { color: var(--text-muted); }
 .filtro-busca button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--color-error); opacity: 0.7; cursor: pointer; }
 .filtro-busca button.is-hidden { visibility: hidden; }
 .filtro-busca button .pi { font-size: 0.72rem; }
 .filtro-busca button:hover, .filtro-busca button:focus-visible { opacity: 1; }
 .filtro-busca button:focus-visible { outline: 2px solid var(--color-error); outline-offset: 2px; border-radius: 3px; }
-.filtro-bloco { display: flex; flex-direction: column; gap: 0.85rem; margin: 0 0.75rem 0.75rem; padding: 0.7rem 0.7rem 0.8rem; border: 1px solid var(--card-border); border-radius: 8px; background: color-mix(in srgb, var(--text-color) 2%, transparent); }
-.filtro-bloco-titulo { display: flex; align-items: center; gap: 0.4rem; color: var(--text-color-85); font-size: 0.72rem; font-weight: 600; }
-.filtro-bloco-titulo .pi { color: var(--primary-color); font-size: 0.75rem; }
+/* Grupo de filtros sem caixa (mesmo padrão da barra da esquerda, AppSidebar
+   .filter-group-title): subtítulo com ícone e linha fina; 20px entre filtros,
+   16px do subtítulo ao primeiro filtro e 24px entre grupos. */
+.filtro-bloco { display: flex; flex-direction: column; gap: 1.25rem; margin: 0 0.75rem 1.5rem; }
+.filtros-cabecalho + .filtro-bloco { margin-top: 0.5rem; }
+.filtro-bloco-titulo { display: flex; align-items: center; gap: 0.5rem; margin-bottom: -0.25rem; color: color-mix(in srgb, var(--primary-color) 15%, #78716c); font-size: 0.8125rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.filtro-bloco-titulo::after { content: ""; flex: 1; height: 1px; background: var(--card-border); }
+.filtro-bloco-titulo .pi { font-size: 0.78rem; }
 .filtro { display: flex; flex-direction: column; gap: 0.4rem; }
 .filtro--switch { flex-direction: row; align-items: center; justify-content: space-between; gap: 0.5rem; }
+/* Interruptor compacto nas cores do tema (o padrão do PrimeVue é 48×28, trilho cinza-claro
+   e azul quando ligado). Desligado: trilho na cor da borda e bolinha apagada; ligado: cor primária. */
+.filtro--switch :deep(.p-inputswitch) { flex-shrink: 0; width: 36px; height: 20px; }
+.filtro--switch :deep(.p-inputswitch .p-inputswitch-slider) { border: 1px solid var(--card-border); border-radius: 999px; background: color-mix(in srgb, var(--text-color) 8%, var(--card-bg)); transition: background 0.15s ease, border-color 0.15s ease; }
+.filtro--switch :deep(.p-inputswitch .p-inputswitch-slider::before) { top: 50%; left: 2px; width: 14px; height: 14px; margin-top: -7px; background: var(--text-muted); box-shadow: none; }
+.filtro--switch :deep(.p-inputswitch:not(.p-disabled):hover .p-inputswitch-slider) { border-color: color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border)); background: color-mix(in srgb, var(--text-color) 8%, var(--card-bg)); }
+.filtro--switch :deep(.p-inputswitch:has(input:checked) .p-inputswitch-slider),
+.filtro--switch :deep(.p-inputswitch:has(input:checked):not(.p-disabled):hover .p-inputswitch-slider) { border-color: var(--primary-color); background: var(--primary-color); }
+.filtro--switch :deep(.p-inputswitch:has(input:checked) .p-inputswitch-slider::before) { transform: translateX(16px); background: var(--card-bg); }
+.filtro--switch :deep(.p-inputswitch.p-focus .p-inputswitch-slider) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 30%, transparent); }
 .filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); font-size: 0.7rem; font-weight: 500; }
 .filtro-rotulo label { cursor: pointer; }
 /* Botão do seletor ocupa a largura do bloco, como os filtros de faixa. */
-.filtro-picker :deep(.rp-gatilho) { width: 100%; color: var(--sidebar-text); }
+.filtro-picker :deep(.rp-gatilho) { width: 100%; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }
 /* Hover neutro, a mesma cor da barra de filtros da esquerda (AppSidebar): borda
    clareada com o cinza do texto. Filtro ativo e campo em foco continuam na cor primária. */
 .filtro:not(.is-ativo) :deep(.rp-gatilho:not(:disabled):hover),

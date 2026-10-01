@@ -60,13 +60,13 @@ function hideTooltipOnBlur(event) {
           </button>
           <button
             type="button"
-            class="ind-info-btn"
+            class="ind-info-btn help-icon-host"
             :aria-label="`Explicação do indicador ${ind.label}`"
             v-tooltip.left="indicatorTooltip(ind)"
             @focus="showTooltipOnFocus"
             @blur="hideTooltipOnBlur"
           >
-            <i class="pi pi-info-circle" aria-hidden="true" />
+            <i class="pi pi-info-circle help-icon" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -215,11 +215,6 @@ function hideTooltipOnBlur(event) {
   font-size: 0.8rem;
 }
 
-.ind-info-btn:hover,
-.ind-info-btn:focus-visible {
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-}
 
 .ind-btn:focus-visible,
 .ind-info-btn:focus-visible {

@@ -43,7 +43,7 @@ function alternarMenu(event) {
     <Menu :id="props.menuId" ref="menu" :model="props.exportacao.itens" :popup="true" />
     <i
       v-if="props.exportacao.tooltip"
-      class="pi pi-info-circle export-menu-info"
+      class="pi pi-info-circle export-menu-info help-icon"
       role="img"
       tabindex="0"
       aria-label="Informações sobre a exportação"

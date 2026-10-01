@@ -330,7 +330,7 @@ function onRankingSort(event) {
 </template>
 
 <style scoped>
-.analises-page { --indicator-selector-width: 280px; display: flex; flex-direction: column; gap: 1rem; width: 100%; }
+.analises-page { --indicator-selector-width: 240px; display: flex; flex-direction: column; gap: 1rem; width: 100%; }
 .analises-main { min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 1rem; }
 .analises-layout { display: flex; align-items: flex-start; gap: 1rem; width: 100%; }
 .analysis-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1rem; padding-bottom: 1rem; }

@@ -28,6 +28,8 @@ const props = defineProps({
    */
   atalhos: { type: Array, default: () => [] },
   atalhoAtivo: { type: String, default: null },
+  /** Ícone de calendário à esquerda do texto do botão. */
+  mostrarIcone: { type: Boolean, default: true },
   disabled: { type: Boolean, default: false },
 });
 const emit = defineEmits(['select-range', 'select-atalho']);
@@ -157,7 +159,7 @@ function aoTeclar(event, c) {
     aria-haspopup="dialog"
     @click="abrir"
   >
-    <i class="pi pi-calendar rp-gatilho-icone" aria-hidden="true" />
+    <i v-if="mostrarIcone" class="pi pi-calendar rp-gatilho-icone" aria-hidden="true" />
     <span class="rp-gatilho-texto">{{ rotulo }}</span>
     <i class="pi pi-chevron-down rp-gatilho-seta" aria-hidden="true" />
   </button>

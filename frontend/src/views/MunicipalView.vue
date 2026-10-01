@@ -277,7 +277,7 @@ function handleRiskIndicatorSelect(key) {
 
 <style scoped>
 .municipios-page {
-  --indicator-selector-width: 220px;
+  --indicator-selector-width: 240px;
   display: flex;
   flex-direction: column;
   gap: 1rem;

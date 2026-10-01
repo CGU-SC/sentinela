@@ -127,8 +127,8 @@ const copyAndSignal = (text, key) => {
             <span class="value">{{ formatCurrencyFull(dadosCadastro?.capital_social || 0) }}</span>
           </div>
           <div class="header-divider"></div>
-          <div class="header-item" v-tooltip.top="'Data da última sincronização com a base oficial da Receita Federal.'">
-            <span class="label">Atualização <i class="pi pi-info-circle" style="font-size: 0.55rem; opacity: 0.5" /></span>
+          <div class="header-item help-icon-host" v-tooltip.top="'Data da última sincronização com a base oficial da Receita Federal.'">
+            <span class="label">Atualização <i class="pi pi-info-circle help-icon" aria-hidden="true" /></span>
             <span class="value value-muted">{{ formatarData(dataProcessamento) }}</span>
           </div>
         </div>

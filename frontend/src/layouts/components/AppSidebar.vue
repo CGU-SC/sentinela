@@ -751,6 +751,22 @@ const shouldDisplayFilter = (sectionId, filterId) => {
   return shouldShowFilter(filterId);
 };
 
+// Grupos de cada seção (subtítulos na barra). O subtítulo aparece quando algum
+// filtro do grupo está visível (seção aberta, filtro disponível e dentro da busca).
+const FILTER_GROUPS = Object.freeze({
+  territorio: ["uf", "regiao", "municipio", "unidadePf", "populacao"],
+  estabelecimento: ["situacao", "ms", "porte", "grandeRede", "cnpjRaiz"],
+  periodoValores: ["slider", "percentual", "valorMin"],
+  empresa: ["parTeia", "cnaeIncompativel"],
+  socios: ["socioIdadeAtipica", "socioFalecido", "socioBeneficio", "socioEsocial"],
+  vendas: ["dispersaoUf", "seq", "volumeAtipico"],
+});
+const shouldDisplayGroup = (sectionId, groupId) => {
+  const filtros = FILTER_GROUPS[groupId];
+  if (!filtros) throw new Error(`Grupo de filtros desconhecido: ${groupId}`);
+  return filtros.some((filterId) => shouldDisplayFilter(sectionId, filterId));
+};
+
 const sectionMatchCount = (sectionId) =>
   FILTER_INDEX.filter(
     (f) => f.section === sectionId && isFilterAvailable(f) && filterMatchesSearch(f),
@@ -881,6 +897,7 @@ const clearSearch = () => {
 
       <!-- FILTROS GLOBAIS -->
       <div v-show="!isSectionCollapsed('geral')" class="sidebar-section-body">
+      <div v-show="shouldDisplayGroup('geral', 'territorio')" class="filter-group-title"><i class="pi pi-map-marker" aria-hidden="true" />Território</div>
       <div
         v-show="shouldDisplayFilter('geral', 'uf')"
         class="filter-section"
@@ -889,7 +906,7 @@ const clearSearch = () => {
         <label class="filter-label">
           UF
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Explicação do filtro UF"
@@ -920,9 +937,9 @@ const clearSearch = () => {
         :class="{ 'filter-locked': allFiltersLocked }"
       >
         <label class="filter-label">
-          Região de Saúde
+          Região de saúde
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Explicação do filtro Região de Saúde"
@@ -963,7 +980,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Município
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Explicação do filtro Município"
@@ -1004,7 +1021,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Jurisdição PF
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Explicação do filtro Jurisdição PF"
@@ -1035,12 +1052,57 @@ const clearSearch = () => {
         />
       </div>
 
+      <div
+        v-show="shouldDisplayFilter('geral', 'populacao')"
+        class="filter-section"
+        :class="{ 'filter-locked': allFiltersLocked }"
+      >
+        <label class="filter-label">
+          População do município
+          <i
+            class="pi pi-info-circle filter-info-icon help-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro População do município"
+            v-tooltip.right="filterTooltips.populacaoMunicipio"
+          />
+          <button
+            v-if="isFilterActive('populacaoMunicipio')"
+            class="filter-clear-btn"
+            @click="aplicarPopulacao([null, null])"
+            v-tooltip.right="filterTooltips.clear"
+          >
+            <i class="pi pi-eraser" />
+          </button>
+        </label>
+        <div
+          class="slider-container"
+          :class="{ 'filter-active-box': isFilterActive('populacaoMunicipio') }"
+        >
+          <NumberRangePicker
+            :mostrar-icone="false"
+            aberto
+            :valor="filterStore.populacaoMunicipio"
+            :min="0"
+            :max="Infinity"
+            :passo="10000"
+            :formatar="formatarHabitantes"
+            sufixo="hab."
+            :atalhos="POPULACAO_MUNICIPIO_ATALHOS"
+            :rotulo="populacaoRotulo"
+            :disabled="allFiltersLocked"
+            @select-range="aplicarPopulacao"
+          />
+        </div>
+      </div>
+
+      <div v-show="shouldDisplayGroup('geral', 'estabelecimento')" class="filter-group-title"><i class="pi pi-building" aria-hidden="true" />Estabelecimento</div>
       <div v-show="!isSectionCollapsed('geral')" class="grid-filters" :class="{ 'filter-locked': allFiltersLocked }">
         <div v-show="shouldDisplayFilter('geral', 'situacao')" class="filter-section">
           <label class="filter-label">
             Situação RF
             <i
-              class="pi pi-info-circle filter-info-icon"
+              class="pi pi-info-circle filter-info-icon help-icon"
               role="img"
               tabindex="0"
               aria-label="Explicação do filtro Situação RF"
@@ -1067,7 +1129,7 @@ const clearSearch = () => {
           <label class="filter-label">
             Conexão MS
             <i
-              class="pi pi-info-circle filter-info-icon"
+              class="pi pi-info-circle filter-info-icon help-icon"
               role="img"
               tabindex="0"
               aria-label="Explicação do filtro Conexão MS"
@@ -1097,7 +1159,7 @@ const clearSearch = () => {
           <label class="filter-label">
             Porte CNPJ
             <i
-              class="pi pi-info-circle filter-info-icon"
+              class="pi pi-info-circle filter-info-icon help-icon"
               role="img"
               tabindex="0"
               aria-label="Explicação do filtro Porte CNPJ"
@@ -1122,9 +1184,9 @@ const clearSearch = () => {
         </div>
         <div v-show="shouldDisplayFilter('geral', 'grandeRede')" class="filter-section">
           <label class="filter-label">
-            Grande Rede
+            Grande rede
             <i
-              class="pi pi-info-circle filter-info-icon"
+              class="pi pi-info-circle filter-info-icon help-icon"
               role="img"
               tabindex="0"
               aria-label="Explicação do filtro Grande Rede"
@@ -1157,7 +1219,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Estabelecimento
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Explicação do filtro Estabelecimento"
@@ -1200,6 +1262,53 @@ const clearSearch = () => {
         </AutoComplete>
       </div>
 
+      <div v-show="shouldDisplayGroup('geral', 'periodoValores')" class="filter-group-title"><i class="pi pi-calendar" aria-hidden="true" />Período e valores</div>
+      <div
+        v-show="shouldDisplayFilter('geral', 'slider')"
+        class="filter-section"
+        :class="{ 'filter-locked-alt': periodFilterLocked }"
+      >
+        <label class="filter-label" style="pointer-events: auto">
+          Período de análise
+          <i
+            class="pi pi-info-circle filter-info-icon help-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Período de Análise"
+            v-tooltip.right="filterTooltips.periodo"
+          />
+          <button
+            v-if="isFilterActive('sliderValue')"
+            class="filter-clear-btn"
+            @click="clearPeriodFilter"
+            v-tooltip.right="filterTooltips.clear"
+          >
+            <i class="pi pi-eraser" />
+          </button>
+        </label>
+        <div
+          class="slider-container"
+          :class="{
+            'filter-locked': periodFilterLocked,
+            'filter-active-box': isFilterActive('sliderValue'),
+          }"
+        >
+          <MonthRangePicker
+            :mostrar-icone="false"
+            :rotulo="periodoRotulo"
+            :inicio="periodoSelecionado.inicio"
+            :fim="periodoSelecionado.fim"
+            :min="PERIODO_MIN"
+            :max="PERIODO_MAX"
+            :atalhos="periodoAtalhos"
+            :atalho-ativo="periodoAtalhoAtivo"
+            :disabled="periodFilterLocked"
+            @select-range="aplicarPeriodo"
+            @select-atalho="aplicarAtalhoPeriodo"
+          />
+        </div>
+      </div>
+
       <div
         v-show="shouldDisplayFilter('geral', 'percentual')"
         class="filter-section"
@@ -1208,7 +1317,7 @@ const clearSearch = () => {
         <label class="filter-label">
           % de não comprovação
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Explicação do filtro de percentual de não comprovação"
@@ -1237,6 +1346,7 @@ const clearSearch = () => {
           }"
         >
           <NumberRangePicker
+            :mostrar-icone="false"
             :valor="filterStore.percentualNaoComprovacaoRange"
             :min="0"
             :max="100"
@@ -1250,95 +1360,6 @@ const clearSearch = () => {
       </div>
 
       <div
-        v-show="shouldDisplayFilter('geral', 'slider')"
-        class="filter-section"
-        :class="{ 'filter-locked-alt': periodFilterLocked }"
-      >
-        <label class="filter-label" style="pointer-events: auto">
-          Período de Análise
-          <i
-            class="pi pi-info-circle filter-info-icon"
-            role="img"
-            tabindex="0"
-            aria-label="Explicação do filtro Período de Análise"
-            v-tooltip.right="filterTooltips.periodo"
-          />
-          <button
-            v-if="isFilterActive('sliderValue')"
-            class="filter-clear-btn"
-            @click="clearPeriodFilter"
-            v-tooltip.right="filterTooltips.clear"
-          >
-            <i class="pi pi-eraser" />
-          </button>
-        </label>
-        <div
-          class="slider-container"
-          :class="{
-            'filter-locked': periodFilterLocked,
-            'filter-active-box': isFilterActive('sliderValue'),
-          }"
-        >
-          <MonthRangePicker
-            :rotulo="periodoRotulo"
-            :inicio="periodoSelecionado.inicio"
-            :fim="periodoSelecionado.fim"
-            :min="PERIODO_MIN"
-            :max="PERIODO_MAX"
-            :atalhos="periodoAtalhos"
-            :atalho-ativo="periodoAtalhoAtivo"
-            :disabled="periodFilterLocked"
-            @select-range="aplicarPeriodo"
-            @select-atalho="aplicarAtalhoPeriodo"
-          />
-        </div>
-      </div>
-
-      <div
-        v-show="shouldDisplayFilter('geral', 'populacao')"
-        class="filter-section"
-        :class="{ 'filter-locked': allFiltersLocked }"
-      >
-        <label class="filter-label">
-          População do município
-          <i
-            class="pi pi-info-circle filter-info-icon"
-            role="img"
-            tabindex="0"
-            aria-label="Explicação do filtro População do município"
-            v-tooltip.right="filterTooltips.populacaoMunicipio"
-          />
-          <button
-            v-if="isFilterActive('populacaoMunicipio')"
-            class="filter-clear-btn"
-            @click="aplicarPopulacao([null, null])"
-            v-tooltip.right="filterTooltips.clear"
-          >
-            <i class="pi pi-eraser" />
-          </button>
-        </label>
-        <div
-          class="slider-container"
-          :class="{ 'filter-active-box': isFilterActive('populacaoMunicipio') }"
-        >
-          <NumberRangePicker
-            aberto
-            :valor="filterStore.populacaoMunicipio"
-            :min="0"
-            :max="Infinity"
-            :passo="10000"
-            :formatar="formatarHabitantes"
-            sufixo="hab."
-            icone="pi-users"
-            :atalhos="POPULACAO_MUNICIPIO_ATALHOS"
-            :rotulo="populacaoRotulo"
-            :disabled="allFiltersLocked"
-            @select-range="aplicarPopulacao"
-          />
-        </div>
-      </div>
-
-      <div
         v-show="shouldDisplayFilter('geral', 'valorMin')"
         class="filter-section"
         :class="{ 'filter-locked': allFiltersLocked }"
@@ -1346,7 +1367,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Valor mínimo sem comprovação
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Explicação do filtro Valor mínimo sem comprovação"
@@ -1371,6 +1392,7 @@ const clearSearch = () => {
           :class="{ 'filter-active-box': isFilterActive('valorMinSemComp') }"
         >
           <NumberRangePicker
+            :mostrar-icone="false"
             unico
             :valor="[filterStore.valorMinSemComp]"
             :min="0"
@@ -1380,7 +1402,6 @@ const clearSearch = () => {
             :formatar="formatarReais"
             rotulo-personalizado="Valor personalizado"
             rotulo-campo="A partir de"
-            icone="pi-dollar"
             :atalhos="valorMinAtalhos"
             :rotulo="valorMinRotulo"
             :disabled="allFiltersLocked"
@@ -1398,7 +1419,7 @@ const clearSearch = () => {
         <div v-if="route.path === '/alvos/cluster'" class="contextual-filters">
           <div v-show="shouldDisplayFilter('geral', 'busca')" class="filter-section mini">
             <label class="filter-label sm">
-              Busca Alvo
+              Busca alvo
               <button
                 v-if="isFilterActive('searchTarget')"
                 class="filter-clear-btn"
@@ -1417,7 +1438,7 @@ const clearSearch = () => {
           </div>
           <div v-show="shouldDisplayFilter('geral', 'cluster')" class="filter-section mini">
             <label class="filter-label sm">
-              Target Cluster
+              Target cluster
               <button
                 v-if="isFilterActive('clusterSelection')"
                 class="filter-clear-btn"
@@ -1460,7 +1481,7 @@ const clearSearch = () => {
         <div v-if="route.path === '/alvos/rede'" class="contextual-filters">
           <div v-show="shouldDisplayFilter('geral', 'busca')" class="filter-section mini">
             <label class="filter-label sm">
-              CPF/CNPJ Alvo
+              CPF/CNPJ alvo
               <button
                 v-if="isFilterActive('searchTarget')"
                 class="filter-clear-btn"
@@ -1495,6 +1516,7 @@ const clearSearch = () => {
         <i class="pi pi-chevron-down sidebar-section-chevron"></i>
       </button>
 
+      <div v-show="shouldDisplayGroup('integridade', 'empresa')" class="filter-group-title"><i class="pi pi-briefcase" aria-hidden="true" />Empresa</div>
       <div
         v-show="shouldDisplayFilter('integridade', 'parTeia')"
         class="filter-section"
@@ -1503,7 +1525,7 @@ const clearSearch = () => {
         <label class="filter-label">
           CNPJs com PAR
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.parTeia"
           />
           <button
@@ -1532,9 +1554,9 @@ const clearSearch = () => {
         :class="{ 'filter-locked': allFiltersLocked }"
       >
         <label class="filter-label">
-          CNPJ com CNAE Incompatível
+          CNPJ com CNAE incompatível
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.cnaeIncompativel"
           />
           <button
@@ -1558,6 +1580,7 @@ const clearSearch = () => {
         </div>
       </div>
 
+      <div v-show="shouldDisplayGroup('integridade', 'socios')" class="filter-group-title"><i class="pi pi-users" aria-hidden="true" />Sócios</div>
       <div
         v-show="shouldDisplayFilter('integridade', 'socioIdadeAtipica')"
         class="filter-section"
@@ -1566,7 +1589,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Sócio &lt; 21 anos ou &gt; 80 anos
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.socioIdadeAtipica"
           />
           <button
@@ -1598,7 +1621,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Sócio ativo falecido
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.socioFalecido"
           />
           <button
@@ -1630,7 +1653,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Sócio no CadÚnico/Defeso
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.socioBeneficio"
           />
           <button
@@ -1661,7 +1684,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Sócio com vínculo eSocial
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.socioEsocial"
           />
           <button
@@ -1684,6 +1707,7 @@ const clearSearch = () => {
         />
       </div>
 
+      <div v-show="shouldDisplayGroup('integridade', 'vendas')" class="filter-group-title"><i class="pi pi-shopping-cart" aria-hidden="true" />Vendas</div>
       <div
         v-show="shouldDisplayFilter('integridade', 'dispersaoUf')"
         class="filter-section"
@@ -1692,7 +1716,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Vendas para UFs sem fronteira
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.dispersaoUfSemFronteira"
           />
           <button
@@ -1709,6 +1733,7 @@ const clearSearch = () => {
           :class="{ 'filter-active-box': isFilterActive('dispersaoUfSemFronteiraEnabled') }"
         >
           <NumberRangePicker
+            :mostrar-icone="false"
             unico
             :valor="dispersaoUfValor"
             :sugestao="filterStore.dispersaoUfSemFronteiraEnabled ? null : [FILTER_DEFAULTS.DISPERSAO_UF_SEM_FRONTEIRA_PERCENTUAL]"
@@ -1732,7 +1757,7 @@ const clearSearch = () => {
         <label class="filter-label">
           Autorizações em sequência
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Explicação do filtro Autorizações em sequência"
@@ -1766,13 +1791,13 @@ const clearSearch = () => {
           />
           <span class="seq-filtro-rotulo">Dias com sequência</span>
           <NumberRangePicker
+            :mostrar-icone="false"
             aberto
             :valor="filterStore.seqDias"
             :min="0"
             :max="Infinity"
             :passo="1"
             :formatar="(v) => Number(v).toLocaleString('pt-BR')"
-            icone="pi-calendar"
             :atalhos="SEQ_DIAS_ATALHOS"
             :rotulo="seqDiasRotulo"
             :disabled="allFiltersLocked"
@@ -1787,9 +1812,9 @@ const clearSearch = () => {
         :class="{ 'filter-locked': volumeAtipicoFilterLocked }"
       >
         <label class="filter-label">
-          Aumento Semestral Atípico
+          Aumento semestral atípico
           <i
-            class="pi pi-info-circle filter-info-icon"
+            class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.volumeAtipico"
           />
           <button
@@ -1806,6 +1831,7 @@ const clearSearch = () => {
           :class="{ 'filter-active-box': isFilterActive('volumeAtipicoEnabled') }"
         >
           <NumberRangePicker
+            :mostrar-icone="false"
             unico
             :valor="volumeAtipicoValor"
             :sugestao="filterStore.volumeAtipicoEnabled ? null : [FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL]"
@@ -1849,11 +1875,14 @@ const clearSearch = () => {
 /* Autorizações em sequência: tipo, severidade e dias, empilhados. */
 .seq-filtro { display: flex; flex-direction: column; gap: 0.35rem; }
 .seq-filtro :deep(.rp-gatilho) { width: 100%; }
-.seq-filtro-rotulo { color: var(--text-muted); font-size: 0.68rem; font-weight: 500; }
+.seq-filtro-rotulo { color: var(--text-muted); font-size: 0.7rem; font-weight: 500; }
 .seq-filtro-rotulo + .rp-gatilho, .seq-filtro-rotulo:not(:first-child) { margin-top: 0.15rem; }
 
 /* SIDEBAR */
+/* Campos da barra com o mesmo fundo dela (só a borda os desenha). Redefinido só
+   aqui: o token global continua valendo para os campos do restante da página. */
 .admin-sidebar {
+  --sidebar-input-bg: var(--sidebar-bg);
   position: fixed;
   top: 56px;
   left: 0;
@@ -1943,7 +1972,7 @@ const clearSearch = () => {
 
 .filter-count-badge {
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -2022,11 +2051,11 @@ const clearSearch = () => {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--sidebar-text);
-  opacity: 0.45;
-  letter-spacing: 0.12em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-color-85);
+  opacity: 0.85;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 0.2rem 0.5rem 0.3rem;
   margin-bottom: 0rem;
@@ -2089,10 +2118,10 @@ const clearSearch = () => {
   padding: 0.35rem 0.45rem 0.2rem 0.45rem;
   background: var(--sidebar-heading-tint);
   border: 0;
-  color: var(--sidebar-text);
-  font-size: 0.64rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   text-align: left;
   cursor: pointer;
@@ -2142,7 +2171,7 @@ const clearSearch = () => {
   background: color-mix(in srgb, var(--sidebar-heading-icon) 18%, var(--sidebar-bg));
   color: var(--sidebar-heading-icon);
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -2228,9 +2257,8 @@ const clearSearch = () => {
   border: 0;
   outline: none;
   color: var(--sidebar-text);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-family: inherit;
-  letter-spacing: 0.01em;
   min-width: 0;
 }
 
@@ -2264,23 +2292,46 @@ const clearSearch = () => {
   line-height: 1;
 }
 
+/* Recuo vertical curto: com o gap de 0,75rem do contêiner, os filtros ficam a 20px um do outro. */
 .filter-section {
-  padding: 0.35rem 0.48rem;
-  border-radius: 7px;
+  padding: 0.25rem 0.48rem;
   border-left: 2px solid transparent;
-  background: transparent;
-  transition:
-    background 0.16s ease,
-    border-color 0.16s ease;
 }
 
-.filter-section:hover {
-  background: color-mix(in srgb, var(--sidebar-text) 4%, transparent);
+/* Subtítulo de grupo dentro da seção: texto discreto e linha fina, sem caixa. */
+.filter-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0 0.48rem 0 calc(0.48rem + 2px);
+  /* Mesma cor do título "Filtros dos médicos" da barra da direita (AnalysisSidebar .group-title). */
+  color: color-mix(in srgb, var(--primary-color) 15%, #78716c);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+/* Ícone do grupo: mesma cor do subtítulo (os campos dos filtros não têm ícone). */
+.filter-group-title .pi {
+  font-size: 0.78rem;
+}
+.filter-group-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--sidebar-border);
+}
+.sidebar-section-body > .filter-group-title:first-child,
+.sidebar-section-heading + .filter-group-title {
+  margin-top: 0;
 }
 
-.filter-section:has(.filter-active),
-.filter-section:has(.filter-active-box) {
-  background: color-mix(in srgb, var(--filter-active-color) 10%, transparent);
+/* Filtro com valor: título e borda do campo na cor primária (mesmo padrão da
+   barra de filtros dos médicos em /analises); sem fundo colorido no bloco. */
+.filter-section:has(.filter-active) > .filter-label,
+.filter-section:has(.filter-active-box) > .filter-label {
+  color: var(--primary-color);
 }
 
 .filter-locked {
@@ -2314,16 +2365,18 @@ const clearSearch = () => {
   font-size: 0.7rem;
 }
 
+/* Título do filtro: 12px, peso 500, caixa normal. O espaço até o campo é sempre
+   0,4rem: os contêineres do campo (.slider-container, .filter-checkbox-wrapper)
+   não somam recuo vertical próprio. */
 .filter-label {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  margin-bottom: 0.5rem;
-  color: var(--sidebar-text);
-  letter-spacing: 0.5px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  margin-bottom: 0.4rem;
+  color: var(--text-secondary);
 }
 
 .filter-clear-btn {
@@ -2351,14 +2404,14 @@ const clearSearch = () => {
 }
 
 .filter-info-icon {
-  font-size: 0.68rem;
-  color: var(--sidebar-text);
-  opacity: 0.55;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  opacity: 0.75;
   cursor: help;
 }
 
 .filter-info-icon:hover {
-  opacity: 0.9;
+  opacity: 1;
 }
 
 .grid-filters {
@@ -2382,7 +2435,8 @@ const clearSearch = () => {
 :deep(.filter-input .p-dropdown-label),
 :deep(.filter-input.p-inputtext) {
   padding: 0.4rem 0.6rem;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
   text-transform: none;
 }
 
@@ -2401,11 +2455,13 @@ const clearSearch = () => {
   color: var(--sidebar-text) !important;
 }
 
-/* Hover neutro: borda da sidebar clareada com o cinza do texto. Exclui foco
-   (primary) e filtro com valor (verde) para nao sobrepor esses estados. */
+/* Hover neutro: só a borda muda (clareada com o cinza do texto); o fundo continua
+   o do campo, vencendo o fundo translúcido do hover global do AppLayout. Exclui
+   foco e filtro com valor para não sobrepor esses estados. */
 :deep(.filter-input.p-dropdown:not(.p-disabled):not(.p-focus):not(.filter-active):hover),
 :deep(.filter-input.p-inputtext:not(.p-dropdown-label):not(:focus):not(.filter-active):hover) {
   border-color: color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border)) !important;
+  background: var(--sidebar-input-bg) !important;
 }
 
 :deep(.filter-input .p-dropdown-label),
@@ -2414,39 +2470,47 @@ const clearSearch = () => {
   color: inherit !important;
 }
 
-/* Filtro com valor: vermelho pastel indica estado aplicado */
+/* Seta do dropdown igual à dos seletores (.rp-gatilho-seta): mesmo tamanho,
+   mesma distância da borda e mesma opacidade. */
+:deep(.filter-input .p-dropdown-trigger) {
+  width: 1.85rem;
+}
+:deep(.filter-input .p-dropdown-trigger-icon) {
+  width: 0.65rem;
+  height: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* Estados dos campos da barra (dropdown, texto e autocomplete):
+   - padrão: borda da barra, fundo do campo;
+   - hover: só a borda clareia (regra "Hover neutro" acima);
+   - foco sem valor: borda um degrau mais clara e anel discreto, fundo igual;
+   - com valor: borda e fundo suave na cor primária, também com o mouse em cima
+     e com o campo em foco (logo depois de escolher um item, o dropdown continua
+     em foco e o destaque já tem de aparecer).
+   .p-component/:not/:enabled elevam a especificidade sobre as regras globais
+   de hover e foco do AppLayout. */
+:global(.admin-sidebar .p-dropdown.p-component:not(.p-disabled):not(.filter-active).p-focus),
+:global(.admin-sidebar .filter-input.p-inputtext:not(.p-dropdown-label):not(.filter-active):enabled:focus) {
+  border: 1px solid color-mix(in srgb, var(--sidebar-text) 45%, var(--sidebar-border)) !important;
+  background: var(--sidebar-input-bg) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sidebar-text) 10%, transparent) !important;
+  outline: none !important;
+}
 :global(.admin-sidebar .filter-active.p-dropdown),
-:global(.admin-sidebar .filter-active.p-inputtext:not(.p-dropdown-label)) {
-  border: 1px solid
-    color-mix(in srgb, var(--filter-active-color) 30%, transparent) !important;
-  background: rgba(255, 255, 255, 0.03) !important;
-  box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--filter-active-color) 8%, transparent) !important;
-  outline: none !important;
-}
-
-/* Hover sobre filtro com valor: mesmo tom, um degrau acima; especificidade
-   elevada para vencer as regras globais de hover do AppLayout (primary). */
-:global(.admin-sidebar .filter-active.p-dropdown:not(.p-disabled):hover),
+:global(.admin-sidebar .filter-active.p-inputtext:not(.p-dropdown-label)),
+:global(.admin-sidebar .filter-active.p-dropdown.p-component:not(.p-disabled):hover),
 :global(.admin-sidebar .filter-active.p-inputtext:not(.p-dropdown-label):enabled:hover) {
-  border: 1px solid
-    color-mix(in srgb, var(--filter-active-color) 45%, transparent) !important;
-  background: rgba(255, 255, 255, 0.03) !important;
-  box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--filter-active-color) 12%, transparent) !important;
+  border: 1px solid var(--primary-color) !important;
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--sidebar-input-bg)) !important;
+  box-shadow: none !important;
   outline: none !important;
 }
-
-/* Foco do campo (select aberto / digitando): neutro, um degrau acima do hover.
-   .p-component/:not/:enabled elevam a especificidade para vencer as regras
-   globais de foco do AppLayout, que pintam com primary. */
-:global(.admin-sidebar .p-dropdown.p-component:not(.p-disabled).p-focus),
-:global(.admin-sidebar .filter-input.p-inputtext:not(.p-dropdown-label):enabled:focus) {
-  border: 1px solid
-    color-mix(in srgb, var(--sidebar-text) 45%, var(--sidebar-border)) !important;
-  background: rgba(255, 255, 255, 0.03) !important;
-  box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--sidebar-text) 10%, transparent) !important;
+:global(.admin-sidebar .filter-active.p-dropdown.p-component:not(.p-disabled).p-focus),
+:global(.admin-sidebar .filter-active.p-inputtext:not(.p-dropdown-label):enabled:focus) {
+  border: 1px solid var(--primary-color) !important;
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--sidebar-input-bg)) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 25%, transparent) !important;
   outline: none !important;
 }
 
@@ -2469,9 +2533,10 @@ const clearSearch = () => {
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
 }
 
-:global(.sidebar-panel .p-dropdown-items .p-dropdown-item) {
-  color: var(--sidebar-text) !important;
-  font-size: 0.8rem;
+/* .p-dropdown-panel no seletor e !important: vence o 0,75rem global do AppLayout. */
+:global(.p-dropdown-panel.sidebar-panel .p-dropdown-items .p-dropdown-item) {
+  color: var(--text-color-85) !important;
+  font-size: 0.8125rem !important;
 }
 
 :global(
@@ -2486,7 +2551,7 @@ const clearSearch = () => {
     .p-dropdown-item:not(.p-highlight):not(.p-disabled).p-focus
 ) {
   background: var(--sidebar-input-bg) !important;
-  color: var(--sidebar-text) !important;
+  color: var(--text-color) !important;
 }
 
 :global(.p-dropdown-panel.sidebar-panel .p-dropdown-items li.p-dropdown-item.p-highlight),
@@ -2501,7 +2566,7 @@ const clearSearch = () => {
     color-mix(in srgb, var(--primary-color) 15%, #a8a29e) 28%,
     transparent
   ) !important;
-  color: var(--sidebar-text) !important;
+  color: var(--text-color) !important;
 }
 
 :global(.sidebar-panel .p-dropdown-header) {
@@ -2540,7 +2605,7 @@ const clearSearch = () => {
 
 /* SLIDERS */
 .slider-container {
-  padding: 0.5rem 0.2rem;
+  padding: 0;
 }
 
 
@@ -2552,29 +2617,38 @@ const clearSearch = () => {
   padding: 0 0.6rem;
   background: var(--sidebar-input-bg);
   border-color: var(--sidebar-border);
-  color: var(--sidebar-text);
-  font-size: 0.75rem;
+  color: var(--text-color-85);
+  font-size: 0.8125rem;
+  font-weight: 400;
 }
 .slider-container :deep(.rp-gatilho:not(:disabled):hover) {
   border-color: color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border));
 }
 .slider-container :deep(.rp-gatilho-seta) {
-  color: inherit;
-  opacity: 0.7;
+  color: var(--text-muted);
 }
 
 .filter-input {
-  margin-bottom: 4px !important;
+  margin-bottom: 0 !important;
 }
 
 /* FILTROS ATIVOS */
-.filter-active-box {
-  background: color-mix(
-    in srgb,
-    var(--filter-active-color) 12%,
-    transparent
-  ) !important;
-  border-radius: 4px;
+/* Seletores (faixa, período, opções) de um filtro com valor. */
+.filter-active-box :deep(.rp-gatilho),
+.filter-active-box :deep(.rp-gatilho:not(:disabled):hover) {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--sidebar-input-bg));
+}
+
+/* Valor dentro dos campos: texto principal a 85%, 13px, peso 400 (o mesmo nas
+   duas barras de filtros). O texto de exemplo (placeholder) continua apagado. */
+:global(.admin-sidebar .filter-input.p-dropdown),
+:global(.admin-sidebar .filter-input.p-inputtext:not(.p-dropdown-label)),
+:global(.admin-sidebar .estabelecimento-ac .p-autocomplete-input) {
+  color: var(--text-color-85) !important;
+}
+:global(.admin-sidebar .filter-input .p-dropdown-label.p-placeholder) {
+  color: var(--text-muted) !important;
 }
 
 /* BOTÃO LIMPAR FILTROS */
@@ -2700,13 +2774,12 @@ const clearSearch = () => {
 .filter-label.sm {
   font-size: 0.7rem;
   opacity: 0.8;
-  margin-bottom: 0.4rem;
 }
 
 :deep(.filter-input.sm .p-inputtext),
 :deep(.filter-input.sm .p-dropdown-label) {
   padding: 0.5rem;
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
 }
 
 /* AUTOCOMPLETE DE ESTABELECIMENTO */
@@ -2721,7 +2794,8 @@ const clearSearch = () => {
   height: 32px;
   box-sizing: border-box;
   padding: 0.4rem 0.6rem;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
   background: var(--sidebar-input-bg) !important;
   border-color: var(--sidebar-border) !important;
   color: var(--sidebar-text) !important;
@@ -2733,25 +2807,25 @@ const clearSearch = () => {
 :global(
   .admin-sidebar .estabelecimento-ac.p-autocomplete.p-component .p-autocomplete-input:enabled:focus
 ) {
-  border: 1px solid
-    color-mix(in srgb, var(--primary-color) 15%, #78716c) !important;
-  background: rgba(255, 255, 255, 0.03) !important;
-  box-shadow: 0 0 0 1px
-    color-mix(in srgb, color-mix(in srgb, var(--primary-color) 15%, #78716c) 25%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--sidebar-text) 45%, var(--sidebar-border)) !important;
+  background: var(--sidebar-input-bg) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sidebar-text) 10%, transparent) !important;
   outline: none !important;
 }
 
 :global(
   .admin-sidebar .estabelecimento-ac.p-autocomplete.p-component .p-autocomplete-input:enabled:hover:not(:focus)
 ) {
-  border: 1px solid
-    color-mix(in srgb, var(--primary-color) 10%, color-mix(in srgb, #78716c 60%, var(--sidebar-border))) !important;
+  border: 1px solid color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border)) !important;
 }
 
 :global(
-  .admin-sidebar .filter-active.estabelecimento-ac .p-autocomplete-input
+  .admin-sidebar .filter-active.estabelecimento-ac.p-autocomplete.p-component .p-autocomplete-input,
+  .admin-sidebar .filter-active.estabelecimento-ac.p-autocomplete.p-component .p-autocomplete-input:enabled:hover,
+  .admin-sidebar .filter-active.estabelecimento-ac.p-autocomplete.p-component .p-autocomplete-input:enabled:focus
 ) {
-  border: 2px solid color-mix(in srgb, var(--primary-color) 50%, transparent) !important;
+  border: 1px solid var(--primary-color) !important;
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--sidebar-input-bg)) !important;
 }
 
 :global(.sidebar-ac-panel) {
@@ -2815,14 +2889,14 @@ const clearSearch = () => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.5rem 0;
+  padding: 0;
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--text-color);
   cursor: pointer;
   user-select: none;
@@ -2830,7 +2904,7 @@ const clearSearch = () => {
 }
 
 .checkbox-label span {
-  color: var(--sidebar-text);
+  color: var(--text-color-85);
   font-weight: 400;
 }
 
@@ -2863,8 +2937,8 @@ const clearSearch = () => {
 
 :global(.filter-checkbox.p-checkbox.p-highlight .p-checkbox-box),
 :global(.filter-checkbox.p-checkbox-checked .p-checkbox-box) {
-  border-color: var(--filter-active-color);
-  background: var(--filter-active-color);
+  border-color: var(--primary-color);
+  background: var(--primary-color);
 }
 
 :global(.filter-checkbox.p-checkbox .p-checkbox-icon) {

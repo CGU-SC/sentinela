@@ -438,7 +438,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
             <span v-if="card.tone" class="f-kpi-dot" :class="`tone-${card.tone}`" aria-hidden="true" />
             <span class="f-kpi-label-text">{{ card.label }}</span>
             <i
-              class="pi pi-info-circle mortality-info-icon"
+              class="pi pi-info-circle mortality-info-icon help-icon"
               role="img"
               tabindex="0"
               :aria-label="`Informações sobre ${card.label}`"
@@ -573,7 +573,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>CPF</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna CPF"
@@ -585,7 +585,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Nome do Falecido</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Nome do Falecido"
@@ -597,7 +597,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Município / UF</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Município ou UF"
@@ -609,7 +609,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Fonte Óbito</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Fonte Óbito"
@@ -621,7 +621,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Nº Autorização</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Número da Autorização"
@@ -633,7 +633,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Dt. Óbito</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Data do Óbito"
@@ -645,7 +645,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Data da Venda</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Data da Venda"
@@ -657,7 +657,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Itens</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Itens"
@@ -669,7 +669,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Valor (R$)</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Valor"
@@ -681,7 +681,7 @@ const falecidosAgrupadosFiltrados = computed(() => {
                   <span class="f-th-label">
                     <span>Dias após Óbito</span>
                     <i
-                      class="pi pi-info-circle mortality-info-icon"
+                      class="pi pi-info-circle mortality-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       aria-label="Informações sobre a coluna Dias após Óbito"

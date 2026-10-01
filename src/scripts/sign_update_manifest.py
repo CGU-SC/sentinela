@@ -14,8 +14,14 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_MANIFEST_PATH = ROOT_DIR / "docs" / "updates" / "manifest.json"
-DEFAULT_SIGNATURE_PATH = ROOT_DIR / "docs" / "updates" / "manifest.sig"
+# Manifesto da série 2.x (o que o release assina e publica).
+DEFAULT_MANIFEST_PATH = ROOT_DIR / "docs" / "updates" / "v2" / "manifest.json"
+DEFAULT_SIGNATURE_PATH = ROOT_DIR / "docs" / "updates" / "v2" / "manifest.sig"
+# Manifesto legado da série 1.x, congelado em 1.7.0: nunca é reassinado (qualquer
+# byte alterado faria a 1.x rejeitá-lo); só é verificado antes de cada publicação.
+LEGACY_MANIFEST_PATH = ROOT_DIR / "docs" / "updates" / "manifest.json"
+LEGACY_SIGNATURE_PATH = ROOT_DIR / "docs" / "updates" / "manifest.sig"
+LEGACY_LATEST_VERSION = "1.7.0"
 DEFAULT_PRIVATE_KEY_PATH = ROOT_DIR / "secrets" / "update_signing_private_key.pem"
 DEFAULT_PUBLIC_KEY_PATH = ROOT_DIR / "backend" / "data" / "update_manifest_public_key.pem"
 
@@ -98,6 +104,19 @@ def verify_manifest(
     load_public_key(public_key_path).verify(signature, manifest_path.read_bytes())
 
 
+def verify_legacy_manifest(public_key_path: Path) -> None:
+    """Confere que o manifesto legado continua congelado em 1.7.0 e com assinatura válida."""
+    import json
+
+    data = json.loads(LEGACY_MANIFEST_PATH.read_bytes())
+    if data.get("latest_version") != LEGACY_LATEST_VERSION:
+        raise ValueError(
+            f"Manifesto legado alterado: latest_version={data.get('latest_version')!r}, "
+            f"esperado {LEGACY_LATEST_VERSION!r}. Ele deve ficar congelado para a série 1.x."
+        )
+    verify_manifest(LEGACY_MANIFEST_PATH, LEGACY_SIGNATURE_PATH, public_key_path)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Assina o manifesto de atualizacao do Sentinela com Ed25519."
@@ -111,7 +130,25 @@ def main() -> None:
     parser.add_argument("--signature", type=Path, default=DEFAULT_SIGNATURE_PATH)
     parser.add_argument("--private-key", type=Path, default=DEFAULT_PRIVATE_KEY_PATH)
     parser.add_argument("--public-key", type=Path, default=DEFAULT_PUBLIC_KEY_PATH)
+    parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Só verifica as assinaturas (série 2.x e legado), sem assinar nada.",
+    )
     args = parser.parse_args()
+
+    if args.manifest.resolve() == LEGACY_MANIFEST_PATH.resolve():
+        raise SystemExit(
+            "Recusado: o manifesto legado (docs/updates/manifest.json) fica congelado em "
+            f"{LEGACY_LATEST_VERSION} para a série 1.x e nunca é reassinado."
+        )
+
+    if args.verify_only:
+        verify_manifest(args.manifest, args.signature, args.public_key)
+        verify_legacy_manifest(args.public_key)
+        print(f"Assinatura validada: {args.signature}")
+        print(f"Manifesto legado intacto ({LEGACY_LATEST_VERSION}): {LEGACY_MANIFEST_PATH}")
+        return
 
     if args.generate_key:
         generate_key_pair(args.private_key, args.public_key)
@@ -120,8 +157,10 @@ def main() -> None:
 
     sign_manifest(args.manifest, args.signature, args.private_key)
     verify_manifest(args.manifest, args.signature, args.public_key)
+    verify_legacy_manifest(args.public_key)
     print(f"Manifesto assinado: {args.manifest}")
     print(f"Assinatura validada: {args.signature}")
+    print(f"Manifesto legado intacto ({LEGACY_LATEST_VERSION}): {LEGACY_MANIFEST_PATH}")
 
 
 if __name__ == "__main__":

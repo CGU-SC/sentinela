@@ -1849,7 +1849,7 @@ const activeTransactionsLoading = computed(() =>
           <span class="daily-toolbar-label daily-toolbar-label-info">
             Navegar
             <i
-              class="pi pi-info-circle control-info-icon"
+              class="pi pi-info-circle control-info-icon help-icon"
               role="img"
               aria-label="Informações sobre a navegação entre meses"
               tabindex="0"
@@ -1896,7 +1896,7 @@ const activeTransactionsLoading = computed(() =>
                 <span>{{ option.label }}</span>
                 <i
                   v-if="option.tooltip"
-                  class="pi pi-info-circle control-info-icon"
+                  class="pi pi-info-circle control-info-icon help-icon"
                   role="img"
                   :aria-label="`Informações sobre ${option.label}`"
                   v-tooltip.top="option.tooltip"
@@ -1916,7 +1916,7 @@ const activeTransactionsLoading = computed(() =>
                 </option>
               </select>
               <i
-                class="pi pi-info-circle control-info-icon rank-limit-info"
+                class="pi pi-info-circle control-info-icon rank-limit-info help-icon"
                 role="img"
                 aria-label="Informações sobre a quantidade de dias exibidos"
                 tabindex="0"
@@ -1933,7 +1933,7 @@ const activeTransactionsLoading = computed(() =>
             <span class="toggle-slider"></span>
             <span class="toggle-label">Apenas anomalias</span>
             <i
-              class="pi pi-info-circle control-info-icon anomaly-filter-info"
+              class="pi pi-info-circle control-info-icon anomaly-filter-info help-icon"
               role="img"
               aria-label="Informações sobre o filtro Apenas anomalias"
               tabindex="0"
@@ -2119,7 +2119,7 @@ const activeTransactionsLoading = computed(() =>
           <span class="drill-step" aria-hidden="true">3</span>
           <span>RAIO-X: TRANSAÇÕES</span>
           <i
-            class="pi pi-info-circle control-info-icon"
+            class="pi pi-info-circle control-info-icon help-icon"
             role="img"
             tabindex="0"
             aria-label="Informações sobre o Raio-X de transações"
@@ -2143,7 +2143,7 @@ const activeTransactionsLoading = computed(() =>
             <span class="alertas-sequencia-count">{{ alertasSequencia.length }}</span>
           </h3>
           <i
-            class="pi pi-info-circle section-info-icon"
+            class="pi pi-info-circle section-info-icon help-icon"
             role="img"
             aria-label="Informações sobre os alertas de autorizações em sequência"
             tabindex="0"
@@ -2208,7 +2208,7 @@ const activeTransactionsLoading = computed(() =>
               <th width="5%" class="col-center">
                 <span class="sr-only">Evidência</span>
                 <i
-                  class="pi pi-info-circle control-info-icon"
+                  class="pi pi-info-circle control-info-icon help-icon"
                   role="img"
                   tabindex="0"
                   aria-label="Informações sobre a marcação de evidências"
@@ -2219,7 +2219,7 @@ const activeTransactionsLoading = computed(() =>
               <th width="10%" class="col-center">
                 Intervalo
                 <i
-                  class="pi pi-info-circle control-info-icon"
+                  class="pi pi-info-circle control-info-icon help-icon"
                   role="img"
                   tabindex="0"
                   aria-label="Informações sobre o intervalo entre autorizações"

@@ -1,12 +1,11 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { useFormatting } from '@/composables/useFormatting';
 import { useFrozenData } from '@/composables/useFrozenData';
 import {
-  analysisTooltip, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP,
-} from '@/config/analysisTooltipConfig';
+  analysisTooltip, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP, crmMedicoNomeTooltip } from '@/config/analysisTooltipConfig';
 import { DATA_NEUTRAL, CRM_TAXA_P95_TONS, CRM_ALERTA_BADGE_TONS } from '@/config/colors';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
 import { CRM_RANKING_PAGE_SIZE_OPTIONS, CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
@@ -160,6 +159,33 @@ function doctorLabel(row) {
   return formatTitleCase(row.no_medico);
 }
 
+// Nome cortado com reticências: só ele ganha tooltip com o nome completo. A
+// medição é feita depois de cada renderização da tabela e quando a tabela muda
+// de largura (aba, janela), para o tooltip já valer no primeiro hover.
+const painel = ref(null);
+const nomesCortados = ref(new Set());
+function medirNomes() {
+  const raiz = painel.value;
+  if (!raiz) return;
+  const cortados = new Set();
+  for (const el of raiz.querySelectorAll('.doctor-name[data-medico]')) {
+    if (el.scrollWidth > el.clientWidth) cortados.add(el.dataset.medico);
+  }
+  nomesCortados.value = cortados;
+}
+watch(() => [snapshot.value.rows, props.tab], () => nextTick(medirNomes), { immediate: true });
+let observador = null;
+onMounted(() => {
+  observador = new ResizeObserver(() => medirNomes());
+  observador.observe(painel.value);
+});
+onBeforeUnmount(() => observador?.disconnect());
+function nomeTooltip(row) {
+  // Objeto sempre presente e `disabled` quando cabe: com valor nulo o PrimeVue não
+  // registra os eventos do tooltip e ele não apareceria depois da medição.
+  return { ...crmMedicoNomeTooltip(doctorLabel(row), crmLabel(row)), disabled: !nomesCortados.value.has(row.id_medico) };
+}
+
 function crmLabel(row) {
   if (row.nu_crm == null) return `CRM ${row.id_medico}`;
   return `CRM ${row.nu_crm}${row.sg_uf ? `/${row.sg_uf}` : ''}`;
@@ -201,6 +227,7 @@ const subtitulo = computed(() => {
 
 <template>
   <section
+    ref="painel"
     class="crm-ranking-panel"
     :class="{ 'is-refreshing': isRefreshing }"
     :style="[{ '--ranking-page-size': snapshot.pageSize }, alertaCorVars]"
@@ -211,7 +238,7 @@ const subtitulo = computed(() => {
         <div>
           <div class="ranking-title-row">
             <h2>Ranking de médicos por taxa diária</h2>
-            <i class="pi pi-info-circle info-icon" v-tooltip.bottom="headerInfoTooltip" aria-label="Como ler o ranking" />
+            <i class="pi pi-info-circle info-icon help-icon" v-tooltip.bottom="headerInfoTooltip" aria-label="Como ler o ranking" />
           </div>
           <span v-if="tab !== 'mes' && error && snapshot.rows.length" class="ranking-status--error" role="alert" v-tooltip.bottom="error">
             Falha ao atualizar · resultado anterior exibido
@@ -322,7 +349,7 @@ const subtitulo = computed(() => {
           <template #header>
             <span class="alertas-cabecalho">
               ALERTAS
-              <i class="pi pi-info-circle info-icon" v-tooltip.top="alertasTooltip" tabindex="0" aria-label="Como ler a coluna de alertas" />
+              <i class="pi pi-info-circle info-icon help-icon" v-tooltip.top="alertasTooltip" tabindex="0" aria-label="Como ler a coluna de alertas" />
             </span>
           </template>
           <template #body="{ data }">
@@ -341,7 +368,12 @@ const subtitulo = computed(() => {
             <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
               <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
             </span>
-            <span v-else class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
+            <span
+              v-else
+              class="doctor-name"
+              :data-medico="data.id_medico"
+              v-tooltip.top="nomeTooltip(data)"
+            ><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
             <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
           </template>
         </Column>
@@ -365,7 +397,7 @@ const subtitulo = computed(() => {
               <span class="lt-header-title">
                 TAXA DIÁRIA MENSAL
                 <i
-                  class="pi pi-info-circle info-icon"
+                  class="pi pi-info-circle info-icon help-icon"
                   v-tooltip.top="linhaTempoTooltip"
                   tabindex="0"
                   aria-label="Como ler a linha do tempo"
@@ -510,7 +542,7 @@ const subtitulo = computed(() => {
 
 /* Linha do tempo */
 .crm-ranking-table.is-linha :deep(.p-datatable-table) { width: max(100%, 57.75rem); }
-.crm-ranking-table.is-linha :deep(.col-doctor) { width: 15rem; }
+.crm-ranking-table.is-linha :deep(.col-doctor) { width: 12rem; }
 .crm-ranking-table :deep(.col-linha) { width: auto; }
 .crm-ranking-table :deep(th.col-linha .p-column-header-content) { display: block; }
 .lt-header { display: flex; flex-direction: column; gap: .12rem; }

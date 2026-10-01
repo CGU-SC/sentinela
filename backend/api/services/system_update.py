@@ -47,8 +47,11 @@ logger = logging.getLogger(__name__)
 # Configurações
 # ---------------------------------------------------------------------------
 
-MANIFEST_URL = "https://cgu-sc.github.io/sentinela/updates/manifest.json"
-SIGNATURE_URL = "https://cgu-sc.github.io/sentinela/updates/manifest.sig"
+# Manifesto da série 2.x. A série 1.x consulta updates/manifest.json, que fica
+# congelado em 1.7.0: a 1.x não recebe oferta da 2.0, que exige o pacote completo
+# com as novas bases (instalado à parte). Ver docs/updates/README.md.
+MANIFEST_URL = "https://cgu-sc.github.io/sentinela/updates/v2/manifest.json"
+SIGNATURE_URL = "https://cgu-sc.github.io/sentinela/updates/v2/manifest.sig"
 REQUEST_TIMEOUT = 4.0
 MAX_MANIFEST_BYTES = 64 * 1024   # 64 KB
 MAX_SIG_BYTES = 256               # Ed25519 sig em Base64 < 120 bytes

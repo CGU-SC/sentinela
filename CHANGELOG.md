@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.0.0] - 2026-10-01
+
+### Adicionado
+- **Análise mensal de prescrições por CRM.** Consulta de rankings e resultados mensais, com mapa, detalhamento histórico e alertas de prescrições.
+- **Filtros e consulta do histórico médico.** Novos controles para explorar prescritores, períodos e ocorrências na análise de CRM.
+- **Gestão de evidências de CRM.** Marcação de dias, horários e autorizações, registro de notas, remoção e exportação das evidências.
+- **Exportações de análises de CRM.** Planilhas e arquivos com detalhamento e resumos por médico e período.
+- **Recuperação de Farmácias Monitoradas.** Validação de cópias de segurança e restauração da lista de favoritos.
+
+### Alterado
+- **Análises de CRM reorganizadas.** Melhorias nos rankings, mapas, tabelas, buscas, filtros e navegação.
+- **Seleção de período modernizada.** O controle de período passou a permitir selecionar diretamente o intervalo de meses.
+- **Preparação dos dados de CRM ampliada.** Foram adicionados dados anuais, caches e estruturas de índice para atender às novas consultas.
+- **Consultas e contratos do dashboard alinhados.** O acesso ao resumo foi centralizado, e o ranking de falecidos passou a usar dados estruturados.
+
+### Corrigido
+- **Filtros, paginação e detalhamento de evidências de CRM ajustados** para manter os resultados coerentes entre a análise, o histórico e as exportações.
+- **Persistência das Farmácias Monitoradas protegida** contra falhas de leitura ou gravação, com erros informados e opção de recuperar uma cópia validada.
+- **Geração da Nota Técnica e consultas analíticas de CRM ajustadas** para refletir os dados e critérios consolidados.
+
 ## [1.7.0] - 2026-09-26
 
 ### Adicionado

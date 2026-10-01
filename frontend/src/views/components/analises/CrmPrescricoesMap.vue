@@ -514,7 +514,7 @@ watch(() => themeStore.isDark, () => mapKey.value++);
       <div class="crm-map-heading">
         <div class="crm-map-title-row">
           <h2>Médicos com taxa elevada</h2>
-          <i class="pi pi-info-circle info-icon" v-tooltip.bottom="mapInfoTooltip" aria-label="Como ler o mapa" />
+          <i class="pi pi-info-circle info-icon help-icon" v-tooltip.bottom="mapInfoTooltip" aria-label="Como ler o mapa" />
         </div>
         <span>{{ mapSubtitle }}</span>
       </div>

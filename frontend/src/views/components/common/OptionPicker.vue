@@ -68,5 +68,6 @@ function escolher(opcao) {
 
 <style>
 /* Lista sozinha no painel: sem a borda que separa atalhos do conteúdo. */
-.op-lista { border-right: 0; }
+/* Fora de .rp-corpo: sem isto a lista herdava 16px do body. */
+.op-lista { border-right: 0; font-size: .8125rem; }
 </style>

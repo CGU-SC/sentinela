@@ -103,6 +103,7 @@ roteiro_apresentacao_sentinela.md
 
 # Manifestos publicos de atualizacao do GitHub Pages
 !docs/updates/*.json
+!docs/updates/v2/*.json
 
 # Chave privada usada para assinar manifestos de atualizacao
 /secrets/

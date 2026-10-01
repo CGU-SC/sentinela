@@ -454,7 +454,7 @@ const maxPDOverall = computed(() => {
             <th style="width: 45px;" class="col-center">
               #
               <i
-                class="pi pi-info-circle th-info-icon"
+                class="pi pi-info-circle th-info-icon help-icon"
                 v-tooltip.top="crmTableTooltips.columns.rank"
                 tabindex="0"
                 aria-label="Informações sobre a classificação"
@@ -463,7 +463,7 @@ const maxPDOverall = computed(() => {
             <th style="width: 270px;">
               CRM / Médico
               <i
-                class="pi pi-info-circle th-info-icon"
+                class="pi pi-info-circle th-info-icon help-icon"
                 v-tooltip.top="crmTableTooltips.columns.crm"
                 tabindex="0"
                 aria-label="Informações sobre CRM e médico"
@@ -472,7 +472,7 @@ const maxPDOverall = computed(() => {
             <th style="width: 19%">
               Status / Alertas
               <i
-                class="pi pi-info-circle th-info-icon"
+                class="pi pi-info-circle th-info-icon help-icon"
                 v-tooltip.top="crmTableTooltips.columns.status"
                 tabindex="0"
                 aria-label="Informações sobre status e alertas"
@@ -481,7 +481,7 @@ const maxPDOverall = computed(() => {
             <th style="width: 26%">
               Atuação na farmácia
               <i
-                class="pi pi-info-circle th-info-icon"
+                class="pi pi-info-circle th-info-icon help-icon"
                 v-tooltip.top="crmTableTooltips.columns.atuacao"
                 tabindex="0"
                 aria-label="Informações sobre a atuação na farmácia"
@@ -490,7 +490,7 @@ const maxPDOverall = computed(() => {
             <th class="col-right" style="width: 11%">
               Volume / Valor
               <i
-                class="pi pi-info-circle th-info-icon"
+                class="pi pi-info-circle th-info-icon help-icon"
                 v-tooltip.top="crmTableTooltips.columns.volume"
                 tabindex="0"
                 aria-label="Informações sobre volume e valor"
@@ -499,7 +499,7 @@ const maxPDOverall = computed(() => {
             <th class="col-center" style="width: 16%">
               Participação no valor
               <i
-                class="pi pi-info-circle th-info-icon"
+                class="pi pi-info-circle th-info-icon help-icon"
                 v-tooltip.top="crmTableTooltips.columns.participation"
                 tabindex="0"
                 aria-label="Informações sobre a participação no valor"
@@ -508,7 +508,7 @@ const maxPDOverall = computed(() => {
             <th class="col-center" style="width: 11%">
               Prescrições por Dia
               <i
-                class="pi pi-info-circle th-info-icon"
+                class="pi pi-info-circle th-info-icon help-icon"
                 v-tooltip.top="crmTableTooltips.columns.prescriptions"
                 tabindex="0"
                 aria-label="Informações sobre prescrições por dia"
@@ -517,7 +517,7 @@ const maxPDOverall = computed(() => {
             <th class="col-center" style="width: 6%">
               Exclusividade
               <i
-                class="pi pi-info-circle th-info-icon"
+                class="pi pi-info-circle th-info-icon help-icon"
                 v-tooltip.left="crmTableTooltips.columns.exclusive"
                 tabindex="0"
                 aria-label="Informações sobre a taxa de exclusividade"

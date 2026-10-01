@@ -205,7 +205,7 @@ function onCardClick(card) {
             <span v-if="card.tone" class="kpi-dot" :class="`tone-${card.tone}`" aria-hidden="true" />
             <span class="alert-kpi-label">{{ card.label }}</span>
             <i
-              class="pi pi-info-circle kpi-info-icon"
+              class="pi pi-info-circle kpi-info-icon help-icon"
               v-tooltip="{ ...card.tooltip, ...(idx === grupo.cards.length - 1 ? { position: 'left' } : { position: 'top' }) }"
               tabindex="0"
               :aria-label="`Informações sobre ${card.label}`"

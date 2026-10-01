@@ -126,7 +126,7 @@ function onNavSelect(event) {
             {{ recentCnpj.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') }}
           </router-link>
           <i
-            class="pi pi-info-circle nav-recent-info"
+            class="pi pi-info-circle nav-recent-info help-icon"
             role="img"
             tabindex="0"
             aria-label="Informações sobre o último estabelecimento"

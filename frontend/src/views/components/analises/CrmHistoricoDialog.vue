@@ -1001,7 +1001,7 @@ const calorOption = computed(() => {
       <div class="hist-header">
         <span class="hist-eyebrow">
           Histórico do CRM
-          <i class="pi pi-info-circle hist-info" v-tooltip.bottom="infoTooltip" aria-label="Como ler o histórico" />
+          <i class="pi pi-info-circle hist-info help-icon" v-tooltip.bottom="infoTooltip" aria-label="Como ler o histórico" />
         </span>
         <span class="hist-title">{{ titulo }}</span>
         <div class="hist-meta">
@@ -1058,7 +1058,7 @@ const calorOption = computed(() => {
             />
           </label>
           <i
-            class="pi pi-info-circle hist-info"
+            class="pi pi-info-circle hist-info help-icon"
             v-tooltip.bottom="filtrosTooltip"
             aria-label="Como funcionam os filtros do histórico"
           />
@@ -1086,7 +1086,7 @@ const calorOption = computed(() => {
       <section class="hist-panel">
         <header class="hist-panel-header">
           <h3>Pontos de atenção</h3>
-          <i class="pi pi-info-circle hist-info" v-tooltip.bottom="atencaoTooltip" aria-label="Como os pontos são calculados" />
+          <i class="pi pi-info-circle hist-info help-icon" v-tooltip.bottom="atencaoTooltip" aria-label="Como os pontos são calculados" />
         </header>
         <ul v-if="dados.pontos_atencao.length" class="hist-atencao">
           <li
@@ -1171,7 +1171,7 @@ const calorOption = computed(() => {
                 <th class="th-atuacao">
                   ATUAÇÃO NA FARMÁCIA
                   <i
-                    class="pi pi-info-circle hist-info"
+                    class="pi pi-info-circle hist-info help-icon"
                     v-tooltip.top="atuacaoTooltip"
                     tabindex="0"
                     aria-label="Informações sobre a atuação na farmácia"

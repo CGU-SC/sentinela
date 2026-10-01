@@ -355,7 +355,7 @@ const exportacao = computed(() => ({
     <header class="ev-header">
       <div class="ev-titulo">
         <h3 id="ev-titulo">Evidências</h3>
-        <i class="pi pi-info-circle hist-info" v-tooltip.bottom="painelTooltip" aria-label="Como ler as evidências" />
+        <i class="pi pi-info-circle hist-info help-icon" v-tooltip.bottom="painelTooltip" aria-label="Como ler as evidências" />
         <span class="hist-panel-sub">uma linha por janela · {{ idCnpj != null ? 'somente a farmácia filtrada' : idIbge7 != null ? 'somente as farmácias do município filtrado' : 'todas as farmácias' }}</span>
       </div>
       <ExportMenuButton :exportacao="exportacao" menu-id="crm-evidencias-export" />
@@ -380,7 +380,7 @@ const exportacao = computed(() => ({
         <span v-if="contagemAba(a.tipo) != null" class="ev-aba-qtd" :class="{ 'is-zero': contagemAba(a.tipo) === 0 }">
           {{ formatNumberFull(contagemAba(a.tipo)) }}
         </span>
-        <i class="pi pi-info-circle ev-aba-info" v-tooltip.top="abaTooltips[a.tipo]" aria-hidden="true" @click.stop />
+        <i class="pi pi-info-circle ev-aba-info help-icon" v-tooltip.top="abaTooltips[a.tipo]" aria-hidden="true" @click.stop />
       </button>
     </div>
 

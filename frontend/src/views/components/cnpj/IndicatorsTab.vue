@@ -331,7 +331,7 @@ function riscoTextStyle(indicadorData) {
                 <span class="ind-heading-with-tooltip">
                   <span>Farmácia</span>
                   <i
-                    class="pi pi-info-circle ind-header-info-icon"
+                    class="pi pi-info-circle ind-header-info-icon help-icon"
                     role="img"
                     tabindex="0"
                     aria-label="Explicação da coluna Farmácia"
@@ -343,7 +343,7 @@ function riscoTextStyle(indicadorData) {
                 <span class="ind-heading-with-tooltip">
                   <span>Mediana Região</span>
                   <i
-                    class="pi pi-info-circle ind-header-info-icon"
+                    class="pi pi-info-circle ind-header-info-icon help-icon"
                     role="img"
                     tabindex="0"
                     aria-label="Explicação da coluna Mediana Região"
@@ -355,7 +355,7 @@ function riscoTextStyle(indicadorData) {
                 <span class="ind-heading-with-tooltip">
                   <span>Mediana UF</span>
                   <i
-                    class="pi pi-info-circle ind-header-info-icon"
+                    class="pi pi-info-circle ind-header-info-icon help-icon"
                     role="img"
                     tabindex="0"
                     aria-label="Explicação da coluna Mediana UF"
@@ -367,7 +367,7 @@ function riscoTextStyle(indicadorData) {
                 <span class="ind-heading-with-tooltip">
                   <span>Mediana Nacional</span>
                   <i
-                    class="pi pi-info-circle ind-header-info-icon"
+                    class="pi pi-info-circle ind-header-info-icon help-icon"
                     role="img"
                     tabindex="0"
                     aria-label="Explicação da coluna Mediana Nacional"
@@ -379,7 +379,7 @@ function riscoTextStyle(indicadorData) {
                 <span class="ind-heading-with-tooltip">
                   <span>Risco Região</span>
                   <i
-                    class="pi pi-info-circle ind-header-info-icon"
+                    class="pi pi-info-circle ind-header-info-icon help-icon"
                     role="img"
                     tabindex="0"
                     aria-label="Explicação da coluna Risco Região"
@@ -391,7 +391,7 @@ function riscoTextStyle(indicadorData) {
                 <span class="ind-heading-with-tooltip">
                   <span>Risco UF</span>
                   <i
-                    class="pi pi-info-circle ind-header-info-icon"
+                    class="pi pi-info-circle ind-header-info-icon help-icon"
                     role="img"
                     tabindex="0"
                     aria-label="Explicação da coluna Risco UF"
@@ -403,7 +403,7 @@ function riscoTextStyle(indicadorData) {
                 <span class="ind-heading-with-tooltip">
                   <span>Risco Nacional</span>
                   <i
-                    class="pi pi-info-circle ind-header-info-icon"
+                    class="pi pi-info-circle ind-header-info-icon help-icon"
                     role="img"
                     tabindex="0"
                     aria-label="Explicação da coluna Risco Nacional"
@@ -415,7 +415,7 @@ function riscoTextStyle(indicadorData) {
                 <span class="ind-heading-with-tooltip">
                   <span>Status</span>
                   <i
-                    class="pi pi-info-circle ind-header-info-icon"
+                    class="pi pi-info-circle ind-header-info-icon help-icon"
                     role="img"
                     tabindex="0"
                     aria-label="Explicação da coluna Status"
@@ -444,7 +444,7 @@ function riscoTextStyle(indicadorData) {
                   <div class="ind-nome-inner">
                     <span>{{ ind.label }}</span>
                     <i
-                      class="pi pi-info-circle ind-info-icon"
+                      class="pi pi-info-circle ind-info-icon help-icon"
                       role="img"
                       tabindex="0"
                       :aria-label="`Explicação do indicador ${ind.label}`"
@@ -465,7 +465,7 @@ function riscoTextStyle(indicadorData) {
                       </span>
                       <i
                         v-if="valorFinanceiroTooltip(cachedIndicadoresData.indicadores[ind.key], ind)"
-                        class="pi pi-info-circle ind-finance-icon"
+                        class="pi pi-info-circle ind-finance-icon help-icon"
                         role="img"
                         tabindex="0"
                         aria-label="Explicação do valor financeiro associado"

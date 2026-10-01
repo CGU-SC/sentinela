@@ -390,3 +390,28 @@ body.dark-mode .p-tabview .p-tabview-nav li .p-tabview-nav-link:hover {
   background: var(--sidebar-border) !important;
   color: var(--text-color-85) !important;
 }
+
+/* ── Ícone de ajuda (abre tooltip) ─────────────────────────────────────────
+   Padrão único do sistema para TODO ícone de informação que mostra um tooltip:
+   0,8rem, cinza apagado a 75% e opacidade plena no hover/foco. !important para
+   valer sobre os estilos locais dos componentes. Quando o tooltip fica num
+   elemento pai (botão, chip, cabeçalho), o pai leva .help-icon-host e o ícone
+   acende junto com o hover dele. */
+.help-icon {
+  font-size: 0.8rem !important;
+  color: var(--text-muted) !important;
+  opacity: 0.75 !important;
+  cursor: help;
+  transition: opacity 0.15s ease;
+}
+.help-icon:hover,
+.help-icon:focus-visible,
+.help-icon-host:hover .help-icon,
+.help-icon-host:focus-visible .help-icon {
+  opacity: 1 !important;
+}
+.help-icon:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
+  outline-offset: 2px;
+  border-radius: 50%;
+}

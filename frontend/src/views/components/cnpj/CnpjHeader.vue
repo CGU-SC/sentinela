@@ -626,7 +626,7 @@ const heroTooltips = Object.freeze({
         <span
           v-for="alert in integrityAlertTypes"
           :key="alert.tipo"
-          class="integrity-preview"
+          class="integrity-preview help-icon-host"
           :class="`integrity-preview--${alert.severidade}`"
           role="img"
           tabindex="0"
@@ -634,7 +634,7 @@ const heroTooltips = Object.freeze({
           v-tooltip.top="integrityAlertTooltip(alert)"
         >
           {{ alert.titulo }}
-          <i class="pi pi-info-circle integrity-preview-info" aria-hidden="true" />
+          <i class="pi pi-info-circle integrity-preview-info help-icon" aria-hidden="true" />
         </span>
         <span class="integrity-strip-action">
           Ver detalhes

@@ -6,7 +6,6 @@ import { useRiskMetrics } from '@/composables/useRiskMetrics';
 import { useChartTheme } from '@/config/chartTheme';
 import { CHART_TOOLTIP_SHADOW } from '@/config/colors.js';
 import { storeToRefs } from 'pinia';
-import Button from 'primevue/button';
 
 // ── ECharts ───────────────────────────────────────────────────────────────
 import { use } from 'echarts/core';
@@ -260,10 +259,11 @@ const chartOption = computed(() => {
       <i class="pi pi-chart-bar"></i>
       <h3>% VALOR, % QTDE S/ COMPROVAÇÃO E VOLUME MOVIMENTADO POR UF</h3>
       <div class="spacer"></div>
-      <Button
-        icon="pi pi-info-circle"
+      <i
+        class="pi pi-info-circle help-icon"
         v-tooltip.top="'Barras = Valor Total Movimentado; Área vermelha = Valor sem Comprovação (exposição ao risco dentro do mercado); Linha = % Valor sem Comprovação.'"
-        text severity="secondary" rounded
+        tabindex="0"
+        aria-label="Como ler o gráfico por UF"
       />
     </div>
 

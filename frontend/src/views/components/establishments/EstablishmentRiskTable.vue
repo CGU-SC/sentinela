@@ -23,6 +23,8 @@ import ObservationDialog from '@/views/components/cnpj/ObservationDialog.vue';
 import { createCnpjPerfSession, logCnpjPerf } from '@/utils/cnpjPerfLogger';
 import { establishmentTableTooltip, establishmentRiskTooltip } from '@/config/establishmentTableTooltipConfig';
 import TableFooter from '@/views/components/common/TableFooter.vue';
+import { CRM_ALERTA_BADGE_TONS } from '@/config/colors';
+import { useThemeStore } from '@/stores/theme';
 
 const props = defineProps({
   /** Array de IndicadorCnpjRowSchema */
@@ -320,6 +322,13 @@ function benchmarkValue(row) {
   return row?.med_benchmark ?? row?.med_reg;
 }
 
+// Vermelho pastel (o mesmo da coluna ALERTAS de /analises) no risco crítico e no
+// selo de alto valor sem comprovação: destaca sem pesar como o --risk-high.
+const themeStore = useThemeStore();
+const alertaCorVars = computed(() => ({
+  '--alerta-cor': CRM_ALERTA_BADGE_TONS[themeStore.isDark ? 'dark' : 'light'].cor,
+}));
+
 function statusClass(status) {
   switch (status) {
     case 'CRÍTICO': return 'status-danger';
@@ -401,7 +410,7 @@ const indicatorColumnHeader = computed(() => {
 </script>
 
 <template>
-  <div class="ind-table-card">
+  <div class="ind-table-card" :style="alertaCorVars">
     <div class="section-header">
       <i class="pi pi-list" aria-hidden="true" />
       <div class="header-text-box">
@@ -1213,11 +1222,13 @@ const indicatorColumnHeader = computed(() => {
   text-align: right;
 }
 
+/* Colunas numéricas (indicador, risco, vendas, sem comprovar): mesma escala.
+   Valor principal 13px/500; linha de apoio 11px/400 em cor apagada; 3px entre elas. */
 .indicator-cell {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.12rem;
+  gap: 0.1875rem;
   min-width: 0;
 }
 
@@ -1227,7 +1238,10 @@ const indicatorColumnHeader = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.86rem;
+  color: var(--text-color-85);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
 .indicator-median {
@@ -1236,11 +1250,10 @@ const indicatorColumnHeader = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.78rem;
-  font-weight: 500;
-  line-height: 1;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1.2;
   color: var(--text-muted);
-  opacity: 0.72;
 }
 
 .risk-cell {
@@ -1248,7 +1261,7 @@ const indicatorColumnHeader = computed(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.14rem;
+  gap: 0.1875rem;
   min-width: 0;
 }
 
@@ -1257,14 +1270,15 @@ const indicatorColumnHeader = computed(() => {
   padding: 0 !important;
   background: transparent !important;
   border: 0 !important;
-  font-size: 0.88rem;
+  font-size: 0.8125rem;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.2;
 }
 
 .risk-value.status-danger,
 .risk-status.status-danger {
-  color: var(--risk-high);
+  /* !important: vence a regra global .status-danger (var(--risk-high) !important). */
+  color: var(--alerta-cor) !important;
 }
 
 .risk-value.status-warn,
@@ -1287,7 +1301,9 @@ const indicatorColumnHeader = computed(() => {
   max-width: 100%;
   overflow: hidden;
   color: var(--text-color-85);
-  font-size: 0.86rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1302,17 +1318,17 @@ const indicatorColumnHeader = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.78rem;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: 0.03em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
 }
 
 .noncomp-cell {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.12rem;
+  gap: 0.1875rem;
   min-width: 0;
 }
 
@@ -1323,36 +1339,37 @@ const indicatorColumnHeader = computed(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 0.86rem;
+  color: var(--text-color-85);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
 .noncomp-percent {
-  font-size: 0.78rem;
-  font-weight: 600;
-  line-height: 1;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1.2;
   color: var(--text-muted);
-  opacity: 0.72;
 }
 
 .table-total-label {
   color: var(--text-color-85);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
 .table-total-cell .noncomp-value {
   color: var(--text-color-85);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .table-total-cell .noncomp-percent {
-  font-weight: 800;
-  opacity: 0.9;
+  font-weight: 600;
 }
 
 .table-total-movement {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .network-count-muted {
@@ -1531,6 +1548,14 @@ const indicatorColumnHeader = computed(() => {
   border: 1px solid transparent;
 }
 
+/* Selo "Inativa" (e demais .status-danger da tabela) no vermelho pastel da tela, como o
+   risco crítico; !important vence a classe global .status-danger de components.css. */
+:deep(.ind-cnpj-table .p-tag.status-danger) {
+  background: color-mix(in srgb, var(--alerta-cor) 12%, transparent) !important;
+  color: var(--alerta-cor) !important;
+  border: 1px solid color-mix(in srgb, var(--alerta-cor) 30%, transparent) !important;
+}
+
 :deep(.clickable-badge) {
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1555,16 +1580,17 @@ const indicatorColumnHeader = computed(() => {
 
 /* DESTAQUE DE ALTO VALOR */
 .high-value-audit {
-  color: var(--risk-high);
+  color: var(--alerta-cor);
   font-weight: 600;
-  font-size: 0.75rem; /* Ajustado para caber na tabela densa de indicadores */
+  font-size: 0.8125rem;
+  line-height: 1.2;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0.4rem;
-  padding: 0.15rem 0.65rem;
-  background: color-mix(in srgb, var(--risk-high) 10%, transparent);
-  border-left: 3px solid var(--risk-high);
+  padding: 0.1rem 0.5rem;
+  background: color-mix(in srgb, var(--alerta-cor) 10%, transparent);
+  border-left: 3px solid var(--alerta-cor);
   border-radius: 0 6px 6px 0;
 }
 </style>

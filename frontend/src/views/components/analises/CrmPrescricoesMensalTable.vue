@@ -93,7 +93,7 @@ function onPage(event) {
       <template #header>
         <span class="alertas-cabecalho">
           ALERTAS
-          <i class="pi pi-info-circle info-icon" v-tooltip.top="alertasTooltip" tabindex="0" aria-label="Como ler a coluna de alertas" />
+          <i class="pi pi-info-circle info-icon help-icon" v-tooltip.top="alertasTooltip" tabindex="0" aria-label="Como ler a coluna de alertas" />
         </span>
       </template>
       <template #body="{ data }">

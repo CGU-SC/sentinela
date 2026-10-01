@@ -64,7 +64,7 @@ const navigate = (alert) => {
           <div class="integrity-alert-heading">
             <span class="integrity-alert-title">{{ alert.titulo }}</span>
             <i
-              class="pi pi-info-circle integrity-alert-info"
+              class="pi pi-info-circle integrity-alert-info help-icon"
               role="img"
               tabindex="0"
               :aria-label="`Explicação do alerta ${alert.titulo}`"

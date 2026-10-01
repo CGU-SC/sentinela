@@ -10,8 +10,8 @@ Passos obrigatórios do processo de release:
 1. Atualizar `version.json` na raiz com a nova versão SemVer.
 2. Atualizar `frontend/package.json` com a mesma versão.
 3. Atualizar `CHANGELOG.md` com o que foi adicionado, corrigido ou alterado.
-4. Atualizar `docs/updates/manifest.json` com `latest_version`, `minimum_supported_version` e `published_at`.
-5. Assinar o manifesto: `.\.venv\Scripts\python.exe .\src\scripts\sign_update_manifest.py`
+4. Atualizar `docs/updates/v2/manifest.json` (manifesto da série 2.x) com `latest_version`, `minimum_supported_version` e `published_at`.
+5. Assinar o manifesto: `.\.venv\Scripts\python.exe .\src\scripts\sign_update_manifest.py` (assina o da série 2.x e confere o legado).
 6. Fazer build do frontend: `npm run build` em `frontend/`.
 7. Fazer build do executável: `.\build_pywebview_uvicorn.ps1` (e granian se aplicável).
 8. Commit, tag e push: `git tag vX.Y.Z && git push origin main && git push origin vX.Y.Z`
@@ -21,6 +21,7 @@ Passos obrigatórios do processo de release:
 Regras:
 - **Nunca publicar o manifesto sem reasinar** — qualquer byte alterado invalida a assinatura.
 - **Nunca alterar `manifest.json` após assinar** sem rodar o script de assinatura novamente.
+- **Nunca alterar nem apagar o manifesto legado `docs/updates/manifest.json`** (+ `manifest.sig`): ele fica congelado em 1.7.0 para a série 1.x, que assim não recebe oferta da 2.0 (exige o pacote completo com as novas bases). Detalhes em `docs/updates/README.md`.
 - A versão em `version.json` e `frontend/package.json` deve ser sempre idêntica.
 - `minimum_supported_version` só deve subir quando a atualização for obrigatória.
 

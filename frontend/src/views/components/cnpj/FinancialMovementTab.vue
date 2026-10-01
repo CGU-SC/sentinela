@@ -1133,7 +1133,7 @@ const exportMensalCard = () => {
             <span class="repasses-kpi-label">
               Total de Vendas
               <i
-                class="pi pi-info-circle repasses-kpi-info"
+                class="pi pi-info-circle repasses-kpi-info help-icon"
                 role="img"
                 tabindex="0"
                 aria-label="Explicação sobre Total de Vendas"
@@ -1146,7 +1146,7 @@ const exportMensalCard = () => {
             <span class="repasses-kpi-label">
               Ordens Bancárias Recebidas
               <i
-                class="pi pi-info-circle repasses-kpi-info"
+                class="pi pi-info-circle repasses-kpi-info help-icon"
                 role="img"
                 tabindex="0"
                 aria-label="Explicação sobre Ordens Bancárias Recebidas"
@@ -1159,7 +1159,7 @@ const exportMensalCard = () => {
             <span class="repasses-kpi-label">
               Número de Ordens Bancárias
               <i
-                class="pi pi-info-circle repasses-kpi-info"
+                class="pi pi-info-circle repasses-kpi-info help-icon"
                 role="img"
                 tabindex="0"
                 aria-label="Explicação sobre Número de Ordens Bancárias"
@@ -1172,7 +1172,7 @@ const exportMensalCard = () => {
             <span class="repasses-kpi-label">
               Maior Ordem Bancária Recebida
               <i
-                class="pi pi-info-circle repasses-kpi-info"
+                class="pi pi-info-circle repasses-kpi-info help-icon"
                 role="img"
                 tabindex="0"
                 aria-label="Explicação sobre Maior Ordem Bancária Recebida"
@@ -1187,7 +1187,7 @@ const exportMensalCard = () => {
             <span class="repasses-kpi-label">
               Última Ordem Bancária Recebida
               <i
-                class="pi pi-info-circle repasses-kpi-info"
+                class="pi pi-info-circle repasses-kpi-info help-icon"
                 role="img"
                 tabindex="0"
                 aria-label="Explicação sobre Última Ordem Bancária Recebida"
@@ -1403,7 +1403,7 @@ const exportMensalCard = () => {
               <template #header>
                 <div style="display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; width: 100%;">
                   <span>Valor Total OBs</span>
-                  <i class="pi pi-info-circle" v-tooltip.top="'Valor acumulado de ordens bancárias recebidas do Tesouro Nacional no período.'" style="font-size: 0.75rem; cursor: help; opacity: 0.7;" />
+                  <i class="pi pi-info-circle help-icon" v-tooltip.top="'Valor acumulado de ordens bancárias recebidas do Tesouro Nacional no período.'" style="font-size: 0.75rem; cursor: help; opacity: 0.7;" />
                 </div>
               </template>
               <template #body="{ data: m }">
