@@ -312,6 +312,22 @@
   color: var(--text-color-85);
 }
 
+/**
+ * RODAPÉ PRÓPRIO (TableFooter no slot #footer da DataTable)
+ * A paginação continua sendo do PrimeVue; só o paginador embutido fica oculto.
+ */
+.p-datatable.com-rodape > .p-paginator-bottom,
+.p-datatable.com-rodape > .p-paginator-top {
+  display: none !important;
+}
+
+.p-datatable.com-rodape > .p-datatable-footer {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-weight: 400 !important;
+}
+
 /** 
  * PAGINATOR DARK MODE 
  */

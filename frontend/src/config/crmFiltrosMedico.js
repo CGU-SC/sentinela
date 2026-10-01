@@ -12,12 +12,6 @@ export const CRM_SITUACAO_CFM_OPCOES = Object.freeze([
   Object.freeze({ value: 'nao_localizado', label: 'Não localizado' }),
 ]);
 
-/** Rótulo do chip de cada situação ativa. */
-export const CRM_SITUACAO_CFM_CHIP = Object.freeze({
-  localizado: 'Localizado no CFM',
-  nao_localizado: 'Não localizado no CFM',
-});
-
 /** UFs aceitas em uf_crm (UF do próprio id_medico, ex.: "123/SC"). */
 export const CRM_UFS = Object.freeze([
   'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA',
@@ -34,19 +28,16 @@ export const CRM_UF_ATALHOS = Object.freeze([
   Object.freeze({ value: 'sul', label: 'Sul', selecao: Object.freeze(['PR', 'RS', 'SC']) }),
 ]);
 
-export const CRM_ANTES_INSCRICAO_CHIP = 'Prescreveu antes da 1ª inscrição';
-
 /**
  * Severidade mínima das autorizações em sequência (único CRM): id_severidade
  * dos alertas (1 alta, 2 grave, 3 crítica, 4 extrema). null = sem filtro.
- * `chip` só para as opções que filtram.
  */
 export const CRM_SEQUENCIA_SEVERIDADES = Object.freeze([
   Object.freeze({ value: null, label: 'Qualquer' }),
-  Object.freeze({ value: 1, label: 'Alta ou pior', chip: 'Sequência alta ou pior' }),
-  Object.freeze({ value: 2, label: 'Grave ou pior', chip: 'Sequência grave ou pior' }),
-  Object.freeze({ value: 3, label: 'Crítica ou pior', chip: 'Sequência crítica ou pior' }),
-  Object.freeze({ value: 4, label: 'Extrema', chip: 'Sequência extrema' }),
+  Object.freeze({ value: 1, label: 'Alta ou pior' }),
+  Object.freeze({ value: 2, label: 'Grave ou pior' }),
+  Object.freeze({ value: 3, label: 'Crítica ou pior' }),
+  Object.freeze({ value: 4, label: 'Extrema' }),
 ]);
 
 /** Atalho "a partir de" de uma faixa aberta (NumberRangePicker modo aberto). */
@@ -72,7 +63,6 @@ export const CRM_FAIXAS = Object.freeze({
     grupo: 'producao',
     param: 'taxa_dia',
     label: 'Taxa diária',
-    chip: 'Taxa/dia',
     casas: 2,
     passo: 1,
     max: Infinity,
@@ -88,7 +78,6 @@ export const CRM_FAIXAS = Object.freeze({
     grupo: 'producao',
     param: 'prescricoes',
     label: 'Total de prescrições',
-    chip: 'Prescrições',
     casas: 0,
     passo: 500,
     max: Infinity,
@@ -101,10 +90,9 @@ export const CRM_FAIXAS = Object.freeze({
     ]),
   }),
   exclusividade: Object.freeze({
-    grupo: 'atuacao',
+    grupo: 'producao',
     param: 'exclusividade',
     label: 'Exclusividade na farmácia principal',
-    chip: 'Exclusividade',
     casas: 2,
     passo: 5,
     max: 100,
@@ -121,10 +109,9 @@ export const CRM_FAIXAS = Object.freeze({
     ]),
   }),
   farmacias: Object.freeze({
-    grupo: 'atuacao',
+    grupo: 'producao',
     param: 'farmacias',
     label: 'Nº de farmácias onde atuou',
-    chip: 'Farmácias',
     casas: 0,
     passo: 1,
     max: Infinity,
@@ -139,10 +126,9 @@ export const CRM_FAIXAS = Object.freeze({
     ]),
   }),
   municipios: Object.freeze({
-    grupo: 'atuacao',
+    grupo: 'producao',
     param: 'municipios',
     label: 'Nº de municípios onde atuou',
-    chip: 'Municípios',
     casas: 0,
     passo: 1,
     max: Infinity,
@@ -160,7 +146,6 @@ export const CRM_FAIXAS = Object.freeze({
     grupo: 'sequencia',
     param: 'sequencia_dias',
     label: 'Dias com sequência',
-    chip: 'Dias em sequência',
     casas: 0,
     passo: 1,
     max: Infinity,

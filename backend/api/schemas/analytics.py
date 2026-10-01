@@ -675,6 +675,8 @@ class CrmHistoricoFarmaciaSchema(BaseModel):
     id_cnpj: int
     cnpj: Optional[str] = None
     razao_social: Optional[str] = None
+    # Codigo IBGE do municipio: valor do filtro de municipio da tabela (o nome e so rotulo).
+    id_ibge7: int
     municipio: Optional[str] = None
     uf: Optional[str] = None
     situacao_rf: Optional[str] = None
@@ -689,6 +691,8 @@ class CrmHistoricoFarmaciaSchema(BaseModel):
 
 class CrmHistoricoFarmaciaMesSchema(BaseModel):
     id_cnpj: int
+    # Municipio da farmacia (o filtro de municipio do modal separa as series por ele).
+    id_ibge7: int
     competencia: int
     nu_prescricoes: int
     # Dias com prescricao do medico nesta farmacia no mes (taxa do mapa de calor).
@@ -763,6 +767,8 @@ class CrmMedicoHistoricoResponse(BaseModel):
     periodo_fim: date
     # Farmacia filtrada (None = todas as farmacias).
     id_cnpj_filtro: Optional[int] = None
+    # Municipio filtrado (id_ibge7; None = todos os municipios).
+    id_ibge7_filtro: Optional[int] = None
     kpis: CrmHistoricoKpisSchema
     # Historico completo (todas as competencias com prescricao), para o grafico.
     meses: List[CrmHistoricoMesSchema]
@@ -858,6 +864,7 @@ class CrmEvidenciasResponse(BaseModel):
     periodo_inicio: date
     periodo_fim: date
     id_cnpj: Optional[int] = None
+    id_ibge7: Optional[int] = None
     tipo: Literal["unico", "multiplos", "distancia"]
     # Resumos das tres abas (contadores das abas e chips de severidade).
     resumo_unico: CrmEvidenciasResumoSequenciaSchema
@@ -919,13 +926,6 @@ class CrmMedicoAtuacaoResponse(BaseModel):
     competencia_inicio_periodo: int
     competencia_fim_periodo: int
     serie_mensal_farmacia: list
-
-class CrmMedicoAlertasResponse(BaseModel):
-    cnpj: str
-    id_medico: str
-    alertas_crm_unico: List[dict]
-    alertas_geograficos: List[dict]
-    alertas_crm_multiplos: List[dict]
 
 class CrmDailyProfileItem(BaseModel):
     dt_janela: str

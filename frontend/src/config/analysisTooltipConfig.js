@@ -285,7 +285,7 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
   },
   crmHistoricoFiltros: {
     title: 'Filtros do histórico',
-    body: 'Valem só para este modal; os filtros da página de análises não mudam. Ao fechar, o modal volta ao período da análise e a todas as farmácias.',
+    body: 'Valem só para este modal; os filtros da página de análises não mudam. Ao fechar, o modal volta ao período da análise, a todos os municípios e a todas as farmácias.',
     icon: 'pi-filter',
     sections: [
       {
@@ -293,12 +293,16 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
         text: 'Use um atalho ou escolha o intervalo na grade: clique no mês inicial e depois no final. Muda indicadores, pontos de atenção, tabela de farmácias e mapa de calor; a linha do tempo continua mostrando o histórico completo. "Últimos 12 meses de atuação" termina no último mês com prescrição do médico.',
       },
       {
+        label: 'Município',
+        text: 'Junta as farmácias do município onde o médico atuou: indicadores, linha do tempo, tabela, mapa de calor e evidências passam a ser só os delas. A taxa diária é exata: os dias com prescrição são contados uma vez no município, mesmo quando o médico prescreveu em duas farmácias dele no mesmo dia. A lista de farmácias passa a mostrar só as do município.',
+      },
+      {
         label: 'Farmácia',
         text: 'Uma farmácia por vez: indicadores, linha do tempo e pontos de atenção passam a ser só os dela, com taxa diária exata. Várias ao mesmo tempo não é possível porque o mesmo dia pode ter prescrição em duas farmácias, e os dados mensais não dizem quais dias se repetem.',
       },
       {
-        label: 'Taxa elevada com farmácia filtrada',
-        text: 'Continua sendo a do total do médico no mês: o P95 é calculado sobre a produção total de cada médico, não sobre uma farmácia.',
+        label: 'Taxa elevada com município ou farmácia filtrados',
+        text: 'Continua sendo a do total do médico no mês: o P95 é calculado sobre a produção total de cada médico, não sobre um município ou uma farmácia.',
       },
     ],
   },
@@ -309,9 +313,9 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
     sections: [
       { label: 'Antes da inscrição no CFM', text: 'Meses com prescrição anteriores à data da 1ª inscrição do médico no CFM.' },
       { label: 'Autorizações em sequência (único CRM)', text: 'Dias em que o CRM teve muitas prescrições em poucos minutos numa farmácia (mesmos alertas da aba Autorizações do estabelecimento). Mostra quantos dias, em quantas farmácias e a pior severidade.' },
-      { label: 'Farmácias distantes no mesmo mês', text: 'Meses em que o CRM prescreveu, no mesmo mês, em farmácias muito distantes entre si. Mostra a maior distância encontrada. Com farmácia filtrada, não é avaliado.' },
+      { label: 'Farmácias distantes no mesmo mês', text: 'Meses em que o CRM prescreveu, no mesmo mês, em farmácias muito distantes entre si. Mostra a maior distância encontrada. Com município ou farmácia filtrados, não é avaliado.' },
       { label: 'Meses consecutivos com taxa elevada', text: 'A maior sequência de meses seguidos com taxa elevada (a partir de 2 meses).' },
-      { label: 'Concentração em uma farmácia', text: 'A farmácia principal concentra ao menos o limite definido (50%) das prescrições do período.' },
+      { label: 'Concentração em uma farmácia', text: 'A farmácia principal concentra ao menos o limite definido (50%) das prescrições do período. Com município ou farmácia filtrados, não é avaliado.' },
     ],
   },
   crmHistoricoEvidencias: {

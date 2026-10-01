@@ -10,6 +10,11 @@ import { storeToRefs } from "pinia";
 import DataTable from "primevue/datatable";
 import Column from "primevue/column";
 import Tag from "primevue/tag";
+import TableFooter from "@/views/components/common/TableFooter.vue";
+
+// Paginação no cliente (o rodapé padrão controla a página da DataTable).
+const LINHAS_POR_PAGINA = 20;
+const paginaFirst = ref(0);
 
 const analyticsStore = useAnalyticsStore();
 const filterStore = useFilterStore();
@@ -107,12 +112,13 @@ const onTableLeave = () => {
       stripedRows
       removableSort
       paginator
-      :rows="20"
+      v-model:first="paginaFirst"
+      :rows="LINHAS_POR_PAGINA"
       selectionMode="single"
       @row-click="onRowSelect"
       sortField="valSemComp"
       :sortOrder="-1"
-      class="custom-table enterprise-table clickable-rows"
+      class="custom-table enterprise-table com-rodape clickable-rows"
     >
       <Column field="uf" header="UF" sortable style="width: 5%">
         <template #footer>TOTAL</template>
@@ -185,6 +191,15 @@ const onTableLeave = () => {
         </template>
         <template #footer>{{ tableFooter.percQtdeSemComp }}</template>
       </Column>
+      <template #footer>
+        <TableFooter
+          :first="paginaFirst"
+          :rows="LINHAS_POR_PAGINA"
+          :total-records="cachedMunicipios.length"
+          :unidade="['município', 'municípios']"
+          @page="paginaFirst = $event.first"
+        />
+      </template>
     </DataTable>
   </div>
 </template>

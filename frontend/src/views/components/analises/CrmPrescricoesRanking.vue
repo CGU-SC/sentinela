@@ -15,6 +15,7 @@ import HighlightedText from '@/views/components/common/HighlightedText.vue';
 import { destaqueBuscaMedico } from '@/utils/crmBusca';
 import CrmPrescricoesMensalTable from './CrmPrescricoesMensalTable.vue';
 import CrmAlertasBadge from './CrmAlertasBadge.vue';
+import TableFooter from '@/views/components/common/TableFooter.vue';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -310,10 +311,9 @@ const subtitulo = computed(() => {
         :first="snapshot.first"
         :rows="snapshot.pageSize"
         :total-records="snapshot.totalRecords"
-        :rows-per-page-options="CRM_RANKING_PAGE_SIZE_OPTIONS"
         :sort-field="snapshot.sortField"
         :sort-order="snapshot.sortOrder === 'asc' ? 1 : -1"
-        :class="['enterprise-table', 'crm-ranking-table', 'clickable-rows', { 'is-stale': isStale, 'is-linha': tab === 'linha' }]"
+        :class="['enterprise-table', 'com-rodape', 'crm-ranking-table', 'clickable-rows', { 'is-stale': isStale, 'is-linha': tab === 'linha' }]"
         @row-click="onRowClick"
         @sort="onSort"
         @page="onPage"
@@ -408,6 +408,17 @@ const subtitulo = computed(() => {
             <span class="metric-detail">{{ formatPercent(data.percentual_prescricoes_farmacias_filtradas) }} do total</span>
           </template>
         </Column>
+        <template #footer>
+          <TableFooter
+            :first="snapshot.first"
+            :rows="snapshot.pageSize"
+            :total-records="snapshot.totalRecords"
+            :rows-per-page-options="CRM_RANKING_PAGE_SIZE_OPTIONS"
+            :unidade="['médico', 'médicos']"
+            :disabled="isRefreshing || isStale"
+            @page="onPage"
+          />
+        </template>
       </DataTable>
       <div v-if="isPageLoading" class="ranking-table-loading" role="status" aria-label="Atualizando ranking">
         <i class="pi pi-spin pi-spinner" aria-hidden="true" />

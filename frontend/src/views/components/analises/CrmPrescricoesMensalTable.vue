@@ -13,6 +13,7 @@ import { analysisTooltip, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP }
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
 import { destaqueBuscaMedico } from '@/utils/crmBusca';
 import CrmAlertasBadge from './CrmAlertasBadge.vue';
+import TableFooter from '@/views/components/common/TableFooter.vue';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -81,10 +82,9 @@ function onPage(event) {
     :first="first"
     :rows="pageSize"
     :total-records="totalRecords"
-    :rows-per-page-options="CRM_RANKING_PAGE_SIZE_OPTIONS"
     :sort-field="sortField"
     :sort-order="sortOrder === 'asc' ? 1 : -1"
-    class="enterprise-table crm-ranking-table crm-mensal-table clickable-rows"
+    class="enterprise-table com-rodape crm-ranking-table crm-mensal-table clickable-rows"
     @row-click="onRowClick"
     @sort="onSort"
     @page="onPage"
@@ -142,6 +142,17 @@ function onPage(event) {
         <span class="metric-detail">P95 {{ formatDecimal(data.p95_taxa_dia) }}</span>
       </template>
     </Column>
+    <template #footer>
+      <TableFooter
+        :first="first"
+        :rows="pageSize"
+        :total-records="totalRecords"
+        :rows-per-page-options="CRM_RANKING_PAGE_SIZE_OPTIONS"
+        :unidade="['linha', 'linhas']"
+        :disabled="isLoading"
+        @page="onPage"
+      />
+    </template>
   </DataTable>
 </template>
 

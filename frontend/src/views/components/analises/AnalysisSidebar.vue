@@ -1,11 +1,13 @@
 <script setup>
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
+import Button from 'primevue/button';
 import InputSwitch from 'primevue/inputswitch';
 import {
   CRM_ANTES_INSCRICAO_INDISPONIVEL_TOOLTIP,
   analysisTooltip,
 } from '@/config/analysisTooltipConfig';
+import { filterActionTooltip } from '@/config/filterTooltipConfig';
 import {
   CRM_SEQUENCIA_SEVERIDADES, CRM_SITUACAO_CFM_OPCOES, CRM_UF_ATALHOS, CRM_UFS, crmFaixasDoGrupo,
 } from '@/config/crmFiltrosMedico';
@@ -24,7 +26,7 @@ const emit = defineEmits(['search']);
 const filtrosStore = useCrmFiltrosMedicoStore();
 const { situacaoCfm, ufsCrm, antesInscricao, sequenciaSeveridadeMin, qtdAtivos: qtdFiltrosCadastro, antesInscricaoDisponivel } = storeToRefs(filtrosStore);
 
-// A busca conta como filtro do painel e também é apagada pelo "Limpar".
+// A busca conta como filtro do painel e também é apagada pelo "Limpar Filtros".
 const temBusca = computed(() => props.searchQuery.trim() !== '');
 const qtdAtivos = computed(() => qtdFiltrosCadastro.value + (temBusca.value ? 1 : 0));
 function limparTudo() {
@@ -42,10 +44,10 @@ const ufRotulo = computed(() => {
   if (regiao) return regiao.label;
   return ufs.length <= 3 ? [...ufs].sort().join(', ') : `${ufs.length} UFs`;
 });
-const FAIXAS_ATUACAO = crmFaixasDoGrupo('atuacao');
 const FAIXAS_SEQUENCIA = crmFaixasDoGrupo('sequencia');
 const sequenciaTooltip = analysisTooltip('crmFiltroSequenciaSeveridade');
 
+const limparTooltip = filterActionTooltip('Limpar filtro', 'Restaura este filtro ao valor padrão.', 'pi-eraser');
 const buscaTooltip = analysisTooltip('crmFiltroBusca');
 const painelTooltip = analysisTooltip('crmFiltrosMedico');
 const situacaoTooltip = analysisTooltip('crmFiltroSituacaoCfm');
@@ -57,13 +59,11 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
   <aside class="analysis-selector">
     <div class="selector-header">
       <i class="pi pi-chart-bar selector-header-icon" />
-      <span class="selector-header-label">Análises</span>
+      <span class="selector-header-label">Análises disponíveis</span>
     </div>
 
     <div class="selector-groups">
       <div class="selector-group">
-        <div class="group-title">Análises disponíveis</div>
-
         <router-link
           to="/analises"
           class="analysis-btn analysis-btn--active"
@@ -78,69 +78,78 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
           <span id="filtros-medico-titulo" class="group-title">Filtros dos médicos</span>
           <i class="pi pi-info-circle filtro-info" v-tooltip.left="painelTooltip" tabindex="0" aria-label="Sobre os filtros dos médicos" />
         </div>
-        <div class="filtros-status">
-          <span>{{ qtdAtivos ? `${qtdAtivos} ${qtdAtivos === 1 ? 'ativo' : 'ativos'}` : 'Nenhum ativo' }}</span>
-          <button type="button" class="filtros-limpar" :disabled="!qtdAtivos" @click="limparTudo">
-            <i class="pi pi-eraser" aria-hidden="true" />Limpar
-          </button>
-        </div>
-
-        <div class="filtro filtro-busca-bloco">
-          <div class="filtro-rotulo">
-            <label for="filtro-busca-medico">Buscar médico</label>
-            <i class="pi pi-info-circle filtro-info" v-tooltip.left="buscaTooltip" tabindex="0" aria-label="Sobre a busca de médico" />
-          </div>
-          <div class="filtro-busca" :class="{ 'is-disabled': searchDisabled }">
-            <i class="pi pi-search" aria-hidden="true" />
-            <input
-              id="filtro-busca-medico"
-              type="text"
-              role="searchbox"
-              :value="searchQuery"
-              maxlength="120"
-              placeholder="Nome, CRM ou CRM/UF"
-              :disabled="searchDisabled"
-              @input="emit('search', $event.target.value)"
-            />
-            <button
-              type="button"
-              aria-label="Limpar busca de médico"
-              :aria-hidden="!temBusca"
-              :disabled="!temBusca"
-              :class="{ 'is-hidden': !temBusca }"
-              @click="emit('search', '')"
-            >
-              <i class="pi pi-eraser" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-
         <div class="filtro-bloco">
           <div class="filtro-bloco-titulo"><i class="pi pi-id-card" aria-hidden="true" />Cadastro CFM</div>
 
-          <div class="filtro">
+          <div class="filtro filtro-busca-bloco" :class="{ 'is-ativo': temBusca }">
             <div class="filtro-rotulo">
-              <span id="filtro-situacao-cfm">Situação no CFM</span>
-              <i class="pi pi-info-circle filtro-info" v-tooltip.left="situacaoTooltip" tabindex="0" aria-label="Sobre a situação no CFM" />
+              <label for="filtro-busca-medico">Buscar médico</label>
+              <i class="pi pi-info-circle filtro-info" v-tooltip.left="buscaTooltip" tabindex="0" aria-label="Sobre a busca de médico" />
             </div>
-            <div class="filtro-segmentos" role="radiogroup" aria-labelledby="filtro-situacao-cfm">
+            <div class="filtro-busca" :class="{ 'is-disabled': searchDisabled }">
+              <i class="pi pi-search" aria-hidden="true" />
+              <input
+                id="filtro-busca-medico"
+                type="text"
+                role="searchbox"
+                :value="searchQuery"
+                maxlength="120"
+                placeholder="Nome, CRM ou CRM/UF"
+                :disabled="searchDisabled"
+                @input="emit('search', $event.target.value)"
+              />
               <button
-                v-for="opcao in CRM_SITUACAO_CFM_OPCOES"
-                :key="opcao.label"
                 type="button"
-                role="radio"
-                class="filtro-segmento"
-                :class="{ 'is-active': situacaoCfm === opcao.value }"
-                :aria-checked="situacaoCfm === opcao.value"
-                @click="filtrosStore.setSituacaoCfm(opcao.value)"
-              >{{ opcao.label }}</button>
+                aria-label="Limpar busca de médico"
+                :aria-hidden="!temBusca"
+                :disabled="!temBusca"
+                :class="{ 'is-hidden': !temBusca }"
+                @click="emit('search', '')"
+              >
+                <i class="pi pi-eraser" aria-hidden="true" />
+              </button>
             </div>
           </div>
 
-          <div class="filtro">
+          <div class="filtro" :class="{ 'is-ativo': situacaoCfm !== null }">
+            <div class="filtro-rotulo">
+              <span id="filtro-situacao-cfm">Situação no CFM</span>
+              <i class="pi pi-info-circle filtro-info" v-tooltip.left="situacaoTooltip" tabindex="0" aria-label="Sobre a situação no CFM" />
+              <button
+                v-if="situacaoCfm !== null"
+                type="button"
+                class="filtro-limpar"
+                aria-label="Limpar o filtro situação no CFM"
+                v-tooltip.left="limparTooltip"
+                @click="filtrosStore.setSituacaoCfm(null)"
+              >
+                <i class="pi pi-eraser" aria-hidden="true" />
+              </button>
+            </div>
+            <div class="filtro-picker" aria-labelledby="filtro-situacao-cfm">
+              <OptionPicker
+                :valor="situacaoCfm"
+                :opcoes="CRM_SITUACAO_CFM_OPCOES"
+                rotulo-acessivel="Situação no CFM"
+                @select="filtrosStore.setSituacaoCfm($event)"
+              />
+            </div>
+          </div>
+
+          <div class="filtro" :class="{ 'is-ativo': ufsCrm.length > 0 }">
             <div class="filtro-rotulo">
               <span id="filtro-uf-crm">UF do CRM</span>
               <i class="pi pi-info-circle filtro-info" v-tooltip.left="ufTooltip" tabindex="0" aria-label="Sobre a UF do CRM" />
+              <button
+                v-if="ufsCrm.length > 0"
+                type="button"
+                class="filtro-limpar"
+                aria-label="Limpar o filtro UF do CRM"
+                v-tooltip.left="limparTooltip"
+                @click="filtrosStore.setUfsCrm([])"
+              >
+                <i class="pi pi-eraser" aria-hidden="true" />
+              </button>
             </div>
             <div class="filtro-picker" aria-labelledby="filtro-uf-crm">
               <MultiOptionPicker
@@ -154,7 +163,7 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
             </div>
           </div>
 
-          <div class="filtro filtro--switch">
+          <div class="filtro filtro--switch" :class="{ 'is-ativo': antesInscricao }">
             <div class="filtro-rotulo">
               <label for="filtro-antes-inscricao">Prescreveu antes da 1ª inscrição</label>
               <i class="pi pi-info-circle filtro-info" v-tooltip.left="antesTooltip" tabindex="0" aria-label="Sobre prescrições antes da inscrição" />
@@ -171,21 +180,26 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
         </div>
 
         <div class="filtro-bloco">
-          <div class="filtro-bloco-titulo"><i class="pi pi-chart-bar" aria-hidden="true" />Produção</div>
+          <div class="filtro-bloco-titulo"><i class="pi pi-chart-bar" aria-hidden="true" />Produção e atuação</div>
           <CrmFiltroFaixa v-for="tipo in FAIXAS_PRODUCAO" :key="tipo" :tipo="tipo" />
         </div>
 
         <div class="filtro-bloco">
-          <div class="filtro-bloco-titulo"><i class="pi pi-building" aria-hidden="true" />Atuação nas farmácias</div>
-          <CrmFiltroFaixa v-for="tipo in FAIXAS_ATUACAO" :key="tipo" :tipo="tipo" />
-        </div>
-
-        <div class="filtro-bloco">
           <div class="filtro-bloco-titulo"><i class="pi pi-bolt" aria-hidden="true" />Autorizações em sequência</div>
-          <div class="filtro">
+          <div class="filtro" :class="{ 'is-ativo': sequenciaSeveridadeMin !== null }">
             <div class="filtro-rotulo">
               <span>Severidade mínima</span>
               <i class="pi pi-info-circle filtro-info" v-tooltip.left="sequenciaTooltip" tabindex="0" aria-label="Sobre as autorizações em sequência" />
+              <button
+                v-if="sequenciaSeveridadeMin !== null"
+                type="button"
+                class="filtro-limpar"
+                aria-label="Limpar o filtro severidade mínima"
+                v-tooltip.left="limparTooltip"
+                @click="filtrosStore.setSequenciaSeveridadeMin(null)"
+              >
+                <i class="pi pi-eraser" aria-hidden="true" />
+              </button>
             </div>
             <div class="filtro-picker">
               <OptionPicker
@@ -197,6 +211,19 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
             </div>
           </div>
           <CrmFiltroFaixa v-for="tipo in FAIXAS_SEQUENCIA" :key="tipo" :tipo="tipo" />
+        </div>
+
+        <!-- Mesmo botão da barra de filtros da esquerda (AppSidebar). -->
+        <div class="filtros-rodape">
+          <Button
+            :label="qtdAtivos > 0 ? `Limpar Filtros (${qtdAtivos})` : 'Limpar Filtros'"
+            icon="pi pi-undo"
+            outlined
+            :severity="qtdAtivos > 0 ? 'warn' : 'secondary'"
+            class="w-full clear-filters-btn"
+            :class="{ 'filters-active': qtdAtivos > 0 }"
+            @click="limparTudo"
+          />
         </div>
       </section>
     </div>
@@ -290,17 +317,12 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
 .filtros-cabecalho { display: flex; align-items: center; justify-content: space-between; padding-right: 1rem; }
 .filtro-info { color: var(--text-muted); font-size: 0.75rem; opacity: 0.75; cursor: help; }
 .filtro-info:hover, .filtro-info:focus-visible { opacity: 1; }
-.filtros-status { display: flex; align-items: center; justify-content: space-between; padding: 0 1rem 0.5rem; color: var(--text-muted); font-size: 0.7rem; }
-.filtros-limpar { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.35rem; border: 0; border-radius: 5px; background: transparent; color: var(--color-error); font: inherit; font-size: 0.7rem; font-weight: 500; cursor: pointer; }
-.filtros-limpar .pi { font-size: 0.7rem; }
-.filtros-limpar:hover:not(:disabled), .filtros-limpar:focus-visible { background: color-mix(in srgb, var(--color-error) 10%, transparent); }
-.filtros-limpar:disabled { color: var(--text-muted); opacity: 0.5; cursor: default; }
-.filtro-busca-bloco { margin: 0 0.75rem 0.75rem; }
-.filtro-busca { display: flex; align-items: center; gap: 0.45rem; box-sizing: border-box; height: 34px; padding: 0.35rem 0.55rem; border: 1px solid var(--card-border); border-radius: 7px; color: var(--text-muted); }
+/* Mesma caixa dos seletores (.rp-gatilho): fundo, raio, recuo e tamanho do texto. */
+.filtro-busca { display: flex; align-items: center; gap: 0.45rem; box-sizing: border-box; height: 34px; padding: 0 0.7rem; border: 1px solid var(--card-border); border-radius: 6px; background: var(--card-bg); color: var(--text-muted); transition: border-color 0.15s ease; }
 .filtro-busca:focus-within { border-color: var(--primary-color); }
 .filtro-busca.is-disabled { opacity: 0.6; }
 .filtro-busca > .pi { font-size: 0.75rem; }
-.filtro-busca input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-color-85); font: inherit; font-size: 0.73rem; }
+.filtro-busca input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--sidebar-text); font: inherit; font-size: 0.76rem; }
 .filtro-busca input::placeholder { color: var(--text-muted); }
 .filtro-busca button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--color-error); opacity: 0.7; cursor: pointer; }
 .filtro-busca button.is-hidden { visibility: hidden; }
@@ -314,15 +336,40 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
 .filtro--switch { flex-direction: row; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); font-size: 0.7rem; font-weight: 500; }
 .filtro-rotulo label { cursor: pointer; }
-/* Largura pelo texto: "Não localizado" é bem maior que "Todos". */
-.filtro-segmentos { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--card-border); border-radius: 7px; }
-.filtro-segmento { border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-weight: 500; cursor: pointer; transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
-.filtro-segmento { flex: 1 1 auto; min-height: 26px; padding: 0 0.4rem; border-radius: 5px; font-size: 0.68rem; white-space: nowrap; }
 /* Botão do seletor ocupa a largura do bloco, como os filtros de faixa. */
 .filtro-picker :deep(.rp-gatilho) { width: 100%; color: var(--sidebar-text); }
-.filtro-segmento:hover { color: var(--text-color-85); background: color-mix(in srgb, var(--text-color-85) 6%, transparent); }
-.filtro-segmento:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 1px; }
-.filtro-segmento.is-active { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 45%, transparent); font-weight: 600; }
+/* Hover neutro, a mesma cor da barra de filtros da esquerda (AppSidebar): borda
+   clareada com o cinza do texto. Filtro ativo e campo em foco continuam na cor primária. */
+.filtro:not(.is-ativo) :deep(.rp-gatilho:not(:disabled):hover),
+.filtro-busca-bloco:not(.is-ativo) .filtro-busca:not(.is-disabled):not(:focus-within):hover { border-color: color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border)); }
+
+/* Filtro ligado (também nos filtros de faixa, por :deep): rótulo e campo na cor
+   primária, como no modal Histórico do CRM, e borracha para voltar ao padrão. */
+.filtro.is-ativo :deep(.filtro-rotulo > span),
+.filtro.is-ativo :deep(.filtro-rotulo > label) { color: var(--primary-color); }
+.filtro.is-ativo :deep(.rp-gatilho),
+.filtro-busca-bloco.is-ativo .filtro-busca { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+.filtro :deep(.filtro-limpar) { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 14px; height: 14px; margin-left: auto; padding: 0; border: none; background: none; color: var(--color-error); opacity: 0.7; cursor: pointer; transition: opacity 0.15s; }
+.filtro :deep(.filtro-limpar:hover), .filtro :deep(.filtro-limpar:focus-visible) { opacity: 1; }
+.filtro :deep(.filtro-limpar:focus-visible) { outline: 2px solid var(--color-error); outline-offset: 2px; border-radius: 3px; }
+.filtro :deep(.filtro-limpar .pi) { font-size: 0.75rem; }
+
+/* Botão "Limpar Filtros": mesmo estilo do da barra de filtros da esquerda (AppSidebar). */
+.filtros-rodape { padding: 0.25rem 0.75rem 0.75rem; }
+:deep(.clear-filters-btn.p-button) { height: 2.125rem; padding: 0 0.75rem; justify-content: center; gap: 0.45rem; background: transparent !important; transition: all 0.2s ease !important; }
+/* Tamanho alinhado aos campos de filtro (34px de altura, texto de 12,5px);
+   ícone e texto juntos no centro. */
+:deep(.clear-filters-btn.p-button .p-button-label) { flex: 0 0 auto; font-size: 0.78rem; font-weight: 600; }
+:deep(.clear-filters-btn.p-button .p-button-icon) { margin: 0; font-size: 0.78rem; }
+:deep(.clear-filters-btn.p-button:hover) { background: transparent !important; border-color: color-mix(in srgb, var(--primary-color) 50%, transparent) !important; color: var(--primary-color) !important; }
+:deep(.clear-filters-btn.p-button:focus),
+:deep(.clear-filters-btn.p-button:active) { outline: none !important; box-shadow: none !important; }
+:deep(.clear-filters-btn.p-button:focus-visible) { box-shadow: 0 0 0 2px var(--primary-color) !important; }
+:deep(.filters-active.p-button) { position: relative; overflow: hidden; background: color-mix(in srgb, var(--primary-color) 12%, transparent) !important; border-color: var(--primary-color) !important; color: var(--primary-color) !important; }
+:deep(.filters-active.p-button::after) { content: ""; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1), transparent); animation: shimmer-sweep 3s infinite ease-in-out; }
+:deep(.filters-active.p-button .p-button-icon) { animation: icon-spin-subtle 3s infinite ease-in-out; }
+@keyframes shimmer-sweep { 0% { left: -100%; } 20% { left: 100%; } 100% { left: 100%; } }
+@keyframes icon-spin-subtle { 0%, 75% { transform: rotate(0deg); } 90% { transform: rotate(-360deg); } 100% { transform: rotate(-360deg); } }
 
 .analysis-btn-label {
   font-size: 0.78rem;

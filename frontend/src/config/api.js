@@ -52,7 +52,6 @@ export const API_ENDPOINTS = {
   analyticsCrmPrescricoesMensal: `${BASE_URL}/api/v1/analytics/crm-prescricoes-mensal`,
   analyticsCrmPrescricoesSerieMensal: `${BASE_URL}/api/v1/analytics/crm-prescricoes-serie-mensal`,
   analyticsCrmPrescricoesAlertas: `${BASE_URL}/api/v1/analytics/crm-prescricoes-alertas`,
-  analyticsCrmMedicoAlertas: (cnpj, idMedico) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/medico-alertas/${encodeURIComponent(idMedico)}`,
   analyticsCrmMedicoAtuacao: (cnpj, idMedico) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/medico-atuacao/${encodeURIComponent(idMedico)}`,
   analyticsCrmTimelineDataset: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/timeline-dataset`,
   analyticsCrmRaioXExport: (cnpj, inicio, fim, formato) => {

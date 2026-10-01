@@ -1,9 +1,8 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { useFormatting } from "@/composables/useFormatting";
-import { useCnpjDetailStore } from '@/stores/cnpjDetail';
 import { useFilterParameters } from "@/composables/useFilterParameters";
-import CrmAtuacaoDialog from './CrmAtuacaoDialog.vue';
+import CrmHistoricoDialog from '@/views/components/analises/CrmHistoricoDialog.vue';
 import { useThemeStore } from '@/stores/theme';
 import { DATA_NEUTRAL, CRM_TAXA_P95_TONS } from '@/config/colors';
 import { crmAlturaAtuacao, crmFaixaP95 } from '@/config/analysisTooltipConfig';
@@ -13,7 +12,6 @@ import { downloadBlobFromResponse } from '@/utils/download';
 import { getApiErrorMessage } from '@/utils/apiErrors';
 import { useToast } from 'primevue/usetoast';
 
-const cnpjDetailStore = useCnpjDetailStore();
 const { getApiParams } = useFilterParameters();
 
 const props = defineProps({
@@ -23,7 +21,6 @@ const props = defineProps({
   kpiFilterLabels:  { type: Object, required: true },
   currentCnpj:      { type: String, default: '' },
   periodoCompetencias: { type: Object, default: null },
-  serieMensalFarmacia: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['clear-filters']);
@@ -133,7 +130,7 @@ const crmTableTooltips = Object.freeze({
     status: createCrmTableTooltip(
       'Status / Alertas',
       `Lista os sinais do CRM, um por linha, em ordem de gravidade: CRM não localizado ou irregular no CFM (vermelho); mais de ${CRM_DAILY_RATE_ALERT_THRESHOLD} prescrições por dia com prescrição, local (vermelho) ou no Brasil (laranja-escuro); Autorizações em Sequência com Único CRM (laranja) e com Múltiplos CRMs (roxo); distância superior a 400 km (verde-azulado); e CRM exclusivo deste estabelecimento (azul).`,
-      'O número à direita é a quantidade de episódios detalhados. Clique na seta ou na linha para abrir as evidências.',
+      'O número à direita é a quantidade de episódios. Clique na linha para abrir o histórico do CRM, com as evidências de cada alerta.',
       'pi-shield'
     ),
     volume: createCrmTableTooltip(
@@ -167,59 +164,14 @@ const crmTableTooltips = Object.freeze({
       'pi-lock'
     ),
   }),
-  evidence: Object.freeze({
-    unico: createCrmTableTooltip(
-      'Autorizações em Sequência (Único CRM)',
-      'Dias em que este CRM registrou muitas autorizações em sequência em um intervalo muito curto. A evidência detalha a data, o volume, a janela de tempo e a taxa por hora.',
-      'Quanto maior a taxa por hora, maior o indício de lançamento automatizado com um único médico.',
-      'pi-user'
-    ),
-    distancia: createCrmTableTooltip(
-      'Distância geográfica',
-      'Pares de estabelecimentos em que o mesmo CRM foi utilizado simultaneamente em municípios distantes entre si. A distância informa a separação entre os locais.',
-      'O padrão pode indicar incompatibilidade de presença física e deve ser analisado junto às datas e horários das autorizações.',
-      'pi-map-marker'
-    ),
-    multiplos: createCrmTableTooltip(
-      'Autorizações em Sequência (Múltiplos CRMs)',
-      'Horas em que este CNPJ registrou muitas autorizações em sequência com participação de diferentes CRMs. A evidência mostra a diversidade de médicos e o total de prescrições.',
-      'O padrão é compatível com lançamento em lote com rodízio de prescritores.',
-      'pi-users'
-    ),
-  }),
-  raiox: createCrmTableTooltip(
-    'Abrir no Raio-X',
-    'Clique na linha para navegar diretamente para a análise detalhada do dia e da hora selecionados.',
-    'O Raio-X apresenta as autorizações que compõem o episódio identificado.',
-    'pi-search'
-  ),
 });
 
 const filterOnlyIssues = ref(false);
 const showAllCrms     = ref(false);
-const expandedAlertasMedico = ref(new Set());
-const activeAlertTab  = ref({});
 
 watch(() => props.activeKpiFilter, (newVal) => {
   if (newVal !== null) filterOnlyIssues.value = false;
 });
-
-function getAlertasKey(idMedico) {
-  const { inicio, fim } = getApiParams();
-  return `${props.currentCnpj}|${idMedico}|${inicio ?? ''}|${fim ?? ''}`;
-}
-
-function getAlertasDetalhados(idMedico) {
-  return cnpjDetailStore.crmMedicoAlertasByKey[getAlertasKey(idMedico)] ?? null;
-}
-
-function isAlertasLoading(idMedico) {
-  return Boolean(cnpjDetailStore.crmMedicoAlertasLoadingByKey[getAlertasKey(idMedico)]);
-}
-
-function getAlertasError(idMedico) {
-  return cnpjDetailStore.crmMedicoAlertasErrorByKey[getAlertasKey(idMedico)] ?? null;
-}
 
 function requireAlertCount(m, field) {
   if (m[field] == null) {
@@ -312,16 +264,6 @@ function buildAtuacao(m) {
   };
 }
 
-const atuacaoDialogMedico = ref(null);
-const atuacaoDialogVisible = computed({
-  get: () => atuacaoDialogMedico.value !== null,
-  set: (visible) => { if (!visible) atuacaoDialogMedico.value = null; },
-});
-
-function openAtuacaoDialog(m) {
-  atuacaoDialogMedico.value = m;
-}
-
 // Calculado uma vez por lista (e não a cada binding do template).
 const atuacaoByMedico = computed(() => {
   const mapa = new Map();
@@ -329,37 +271,17 @@ const atuacaoByMedico = computed(() => {
   return mapa;
 });
 
-function hasAlertasDetalhados(m) {
-  return qtdAlertasUnico(m) > 0 || qtdAlertasGeo(m) > 0 || qtdAlertasMultiplos(m) > 0;
-}
-
-async function toggleAlertasDiarios(idMedico) {
-  if (expandedAlertasMedico.value.has(idMedico)) {
-    expandedAlertasMedico.value.delete(idMedico);
-  } else {
-    expandedAlertasMedico.value.add(idMedico);
-    // Define a aba padrão ao abrir: concentração se existir, senão geográfico
-    const m = props.crmsInteresse.find(x => x.id_medico === idMedico);
-    if (m && !activeAlertTab.value[idMedico]) {
-      if (qtdAlertasUnico(m) > 0) activeAlertTab.value[idMedico] = 'conc';
-      else if (qtdAlertasGeo(m) > 0) activeAlertTab.value[idMedico] = 'geo';
-      else if (qtdAlertasMultiplos(m) > 0) activeAlertTab.value[idMedico] = 'surto';
-    }
-    expandedAlertasMedico.value = new Set(expandedAlertasMedico.value);
-    if (m && hasAlertasDetalhados(m) && !getAlertasDetalhados(idMedico)) {
-      const { inicio, fim } = getApiParams();
-      await cnpjDetailStore.fetchCrmMedicoAlertas(props.currentCnpj, idMedico, inicio, fim);
-    }
-  }
-  expandedAlertasMedico.value = new Set(expandedAlertasMedico.value);
-}
-
-function setAlertTab(idMedico, tab) {
-  activeAlertTab.value = { ...activeAlertTab.value, [idMedico]: tab };
-}
-
-function handleTimelineNavigation(date, hour) {
-  cnpjDetailStore.navigateTimeline(date, hour);
+// Histórico do CRM (clique na linha): o mesmo modal de /analises, com todas as
+// farmácias do médico, no período filtrado do estabelecimento.
+const historicoMedico = ref(null);
+const historicoAberto = ref(false);
+const historicoPeriodo = computed(() => {
+  const { inicio, fim } = getApiParams();
+  return { inicio: inicio ?? null, fim: fim ?? null };
+});
+function abrirHistorico(m) {
+  historicoMedico.value = { id_medico: m.id_medico, no_medico: m.no_medico };
+  historicoAberto.value = true;
 }
 
 function clearAllFilters() {
@@ -474,34 +396,6 @@ const visibleCrms = computed(() =>
   showAllCrms.value ? filteredCrmsInteresse.value : filteredCrmsInteresse.value.slice(0, 10)
 );
 
-function formatarDataAlerta(dt) {
-  if (!dt) return "";
-  const [y, m, d] = dt.split("-");
-  return `${d}/${m}/${y}`;
-}
-
-function formatarJanela(minutos) {
-  if (!minutos) return "—";
-  if (minutos === 0) return "simultâneo";
-  if (minutos < 60) return `${minutos}min`;
-  return `${Math.floor(minutos / 60)}h ${minutos % 60}min`;
-}
-
-function formatDescricao(a) {
-  const num = `<span class="desc-num">${a.nu_prescricoes}</span>`;
-  if (!a.nu_minutos || a.nu_minutos === 0) {
-    return `${num} autorizações de venda <span class="desc-janela">no mesmo instante</span> para o mesmo CRM`;
-  }
-  const h = Math.floor(a.nu_minutos / 60);
-  const min = a.nu_minutos % 60;
-  const janela = h > 0 ? `${h}h ${min}min` : `${min}min`;
-  const taxa = a.taxa_hora?.toFixed(1) ?? '—';
-  return `${num} autorizações de venda <span class="desc-janela">em ${janela} (${taxa}/hora)</span> para o mesmo CRM`;
-}
-
-function formatDescricaoSurto(s) {
-  return s.descricao || 'Dados não disponíveis';
-}
 const maxPDOverall = computed(() => {
   if (!props.crmsInteresse?.length) return 40;
   const vals = props.crmsInteresse.flatMap(m => [m.nu_prescricoes_dia, m.prescricoes_dia_total_brasil]);
@@ -634,8 +528,10 @@ const maxPDOverall = computed(() => {
         <tbody>
           <template v-for="(m, i) in visibleCrms" :key="i">
             <tr
-              :class="{ 'row-expandable': m.alerta_concentracao_unico_crm || m.alerta5_geografico || m.alerta_concentracao_multiplos_crms }"
-              @click="hasAlertasDetalhados(m) ? toggleAlertasDiarios(m.id_medico) : null"
+              tabindex="0"
+              :aria-label="`Abrir o histórico do CRM ${m.id_medico}`"
+              @click="abrirHistorico(m)"
+              @keydown.enter="abrirHistorico(m)"
             >
               <td class="col-center">
                   <div class="rank-badge" :class="{ 'gold': i === 0, 'silver': i === 1, 'bronze': i === 2 }">
@@ -669,27 +565,10 @@ const maxPDOverall = computed(() => {
                     <i class="pi pi-check-circle" aria-hidden="true" />
                     Sem ocorrências
                   </span>
-                  <button
-                    v-if="hasAlertasDetalhados(m)"
-                    type="button"
-                    class="status-expand"
-                    :aria-expanded="expandedAlertasMedico.has(m.id_medico)"
-                    :aria-label="`${expandedAlertasMedico.has(m.id_medico) ? 'Ocultar' : 'Ver'} evidências de ${m.id_medico}`"
-                    @click.stop="toggleAlertasDiarios(m.id_medico)"
-                  >
-                    <i :class="expandedAlertasMedico.has(m.id_medico) ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" aria-hidden="true" />
-                  </button>
                 </div>
               </td>
               <td class="atuacao-cell">
-                <button
-                  v-if="atuacaoByMedico.get(m.id_medico)"
-                  type="button"
-                  class="atuacao-btn"
-                  :aria-label="`Abrir detalhe mensal da atuação de ${m.id_medico}`"
-                  @click.stop="openAtuacaoDialog(m)"
-                >
-                  <i class="pi pi-window-maximize atuacao-expand-icon" aria-hidden="true" />
+                <div v-if="atuacaoByMedico.get(m.id_medico)" class="atuacao-conteudo">
                   <span class="atuacao-texto">
                     <span class="atuacao-periodo">{{ atuacaoByMedico.get(m.id_medico).periodo }}</span>
                     <span class="atuacao-meses">{{ atuacaoByMedico.get(m.id_medico).meses }}</span>
@@ -722,7 +601,7 @@ const maxPDOverall = computed(() => {
                       height="1.4"
                     />
                   </svg>
-                </button>
+                </div>
               </td>
               <td class="col-right">
                 <div class="cell-stacked">
@@ -766,206 +645,6 @@ const maxPDOverall = computed(() => {
                 <span class="excl-valor" :class="`is-${getExclusividadeNivel(m)}`">{{ formatPct(m.pct_volume_aqui_vs_total) }}</span>
               </td>
             </tr>
-
-            <!-- Linha expandida de alertas (Concentração ou Geográfico) com sistema de abas -->
-            <tr v-if="expandedAlertasMedico.has(m.id_medico) && hasAlertasDetalhados(m)" class="alertas-diarios-row">
-              <td colspan="11" class="alertas-diarios-cell">
-                <div
-                  v-if="isAlertasLoading(m.id_medico)"
-                  class="evidence-panel"
-                >
-                  <div class="panel-header">
-                    <div class="panel-header-left">
-                      <i class="pi pi-spin pi-spinner panel-icon" />
-                      <span class="panel-title">Carregando alertas detalhados</span>
-                      <span class="panel-crm-badge">{{ m.id_medico }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  v-else-if="getAlertasError(m.id_medico)"
-                  class="evidence-panel"
-                >
-                  <div class="panel-header">
-                    <div class="panel-header-left">
-                      <i class="pi pi-exclamation-triangle panel-icon" />
-                      <span class="panel-title">{{ getAlertasError(m.id_medico) }}</span>
-                      <span class="panel-crm-badge">{{ m.id_medico }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  v-else-if="getAlertasDetalhados(m.id_medico)"
-                  class="evidence-panel"
-                  :class="{
-                    'theme-conc': activeAlertTab[m.id_medico] === 'conc',
-                    'theme-geo':  activeAlertTab[m.id_medico] === 'geo',
-                    'theme-surto': activeAlertTab[m.id_medico] === 'surto'
-                  }"
-                >
-                  <!-- PANEL HEADER -->
-                  <div class="panel-header">
-                    <div class="panel-header-left">
-                      <i :class="{
-                        'pi pi-user': activeAlertTab[m.id_medico] === 'conc',
-                        'pi pi-map-marker': activeAlertTab[m.id_medico] === 'geo',
-                        'pi pi-users': activeAlertTab[m.id_medico] === 'surto'
-                      }" class="panel-icon" />
-                      <span class="panel-title">
-                        <template v-if="activeAlertTab[m.id_medico] === 'conc'">Lançamentos Sequenciais para um único CRM</template>
-                        <template v-else-if="activeAlertTab[m.id_medico] === 'geo'">Evidências de Distância Geográfica</template>
-                        <template v-else-if="activeAlertTab[m.id_medico] === 'surto'">Lançamentos Sequenciais com múltiplos CRMs</template>
-                      </span>
-                      <span class="panel-crm-badge">{{ m.id_medico }}</span>
-                    </div>
-                    <!-- SEGMENTED CONTROL (Abas Dinâmicas) -->
-                    <div class="segmented-control" v-if="(qtdAlertasUnico(m) > 0 ? 1 : 0) + (qtdAlertasGeo(m) > 0 ? 1 : 0) + (qtdAlertasMultiplos(m) > 0 ? 1 : 0) > 1">
-                      <button
-                        v-if="qtdAlertasUnico(m) > 0"
-                        class="segment-btn"
-                        :class="{ 'seg-active': activeAlertTab[m.id_medico] === 'conc' }"
-                        @click="setAlertTab(m.id_medico, 'conc')"
-                      >
-                        Autorizações em Sequência (Único CRM)
-                        <span class="seg-count">{{ qtdAlertasUnico(m) }}</span>
-                        <i
-                          class="pi pi-info-circle seg-info-icon"
-                          v-tooltip.top="crmTableTooltips.evidence.unico"
-                          @click.stop
-                        />
-                      </button>
-                      <button
-                        v-if="qtdAlertasGeo(m) > 0"
-                        class="segment-btn"
-                        :class="{ 'seg-active': activeAlertTab[m.id_medico] === 'geo' }"
-                        @click="setAlertTab(m.id_medico, 'geo')"
-                      >
-                        <i class="pi pi-map-marker" />
-                        Distância
-                        <span class="seg-count">{{ qtdAlertasGeo(m) }}</span>
-                        <i
-                          class="pi pi-info-circle seg-info-icon"
-                          v-tooltip.top="crmTableTooltips.evidence.distancia"
-                          @click.stop
-                        />
-                      </button>
-                      <button
-                        v-if="qtdAlertasMultiplos(m) > 0"
-                        class="segment-btn"
-                        :class="{ 'seg-active': activeAlertTab[m.id_medico] === 'surto' }"
-                        @click="setAlertTab(m.id_medico, 'surto')"
-                      >
-                        Autorizações em Sequência (Múltiplos CRMs)
-                        <span class="seg-count">{{ qtdAlertasMultiplos(m) }}</span>
-                        <i
-                          class="pi pi-info-circle seg-info-icon"
-                          v-tooltip.top="crmTableTooltips.evidence.multiplos"
-                          @click.stop
-                        />
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- CONTEÚDO: Tabela de Concentração -->
-                  <table
-                    v-if="activeAlertTab[m.id_medico] === 'conc'"
-                    class="evidence-table"
-                  >
-                    <thead>
-                      <tr>
-                        <th><i class="pi pi-calendar" /> Data</th>
-                        <th><i class="pi pi-id-card" /> CRM</th>
-                        <th class="col-right"><i class="pi pi-chart-bar" /> Autorizações</th>
-                        <th class="col-center"><i class="pi pi-clock" /> Janela</th>
-                        <th class="col-right"><i class="pi pi-chart-line" /> Taxa/hora</th>
-                        <th><i class="pi pi-align-left" /> Descrição</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="(a, j) in getAlertasDetalhados(m.id_medico).alertas_crm_unico" :key="j" class="alerta-diario-item">
-                        <td class="col-date">{{ formatarDataAlerta(a.dt) }}</td>
-                        <td class="col-crm">{{ m.id_medico }}</td>
-                        <td class="col-right td-metric">{{ a.nu_prescricoes }}</td>
-                        <td class="col-center">{{ formatarJanela(a.nu_minutos) }}</td>
-                        <td class="col-right td-metric">{{ a.taxa_hora?.toFixed(1) }}/h</td>
-                        <td class="col-descricao" v-html="formatDescricao(a)" />
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  <!-- CONTEÚDO: Tabela de Distância Geográfica -->
-                  <table
-                    v-if="activeAlertTab[m.id_medico] === 'geo'"
-                    class="evidence-table"
-                  >
-                    <thead>
-                      <tr>
-                        <th style="width: 40%"><i class="pi pi-building" /> Estabelecimento A</th>
-                        <th style="width: 40%"><i class="pi pi-building" /> Estabelecimento B</th>
-                        <th style="width: 10%" class="col-center"><i class="pi pi-arrows-h" /> Distância</th>
-                        <th style="width: 10%" class="col-center"><i class="pi pi-calendar" /> Comp.</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="(g, k) in getAlertasDetalhados(m.id_medico).alertas_geograficos" :key="'geo-'+k">
-                        <td class="geo-cell">
-                          <div class="geo-main">{{ g.municipio_a }}/{{ g.uf_a }}</div>
-                          <div class="geo-sub">{{ g.cnpj_a }} · {{ g.nu_presc_a }} presc.</div>
-                          <div class="geo-sub">{{ formatarDataAlerta(g.dt_ini_a) }} → {{ formatarDataAlerta(g.dt_fim_a) }}</div>
-                        </td>
-                        <td class="geo-cell">
-                          <div class="geo-main">{{ g.municipio_b }}/{{ g.uf_b }}</div>
-                          <div class="geo-sub">{{ g.cnpj_b }} · {{ g.nu_presc_b }} presc.</div>
-                          <div class="geo-sub">{{ formatarDataAlerta(g.dt_ini_b) }} → {{ formatarDataAlerta(g.dt_fim_b) }}</div>
-                        </td>
-                        <td class="col-center">
-                          <span class="dist-badge">{{ Math.round(g.distancia_km) }}km</span>
-                        </td>
-                        <td class="col-center" style="font-size: 0.75rem; color: var(--text-muted);">{{ g.competencia }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  <!-- CONTEÚDO: Tabela de Surto Geral -->
-                  <table
-                    v-if="activeAlertTab[m.id_medico] === 'surto'"
-                    class="evidence-table"
-                  >
-                    <thead>
-                      <tr>
-                        <th><i class="pi pi-calendar" /> Data</th>
-                        <th class="col-center"><i class="pi pi-clock" /> Hora</th>
-                        <th class="col-right"><i class="pi pi-user-edit" /> Autorizações CRM</th>
-                        <th class="col-right"><i class="pi pi-users" /> Total Hora (CNPJ)</th>
-                        <th class="col-center"><i class="pi pi-id-card" /> Diversidade</th>
-                        <th><i class="pi pi-align-left" /> Descrição</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr 
-                        v-for="(s, l) in getAlertasDetalhados(m.id_medico).alertas_crm_multiplos" 
-                        :key="'surto-'+l"
-                        class="clickable-surto-row"
-                        v-tooltip.top="crmTableTooltips.raiox"
-                        @click="handleTimelineNavigation(s.dt, s.hr)"
-                      >
-                        <td class="col-date">{{ formatarDataAlerta(s.dt) }}</td>
-                        <td class="col-center">
-                          <span class="time-badge">{{ s.hr.toString().padStart(2, '0') }}:00h</span>
-                        </td>
-                        <td class="col-right td-metric">{{ s.nu_presc_crm }}</td>
-                        <td class="col-right">{{ s.nu_presc_total }}</td>
-                        <td class="col-center">{{ s.nu_crms_total }} CRMs</td>
-                        <td class="col-descricao">
-                           <span class="surto-desc">{{ formatDescricaoSurto(s) }}</span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                </div>
-              </td>
-            </tr>
           </template>
         </tbody>
       </table>
@@ -984,12 +663,11 @@ const maxPDOverall = computed(() => {
       </button>
     </div>
 
-    <CrmAtuacaoDialog
-      v-model="atuacaoDialogVisible"
-      :medico="atuacaoDialogMedico"
-      :cnpj="currentCnpj"
-      :periodo="periodoCompetencias"
-      :serie-farmacia="serieMensalFarmacia"
+    <CrmHistoricoDialog
+      v-model="historicoAberto"
+      :medico="historicoMedico"
+      :data-inicio="historicoPeriodo.inicio"
+      :data-fim="historicoPeriodo.fim"
     />
   </div>
 </template>
@@ -1227,65 +905,7 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
   font-size: 0.74rem;
   color: var(--text-muted);
 }
-.status-expand {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--card-border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-.status-expand i { font-size: 0.6rem; }
-.status-expand:hover,
-.status-expand[aria-expanded="true"] {
-  color: var(--primary-color);
-  border-color: var(--primary-color);
-}
-.status-expand:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
-  outline-offset: 2px;
-}
 .atuacao-cell { vertical-align: middle; }
-.atuacao-btn {
-  position: relative;
-  display: block;
-  width: 100%;
-  padding: 0.35rem 0.5rem;
-  margin: -0.35rem -0.5rem;
-  box-sizing: content-box;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-.atuacao-btn:hover,
-.atuacao-btn:focus-visible {
-  border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
-  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-  outline: none;
-}
-.atuacao-expand-icon {
-  position: absolute;
-  top: 0.35rem;
-  right: 0.45rem;
-  font-size: 0.62rem;
-  color: var(--text-muted);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-.atuacao-btn:hover .atuacao-expand-icon,
-.atuacao-btn:focus-visible .atuacao-expand-icon { opacity: 1; }
-.atuacao-btn .atuacao-texto { padding-right: 1rem; }
 .atuacao-texto {
   display: flex;
   align-items: baseline;
@@ -1304,7 +924,6 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
 .atuacao-bar.is-p95-forte { fill: var(--p95-forte); }
 /* Mês acima do teto de altura (4× o P95): barra cheia com marca no topo. */
 .atuacao-corte { fill: var(--text-color); opacity: 0.55; }
-.row-expandable { cursor: pointer; user-select: none; }
 .excl-valor {
   display: inline-block;
   padding: 0.12rem 0.5rem;
@@ -1324,10 +943,6 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
 
 .text-red { color: var(--risk-critical) !important; }
 .text-orange { color: var(--risk-medium) !important; }
-
-.alertas-diarios-row,
-.premium-table.row-hover tbody tr.alertas-diarios-row:hover { background: transparent !important; cursor: default !important; }
-.alertas-diarios-cell { padding: 0.75rem 1rem !important; border-bottom: 2px solid var(--tabs-border) !important; background: transparent !important; }
 
 /* ── Rank & Medals ──────────────────────────────────────────────────────── */
 /* ── Rank Styling (Modern Squircle) ─────────────────────────────────────── */
@@ -1378,208 +993,16 @@ tr:hover .rank-badge {
 }
 tr:hover .rank-badge .rank-val { color: var(--primary-color); }
 
-.alertas-diarios-cell {
-  background: var(--card-bg) !important;
-  padding: 1.25rem !important;
-  border-bottom: 1px solid var(--tabs-border);
-}
-.col-date { font-weight: 400; white-space: nowrap; }
-.col-crm { white-space: nowrap; color: var(--text-secondary); font-size: 0.75rem; }
-.col-descricao { color: var(--text-secondary); font-size: 0.75rem; }
-.col-descricao .desc-num { color: var(--primary-color); font-weight: 500; }
-.col-descricao .desc-janela { color: var(--risk-high); font-weight: 500; }
-
 .crm-table-footer { background: var(--card-bg); border-bottom: 1px solid color-mix(in srgb, var(--card-border) 60%, transparent); display: flex; justify-content: center; padding: 0.35rem 0; }
 .crm-more-btn { background: none; border: none; font-size: 0.65rem; font-weight: 500; color: var(--primary-color); text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.2rem 1rem; border-radius: 4px; transition: all 0.2s; opacity: 0.85; }
 .crm-more-btn:hover { opacity: 1; background: color-mix(in srgb, var(--primary-color) 8%, transparent); letter-spacing: 0.08em; }
 .crm-more-btn i { font-size: 0.7rem; }
 
-/* Estilos da Tabela Geográfica */
-.geo-cell { line-height: 1.4; padding: 0.6rem 0.75rem !important; }
-.geo-main { font-weight: 600; color: var(--text-color-85); font-size: 0.8rem; opacity: 0.85; }
-.geo-sub { font-size: 0.68rem; color: var(--text-color-85); opacity: 0.75; }
-
-.dist-badge {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 600;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-}
-
-/* ── Evidence Panel (Design Premium) ───────────────────────────────── */
-.evidence-panel {
-  background: var(--table-expansion-bg);
-  border-radius: 8px;
-  border: 1px solid var(--card-border);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-}
-.theme-conc { border-left-color: var(--risk-medium) !important; }
-.theme-geo { border-left-color: #8b5cf6 !important; }
-.theme-surto { border-left-color: var(--amber-500) !important; }
-
-/* Header do painel */
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.65rem 1rem;
-  background: color-mix(in srgb, var(--table-expansion-bg) 92%, var(--text-color-85) 8%);
-  border-bottom: 1px solid var(--tabs-border);
-  gap: 1rem;
-}
 .panel-header-left {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
-}
-.panel-icon {
-  font-size: 0.8rem;
-  color: var(--primary-color);
-  flex-shrink: 0;
-}
-
-.panel-title {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.panel-crm-badge {
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--text-color-85) 8%, transparent);
-  border: 1px solid var(--tabs-border);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-family: var(--font-mono, monospace);
-}
-
-/* Segmented Control (Refatorado para 3+ abas) */
-.segmented-control {
-  display: flex;
-  align-items: center;
-  background: color-mix(in srgb, var(--text-color-85) 7%, transparent);
-  border: 1px solid var(--tabs-border);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.segment-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.8rem;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  cursor: pointer;
-  position: relative;
-  z-index: 1;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-.segment-btn:hover { background: color-mix(in srgb, var(--text-color-85) 5%, transparent); }
-.segment-btn.seg-active { 
-  background: var(--card-bg);
-  color: var(--primary-color); 
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
-  border: 1px solid var(--tabs-border);
-}
-.segment-btn i { font-size: 0.68rem; }
-
-.seg-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 14px;
-  padding: 0 4px;
-  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-  color: var(--primary-color);
-  border-radius: 99px;
-  font-size: 0.58rem;
-  font-weight: 600;
-}
-
-/* Tabela de evidências (unificada) */
-.evidence-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: transparent;
-  font-size: 0.78rem;
-}
-.evidence-table thead tr,
-.evidence-table thead tr:hover,
-.evidence-table thead tr th,
-.evidence-table thead tr:hover th {
-  background: color-mix(in srgb, var(--text-color-85) 4%, transparent) !important;
-}
-.evidence-table th {
-  padding: 0.3rem 0.75rem;
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  text-align: left;
-  border-bottom: 1px solid var(--tabs-border);
-  cursor: default;
-  user-select: none;
-}
-.evidence-table td {
-  padding: 0.45rem 0.75rem;
-  border-top: 1px solid var(--tabs-border);
-  color: var(--text-color-85);
-  opacity: 0.85;
-}
-.evidence-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--text-color-85) 2%, transparent); }
-.evidence-table tbody tr:hover { background: color-mix(in srgb, var(--text-color-85) 5%, transparent); }
-.theme-conc .evidence-table tbody tr:hover { background: color-mix(in srgb, var(--risk-medium) 8%, transparent); }
-.theme-surto .evidence-table tbody tr:hover { background: color-mix(in srgb, var(--amber-500) 8%, transparent); }
-
-
-
-.time-badge {
-  background: color-mix(in srgb, var(--text-color-85) 7%, transparent);
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 0.72rem;
-  font-family: monospace;
-}
-.surto-desc { 
-  font-size: 0.72rem; 
-  opacity: 0.85; 
-  line-height: 1.3; 
-  display: block; 
-  max-width: 400px;
-  white-space: normal; 
-}
-.theme-surto .panel-icon { color: var(--amber-500); }
-.theme-surto .seg-active { color: var(--amber-500) !important; }
-.theme-surto .td-metric { color: var(--amber-500); font-weight: 600; }
-.theme-geo .panel-icon { color: #8b5cf6; }
-.theme-geo .seg-active { color: #8b5cf6 !important; }
-.theme-conc .panel-icon { color: var(--risk-medium); }
-.theme-conc .seg-active { color: var(--risk-medium) !important; }
-.theme-conc .td-metric { color: var(--risk-medium); font-weight: 600; }
-
-.clickable-surto-row {
-  cursor: pointer;
-  transition: background 0.2s ease;
 }
 
 /* Ícones de informação no cabeçalho da tabela */
@@ -1600,20 +1023,6 @@ th:hover .th-info-icon {
   outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
   outline-offset: 2px;
   border-radius: 50%;
-}
-
-/* Ícones de informação nos botões do segmented control */
-.seg-info-icon {
-  font-size: 0.65rem;
-  opacity: 0.65;
-  margin-left: 0.25rem;
-  cursor: help;
-  vertical-align: middle;
-  color: inherit;
-  transition: opacity 0.15s ease;
-}
-.segment-btn:hover .seg-info-icon {
-  opacity: 1;
 }
 
 :global(.p-tooltip.crm-profile-info-tooltip) {

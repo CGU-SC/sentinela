@@ -11,7 +11,10 @@ todas as farmacias do medico, uma linha por janela de sequencia:
 * distancia: geografico_global (pares de farmacias distantes no mesmo mes).
 
 Periodo por competencia (como o historico e a aba do estabelecimento). Com
-filtro de farmacia (id_cnpj): sequencias so dela e pares que a envolvem.
+filtro de farmacia (id_cnpj): sequencias so dela e pares que a envolvem. Com
+filtro de municipio (id_ibge7): sequencias das farmacias do municipio e pares
+com ao menos uma farmacia nele; com os dois, vale a farmacia (que tem de ser
+do municipio).
 """
 
 from dataclasses import dataclass
@@ -60,7 +63,7 @@ _CACHE = CacheGeracao(max_itens=32)
 
 @dataclass(frozen=True)
 class EvidenciasMedico:
-    """As tres tabelas de evidencias de um medico num periodo (e farmacia)."""
+    """As tres tabelas de evidencias de um medico num periodo (e farmacia ou municipio)."""
 
     unico: pl.DataFrame
     multiplos: pl.DataFrame
@@ -68,16 +71,17 @@ class EvidenciasMedico:
 
 
 def _cadastro(id_cnpjs: list[int]) -> pl.DataFrame:
-    """Farmacia (id_cnpj -> cnpj, razao social, municipio, UF); ausente responde 503."""
+    """Farmacia (id_cnpj -> cnpj, razao social, id_ibge7, municipio, UF); ausente responde 503."""
     if not id_cnpjs:
         return pl.DataFrame(schema={"id_cnpj": pl.Int32, "cnpj": pl.Utf8, "razao_social": pl.Utf8,
-                                    "municipio": pl.Utf8, "uf": pl.Utf8})
+                                    "id_ibge7": pl.Int64, "municipio": pl.Utf8, "uf": pl.Utf8})
     cadastro = (
         get_df_perfil_estabelecimento()
         .select([
             pl.col("id_cnpj").cast(pl.Int32),
             pl.col("cnpj").cast(pl.Utf8),
             pl.col("razao_social").cast(pl.Utf8),
+            pl.col("id_ibge7").cast(pl.Int64),
             pl.col("no_municipio").cast(pl.Utf8).alias("municipio"),
             pl.col("uf").cast(pl.Utf8),
         ])
@@ -98,6 +102,28 @@ def _cnpj_da_farmacia(id_cnpj: int) -> str:
     if linha.height != 1:
         raise HTTPException(status_code=422, detail=f"Farmacia {id_cnpj} nao encontrada no perfil de estabelecimentos.")
     return str(linha.item(0, "cnpj"))
+
+
+def conferir_farmacia_no_municipio(id_cnpj: int, id_ibge7: int) -> None:
+    """Farmacia e municipio filtrados juntos: a farmacia tem de ser do municipio (senao 422)."""
+    linha = get_df_perfil_estabelecimento().filter(pl.col("id_cnpj").cast(pl.Int32) == id_cnpj)
+    if linha.height != 1:
+        raise HTTPException(status_code=422, detail=f"Farmacia {id_cnpj} nao encontrada no perfil de estabelecimentos.")
+    if linha.item(0, "id_ibge7") != id_ibge7:
+        raise HTTPException(status_code=422, detail=f"Farmacia {id_cnpj} nao pertence ao municipio {id_ibge7}.")
+
+
+def nome_do_municipio(id_ibge7: int) -> tuple[str, str]:
+    """(nome, UF) do municipio de um id_ibge7, pelo perfil de estabelecimentos (ausente responde 422)."""
+    linha = (
+        get_df_perfil_estabelecimento()
+        .filter(pl.col("id_ibge7").cast(pl.Int64) == id_ibge7)
+        .select([pl.col("no_municipio").cast(pl.Utf8), pl.col("uf").cast(pl.Utf8)])
+        .head(1)
+    )
+    if linha.is_empty():
+        raise HTTPException(status_code=422, detail=f"Municipio {id_ibge7} sem farmacias no perfil de estabelecimentos.")
+    return str(linha.item(0, "no_municipio")), str(linha.item(0, "uf"))
 
 
 def _conferir_severidades(df: pl.DataFrame, origem: str) -> None:
@@ -226,11 +252,11 @@ def _distancia(id_medico: str, comp_ini: int, comp_fim: int, id_cnpj: Optional[i
     )
     if df.select(pl.col("distancia_km").is_null().any()).item():
         raise HTTPException(status_code=503, detail="Par de farmacias distantes sem distancia calculada.")
-    # Razao social das duas farmacias (o par traz so CNPJ, municipio e UF).
+    # Razao social e id_ibge7 das duas farmacias (o par traz so CNPJ, nome do municipio e UF).
     cnpjs = sorted(set(df.get_column("cnpj_a").to_list()) | set(df.get_column("cnpj_b").to_list()))
     nomes = (
         get_df_perfil_estabelecimento()
-        .select([pl.col("cnpj").cast(pl.Utf8), pl.col("razao_social").cast(pl.Utf8)])
+        .select([pl.col("cnpj").cast(pl.Utf8), pl.col("razao_social").cast(pl.Utf8), pl.col("id_ibge7").cast(pl.Int64)])
         .filter(pl.col("cnpj").is_in(cnpjs))
         .unique("cnpj", keep="first")
     )
@@ -241,15 +267,35 @@ def _distancia(id_medico: str, comp_ini: int, comp_fim: int, id_cnpj: Optional[i
             detail=f"Farmacias de pares distantes sem cadastro no perfil de estabelecimentos: {ausentes[:5]}.",
         )
     for lado in ("a", "b"):
-        df = df.join(nomes.rename({"cnpj": f"cnpj_{lado}", "razao_social": f"razao_social_{lado}"}),
-                     on=f"cnpj_{lado}", how="left")
+        df = df.join(
+            nomes.rename({"cnpj": f"cnpj_{lado}", "razao_social": f"razao_social_{lado}", "id_ibge7": f"id_ibge7_{lado}"}),
+            on=f"cnpj_{lado}", how="left",
+        )
     return df
 
 
 def evidencias_do_medico(
-    id_medico: str, inicio: date, fim: date, id_cnpj: Optional[int]
+    id_medico: str, inicio: date, fim: date, id_cnpj: Optional[int], id_ibge7: Optional[int] = None
 ) -> EvidenciasMedico:
-    """As tres tabelas, com a farmacia (cadastro) nas sequencias; em cache por geracao."""
+    """As tres tabelas, com a farmacia (cadastro) nas sequencias; em cache por geracao.
+
+    Com municipio (id_ibge7) e sem farmacia, recorta as tabelas completas do
+    medico (ja em cache): sequencias das farmacias do municipio e pares com ao
+    menos uma farmacia nele. Com os dois, vale a farmacia, que tem de ser do
+    municipio (422).
+    """
+    if id_ibge7 is not None:
+        if id_cnpj is None:
+            todas = evidencias_do_medico(id_medico, inicio, fim, None)
+            no_municipio = pl.col("id_ibge7") == id_ibge7
+            return EvidenciasMedico(
+                unico=todas.unico.filter(no_municipio),
+                multiplos=todas.multiplos.filter(no_municipio),
+                distancia=todas.distancia.filter(
+                    (pl.col("id_ibge7_a") == id_ibge7) | (pl.col("id_ibge7_b") == id_ibge7)
+                ),
+            )
+        conferir_farmacia_no_municipio(id_cnpj, id_ibge7)
     comp_ini, comp_fim = _competencia(inicio), _competencia(fim)
 
     def calcular() -> EvidenciasMedico:
@@ -317,6 +363,7 @@ def get_crm_medico_evidencias(
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
     id_cnpj: Optional[int] = None,
+    id_ibge7: Optional[int] = None,
     severidade: Optional[int] = None,
     sort_field: Optional[str] = None,
     sort_order: str = "desc",
@@ -331,7 +378,7 @@ def get_crm_medico_evidencias(
     if sort_order not in ("asc", "desc"):
         raise HTTPException(status_code=422, detail="sort_order deve ser asc ou desc.")
     inicio, fim = _period_bounds(data_inicio, data_fim)
-    ev = evidencias_do_medico(id_medico, inicio, fim, id_cnpj)
+    ev = evidencias_do_medico(id_medico, inicio, fim, id_cnpj, id_ibge7)
 
     tabela = getattr(ev, tipo)
     if severidade is not None:
@@ -344,6 +391,7 @@ def get_crm_medico_evidencias(
         periodo_inicio=inicio,
         periodo_fim=fim,
         id_cnpj=id_cnpj,
+        id_ibge7=id_ibge7,
         tipo=tipo,
         resumo_unico=_resumo_sequencia(ev.unico),
         resumo_multiplos=_resumo_sequencia(ev.multiplos),

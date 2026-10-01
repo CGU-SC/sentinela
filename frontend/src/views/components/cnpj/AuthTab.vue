@@ -120,14 +120,6 @@ const periodoCompetencias = computed(() => {
   }
   return { inicio: Number(inicio), fim: Number(fim) };
 });
-const serieMensalFarmacia = computed(() => {
-  if (!crmsInteresse.value.length) return [];
-  const serie = summary.value.serie_mensal_farmacia;
-  if (!Array.isArray(serie)) {
-    throw new Error('Contrato inválido em crm-data: summary sem serie_mensal_farmacia.');
-  }
-  return serie;
-});
 const noMovementInPeriod = computed(() =>
   !props.periodLoading &&
   Boolean(props.periodSummary) &&
@@ -348,7 +340,6 @@ defineExpose({
             :kpi-filter-labels="kpiFilterLabels"
             :current-cnpj="cnpj"
             :periodo-competencias="periodoCompetencias"
-            :serie-mensal-farmacia="serieMensalFarmacia"
             @clear-filters="clearFilters"
           />
         </template>

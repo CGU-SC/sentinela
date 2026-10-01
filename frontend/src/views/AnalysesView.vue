@@ -13,7 +13,6 @@ import AnalysisSidebar from './components/analises/AnalysisSidebar.vue';
 import CrmPrescricoesMap from './components/analises/CrmPrescricoesMap.vue';
 import CrmPrescricoesRanking from './components/analises/CrmPrescricoesRanking.vue';
 import CrmHistoricoDialog from './components/analises/CrmHistoricoDialog.vue';
-import CrmFiltrosAtivos from './components/analises/CrmFiltrosAtivos.vue';
 import KpiSection from './components/KpiSection.vue';
 
 const filterStore = useFilterStore();
@@ -265,8 +264,6 @@ function onRankingSort(event) {
             <i class="pi pi-exclamation-circle" />
             <span>{{ navigationError }}</span>
           </div>
-
-          <CrmFiltrosAtivos :busca="rankingSearch" @limpar-busca="onRankingSearch('')" />
 
           <CrmPrescricoesMap
             :map-level="mapLevel"

@@ -5,6 +5,8 @@ Fontes (todas ja sincronizadas; nenhuma consulta ao banco):
   medico: a leitura de um CRM e rapida);
 * crm_medico_brasil_mes: total e dias com prescricao do medico no Brasil por
   mes (dias nao se somam entre farmacias, por isso vem dai);
+* crm_medico_territorio_mes (nivel municipio): prescricoes e dias com
+  prescricao do medico num municipio por mes (filtro de municipio);
 * crm_limiar_p95_mes: P95 nacional do mes (mesma regra de alta intensidade do
   mapa e do ranking);
 * perfil_estabelecimento e dados_medico: cadastro da farmacia e do medico;
@@ -23,6 +25,12 @@ prescricao nas duas). A marcacao de taxa elevada continua sendo a do total do
 medico no mes (o P95 e calculado sobre o total). A lista de farmacias e a
 serie farmacia x mes continuam completas (tabela e coluna de atuacao), com a
 participacao de cada farmacia no total do medico.
+
+Filtro de municipio (id_ibge7): o mesmo, com as farmacias do municipio juntas.
+Prescricoes e dias do mes vem de crm_medico_territorio_mes (dias distintos no
+municipio, exatos) e tem de bater com a soma das farmacias dele (senao 503).
+Com farmacia e municipio, valem os numeros da farmacia, que tem de ser do
+municipio (422).
 """
 
 from datetime import date
@@ -38,6 +46,7 @@ from data_cache import (
     scan_crm_limiar_p95_mes,
     scan_crm_medico_brasil_mes,
     scan_crm_medico_estabelecimento_mes,
+    scan_crm_medico_territorio_mes,
     scan_geografico_global,
 )
 from ...schemas.analytics import (
@@ -52,7 +61,7 @@ from ...schemas.analytics import (
     CrmMedicoHistoricoResponse,
 )
 from .crm_analysis import _competencia, _period_bounds
-from .crm_medico_evidencias import evidencias_do_medico
+from .crm_medico_evidencias import conferir_farmacia_no_municipio, evidencias_do_medico
 
 # Farmacia com esta fatia (ou mais) das prescricoes do medico no periodo vira
 # ponto de atencao.
@@ -107,6 +116,29 @@ def _ler_pares_distantes(filtro: pl.Expr) -> pl.DataFrame:
     )
 
 
+def _ler_meses_municipio(id_medico: str, id_ibge7: int) -> pl.DataFrame:
+    """Prescricoes e dias com prescricao do medico num municipio, por mes.
+
+    Os dias sao os distintos no municipio (o mesmo dia em duas farmacias conta
+    uma vez), por isso vem de crm_medico_territorio_mes e nao da soma das
+    farmacias. Colunas comparadas sem cast (o Parquet e lido pelas estatisticas).
+    """
+    return (
+        scan_crm_medico_territorio_mes()
+        .filter(
+            (pl.col("nivel") == "municipio")
+            & (pl.col("id_geografico") == str(id_ibge7))
+            & (pl.col("id_medico") == id_medico)
+        )
+        .select([
+            pl.col("competencia").cast(pl.Int32),
+            pl.col("nu_prescricoes_mes").cast(pl.Int64).alias("nu_prescricoes"),
+            pl.col("qtd_dias_com_prescricao_mes").cast(pl.Int64).alias("qtd_dias"),
+        ])
+        .collect()
+    )
+
+
 def _cadastro_farmacias(id_cnpjs: pl.Series) -> pl.DataFrame:
     """Cadastro (perfil) das farmacias pedidas, completo e sem duplicidade.
 
@@ -121,6 +153,7 @@ def _cadastro_farmacias(id_cnpjs: pl.Series) -> pl.DataFrame:
             pl.col("id_cnpj").cast(pl.Int32),
             pl.col("cnpj").cast(pl.Utf8),
             pl.col("razao_social").cast(pl.Utf8),
+            pl.col("id_ibge7").cast(pl.Int64),
             pl.col("no_municipio").cast(pl.Utf8).alias("municipio"),
             pl.col("uf").cast(pl.Utf8),
             pl.col("situacao_rf").cast(pl.Utf8),
@@ -143,6 +176,7 @@ def _cadastro_farmacias(id_cnpjs: pl.Series) -> pl.DataFrame:
     sem_local = cadastro.filter(
         pl.col("uf").is_null() | (pl.col("uf").str.strip_chars() == "")
         | pl.col("municipio").is_null() | (pl.col("municipio").str.strip_chars() == "")
+        | pl.col("id_ibge7").is_null()
     ).get_column("id_cnpj").to_list()
     if sem_local:
         raise HTTPException(
@@ -181,11 +215,11 @@ def pontos_de_atencao(
     acima do P95 do mes).
     principal: (% da farmacia principal no total do medico, nome dela).
     rajadas: dias com rajada do CRM no periodo (id_cnpj, competencia,
-    dt_alerta, id_severidade); com filtro, so os da farmacia filtrada.
+    dt_alerta, id_severidade); com filtro, so os da farmacia (ou do municipio) filtrada.
     pares_distantes: pares de farmacias distantes no periodo (competencia,
     municipios/UFs e distancia_km).
-    avaliar_farmacias: False com filtro de farmacia (distancia e
-    concentracao precisam de todas as farmacias).
+    avaliar_farmacias: False com filtro de farmacia ou de municipio (distancia
+    e concentracao precisam de todas as farmacias).
     """
     # CRM nao localizado no CFM nao e ponto de atencao: o modal (cabecalho) e o
     # ranking (coluna Medico / CRM) ja mostram essa situacao.
@@ -259,6 +293,7 @@ def get_crm_medico_historico(
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
     id_cnpj: Optional[int] = None,
+    id_ibge7: Optional[int] = None,
 ) -> CrmMedicoHistoricoResponse:
     id_medico = id_medico.strip()
     if not id_medico:
@@ -324,9 +359,17 @@ def get_crm_medico_historico(
     # Cadastro das farmacias (completo: validado em _cadastro_farmacias)
     cadastro = _cadastro_farmacias(por_farmacia.get_column("id_cnpj"))
     por_farmacia = por_farmacia.join(
-        cadastro.select(["id_cnpj", "uf", "municipio"]), on="id_cnpj", how="inner", validate="m:1",
+        cadastro.select(["id_cnpj", "id_ibge7", "uf", "municipio"]), on="id_cnpj", how="inner", validate="m:1",
     )
     por_farmacia_todas = por_farmacia
+    if id_ibge7 is not None:
+        no_municipio = por_farmacia.filter(pl.col("id_ibge7") == id_ibge7)
+        if no_municipio.is_empty():
+            raise HTTPException(status_code=404, detail=f"CRM {id_medico} sem prescricoes no municipio {id_ibge7}.")
+        if id_cnpj is not None:
+            conferir_farmacia_no_municipio(id_cnpj, id_ibge7)
+        else:
+            rajadas = rajadas.filter(pl.col("id_cnpj").is_in(no_municipio.get_column("id_cnpj").unique().implode()))
 
     # Cadastro do medico
     medico = (
@@ -387,6 +430,44 @@ def get_crm_medico_historico(
         )
         if meses_df.filter(pl.col("p95_taxa_dia").is_null()).height:
             raise HTTPException(status_code=503, detail="Farmacia com mes ausente no total mensal do medico.")
+    elif id_ibge7 is not None:
+        # Meses do municipio: prescricoes e dias distintos nele; taxa elevada do total.
+        por_farmacia = no_municipio
+        try:
+            municipio_mes = _ler_meses_municipio(id_medico, id_ibge7)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Cache de prescricoes por medico e municipio indisponivel: {exc}") from exc
+        soma_municipio = por_farmacia.group_by("competencia").agg([
+            pl.col("nu_prescricoes").sum().alias("soma"),
+            pl.col("id_cnpj").n_unique().cast(pl.Int64).alias("qtd_farmacias"),
+        ])
+        conferencia = soma_municipio.join(municipio_mes, on="competencia", how="full", coalesce=True)
+        if conferencia.filter(
+            pl.col("soma").is_null() | pl.col("nu_prescricoes").is_null() | (pl.col("soma") != pl.col("nu_prescricoes"))
+            | (pl.col("qtd_dias") <= 0)
+        ).height:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Prescricoes do medico no municipio nao batem com a soma das farmacias dele. "
+                    "Sincronize crm_medico_estabelecimento_mes e crm_medico_territorio_mes da mesma execucao."
+                ),
+            )
+        meses_df = (
+            municipio_mes
+            .join(soma_municipio.select(["competencia", "qtd_farmacias"]), on="competencia", how="inner", validate="1:1")
+            .join(
+                meses_df.select(["competencia", "p95_taxa_dia", "alta", "no_periodo"]),
+                on="competencia", how="left",
+            )
+            .with_columns([
+                (pl.col("nu_prescricoes") / pl.col("qtd_dias")).alias("taxa"),
+                pl.lit(1, dtype=pl.Int64).alias("qtd_ufs"),
+            ])
+            .sort("competencia")
+        )
+        if meses_df.filter(pl.col("p95_taxa_dia").is_null()).height:
+            raise HTTPException(status_code=503, detail="Municipio com mes ausente no total mensal do medico.")
     meses = [
         CrmHistoricoMesSchema(
             competencia=int(r["competencia"]),
@@ -425,6 +506,7 @@ def get_crm_medico_historico(
             id_cnpj=int(r["id_cnpj"]),
             cnpj=r["cnpj"],
             razao_social=r["razao_social"],
+            id_ibge7=int(r["id_ibge7"]),
             municipio=r["municipio"],
             uf=r["uf"],
             situacao_rf=r["situacao_rf"],
@@ -446,6 +528,9 @@ def get_crm_medico_historico(
         # Com filtro: "farmacia principal" = participacao da farmacia no total.
         selecionada = [f.percentual_prescricoes for f in farmacias if f.id_cnpj == id_cnpj]
         pcts = selecionada
+    elif id_ibge7 is not None:
+        # Com municipio: participacao do municipio no total do medico.
+        pcts = [total_periodo / total_medico_periodo * 100] if total_medico_periodo else []
     else:
         pcts = [f.percentual_prescricoes for f in farmacias]
     kpis = CrmHistoricoKpisSchema(
@@ -460,7 +545,7 @@ def get_crm_medico_historico(
         qtd_municipios=farm_periodo.select(pl.struct(["uf", "municipio"]).n_unique()).item(),
         qtd_ufs=farm_periodo.select(pl.col("uf").n_unique()).item(),
         percentual_farmacia_principal=pcts[0] if pcts else None,
-        percentual_top3_farmacias=sum(pcts[:3]) if pcts and id_cnpj is None else None,
+        percentual_top3_farmacias=sum(pcts[:3]) if pcts and id_cnpj is None and id_ibge7 is None else None,
         pior_mes_competencia=int(pior.item(0, "competencia")) if pior.height else None,
         pior_mes_taxa_prescricoes_dia=float(pior.item(0, "taxa")) if pior.height else None,
         pior_mes_prescricoes=int(pior.item(0, "nu_prescricoes")) if pior.height else None,
@@ -478,11 +563,11 @@ def get_crm_medico_historico(
         ),
         rajadas=rajadas,
         pares_distantes=pares_distantes,
-        avaliar_farmacias=id_cnpj is None,
+        avaliar_farmacias=id_cnpj is None and id_ibge7 is None,
     )
 
     # Mesmas tabelas do painel "Evidencias" (em cache: a consulta do painel as reaproveita).
-    evidencias = evidencias_do_medico(id_medico, inicio, fim, id_cnpj)
+    evidencias = evidencias_do_medico(id_medico, inicio, fim, id_cnpj, id_ibge7)
     tem_evidencias = bool(evidencias.unico.height or evidencias.multiplos.height or evidencias.distancia.height)
     return CrmMedicoHistoricoResponse(
         id_medico=id_medico,
@@ -494,14 +579,15 @@ def get_crm_medico_historico(
         periodo_inicio=inicio,
         periodo_fim=fim,
         id_cnpj_filtro=id_cnpj,
+        id_ibge7_filtro=id_ibge7,
         kpis=kpis,
         meses=meses,
         farmacias=farmacias,
         farmacia_mes=[
             CrmHistoricoFarmaciaMesSchema(
-                id_cnpj=int(a), competencia=int(b), nu_prescricoes=int(c), qtd_dias_com_prescricao=int(e),
+                id_cnpj=int(a), id_ibge7=int(m), competencia=int(b), nu_prescricoes=int(c), qtd_dias_com_prescricao=int(e),
             )
-            for a, b, c, e in por_farmacia_todas.select(["id_cnpj", "competencia", "nu_prescricoes", "qtd_dias"])
+            for a, m, b, c, e in por_farmacia_todas.select(["id_cnpj", "id_ibge7", "competencia", "nu_prescricoes", "qtd_dias"])
             .sort(["competencia", "id_cnpj"]).iter_rows()
         ],
         p95_meses=p95_meses,

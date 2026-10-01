@@ -10,6 +10,7 @@ import { useRiskMetrics } from '@/composables/useRiskMetrics';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
+import TableFooter from '@/views/components/common/TableFooter.vue';
 
 const props = defineProps({
   municipios: { type: Array, default: () => [] },
@@ -118,7 +119,7 @@ const onTableLeave = () => {
       sortField="valSemComp"
       :sortOrder="-1"
       :row-class="rowClass"
-      class="custom-table enterprise-table clickable-rows"
+      class="custom-table enterprise-table com-rodape clickable-rows"
       @row-click="onRowClick"
     >
 
@@ -173,6 +174,15 @@ const onTableLeave = () => {
           {{ formatPercent(totals.perc) }}
         </template>
       </Column>
+      <template #footer>
+        <TableFooter
+          :first="first"
+          :rows="ROWS_PER_PAGE"
+          :total-records="municipios.length"
+          :unidade="['município', 'municípios']"
+          @page="first = $event.first"
+        />
+      </template>
     </DataTable>
   </div>
 </template>

@@ -19,7 +19,6 @@ const evidenciasCache = createRespostaCache(60);
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import axios from 'axios';
-import Paginator from 'primevue/paginator';
 import { useToast } from 'primevue/usetoast';
 import { API_ENDPOINTS } from '@/config/api';
 import { analysisTooltip } from '@/config/analysisTooltipConfig';
@@ -35,6 +34,7 @@ import { useFormatting } from '@/composables/useFormatting';
 import { downloadBlobFromResponse } from '@/utils/download';
 import { getApiErrorMessage } from '@/utils/apiErrors';
 import ExportMenuButton from '@/views/components/common/ExportMenuButton.vue';
+import TableFooter from '@/views/components/common/TableFooter.vue';
 import CrmJanelaAutorizacoesDialog from '@/views/components/analises/CrmJanelaAutorizacoesDialog.vue';
 
 const props = defineProps({
@@ -44,6 +44,8 @@ const props = defineProps({
   dataFim: { type: String, default: null },
   /** Farmácia filtrada no topo do modal (id_cnpj) ou null. */
   idCnpj: { type: Number, default: null },
+  /** Município filtrado no topo do modal (id_ibge7) ou null. */
+  idIbge7: { type: Number, default: null },
   cacheVersion: { type: String, default: null },
   /** Aba ativa: unico | multiplos | distancia. */
   aba: { type: String, required: true },
@@ -76,9 +78,9 @@ const filtroAtual = computed(() => filtros[props.aba]);
 // lugar à primeira aba com evidências (depois, a escolha é sempre do usuário).
 let escolherAbaComDados = true;
 
-// Outro médico, período ou farmácia: recomeça na primeira página, sem filtros.
+// Outro médico, período, município ou farmácia: recomeça na primeira página, sem filtros.
 watch(
-  () => [props.idMedico, props.dataInicio, props.dataFim, props.idCnpj],
+  () => [props.idMedico, props.dataInicio, props.dataFim, props.idCnpj, props.idIbge7],
   () => {
     Object.assign(filtros, filtrosIniciais());
     escolherAbaComDados = true;
@@ -140,6 +142,7 @@ const parametros = computed(() => {
   if (props.dataInicio) params.data_inicio = props.dataInicio;
   if (props.dataFim) params.data_fim = props.dataFim;
   if (props.idCnpj != null) params.id_cnpj = props.idCnpj;
+  if (props.idIbge7 != null) params.id_ibge7 = props.idIbge7;
   if (f.severidade != null) params.severidade = f.severidade;
   return params;
 });
@@ -164,8 +167,13 @@ async function carregar() {
   try {
     const { data } = await axios.get(API_ENDPOINTS.analyticsCrmMedicoEvidencias, { params, signal: requestController.signal });
     if (controller !== requestController) return;
-    if (data.tipo !== params.tipo || (data.id_cnpj ?? null) !== (params.id_cnpj ?? null) || !Array.isArray(data[abaConfig.value.linhas])) {
-      throw new Error('Contrato inválido em crm-medico-evidencias: aba ou farmácia diferente da solicitada.');
+    if (
+      data.tipo !== params.tipo
+      || (data.id_cnpj ?? null) !== (params.id_cnpj ?? null)
+      || (data.id_ibge7 ?? null) !== (params.id_ibge7 ?? null)
+      || !Array.isArray(data[abaConfig.value.linhas])
+    ) {
+      throw new Error('Contrato inválido em crm-medico-evidencias: aba, farmácia ou município diferente do solicitado.');
     }
     dados.value = data;
     erro.value = null;
@@ -210,6 +218,10 @@ const ehSequencia = computed(() => props.aba !== 'distancia');
 // Linhas em branco que completam a página: a tabela tem sempre a mesma altura.
 const linhasEmBranco = computed(() => Math.max(0, CRM_EVIDENCIAS_PAGE_SIZE - linhas.value.length));
 const colunasTabela = computed(() => ({ unico: 8, multiplos: 10, distancia: 5 }[props.aba]));
+const unidadeRodape = computed(() => (ehSequencia.value ? ['janela', 'janelas'] : ['par', 'pares']));
+const detalheRodape = computed(() => (
+  filtroAtual.value.severidade != null ? `severidade ${CRM_EVIDENCIA_SEVERIDADE_LABEL[filtroAtual.value.severidade]}` : ''
+));
 const mensagemVazia = computed(() => (
   filtroAtual.value.severidade != null ? 'Nenhuma janela com esta severidade.' : abaConfig.value.vazio
 ));
@@ -295,6 +307,7 @@ async function exportarExcel() {
   if (props.dataInicio) params.data_inicio = props.dataInicio;
   if (props.dataFim) params.data_fim = props.dataFim;
   if (props.idCnpj != null) params.id_cnpj = props.idCnpj;
+  if (props.idIbge7 != null) params.id_ibge7 = props.idIbge7;
   exportando.value = true;
   try {
     const response = await fetch(API_ENDPOINTS.analyticsCrmMedicoEvidenciasExport(params));
@@ -343,7 +356,7 @@ const exportacao = computed(() => ({
       <div class="ev-titulo">
         <h3 id="ev-titulo">Evidências</h3>
         <i class="pi pi-info-circle hist-info" v-tooltip.bottom="painelTooltip" aria-label="Como ler as evidências" />
-        <span class="hist-panel-sub">uma linha por janela · {{ idCnpj != null ? 'somente a farmácia filtrada' : 'todas as farmácias' }}</span>
+        <span class="hist-panel-sub">uma linha por janela · {{ idCnpj != null ? 'somente a farmácia filtrada' : idIbge7 != null ? 'somente as farmácias do município filtrado' : 'todas as farmácias' }}</span>
       </div>
       <ExportMenuButton :exportacao="exportacao" menu-id="crm-evidencias-export" />
     </header>
@@ -395,7 +408,8 @@ const exportacao = computed(() => ({
           </div>
         </div>
 
-        <div class="hist-tabela-wrap ev-tabela-wrap">
+        <div class="ev-moldura">
+        <div class="ev-tabela-wrap">
           <p v-if="!linhas.length" class="ev-vazio-sobre">{{ mensagemVazia }}</p>
           <!-- Sequências (único e múltiplos CRMs) -->
           <table v-if="ehSequencia" class="ev-tabela">
@@ -424,7 +438,15 @@ const exportacao = computed(() => ({
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(l, i) in linhas" :key="`${l.id_cnpj}-${l.dt_ini_hora}-${i}`">
+              <!-- A linha inteira abre as autorizações da janela (o botão à direita faz o mesmo). -->
+              <tr
+                v-for="(l, i) in linhas"
+                :key="`${l.id_cnpj}-${l.dt_ini_hora}-${i}`"
+                class="ev-linha-clicavel"
+                tabindex="0"
+                @click="abrirJanela(l)"
+                @keydown.enter="abrirJanela(l)"
+              >
                 <td class="ev-numero">{{ formatarData(l.dt) }}</td>
                 <td>
                   <span class="ev-farm-nome">{{ nomeFarmacia(l.razao_social, l.cnpj) }}</span>
@@ -447,7 +469,8 @@ const exportacao = computed(() => ({
                     class="ev-abrir"
                     v-tooltip.left="'Ver as autorizações desta janela'"
                     :aria-label="`Ver as autorizações da janela de ${formatarData(l.dt)} em ${nomeFarmacia(l.razao_social, l.cnpj)}`"
-                    @click="abrirJanela(l)"
+                    @click.stop="abrirJanela(l)"
+                    @keydown.enter.stop
                   >
                     <i class="pi pi-list" aria-hidden="true" />
                   </button>
@@ -490,17 +513,16 @@ const exportacao = computed(() => ({
             </tbody>
           </table>
         </div>
-
-        <!-- Espaço do paginador sempre reservado (sem ele a altura mudaria entre abas). -->
-        <div class="enterprise-table ev-paginacao">
-          <Paginator
-            v-if="dados.total > CRM_EVIDENCIAS_PAGE_SIZE"
-            :first="(filtroAtual.pagina - 1) * CRM_EVIDENCIAS_PAGE_SIZE"
-            :rows="CRM_EVIDENCIAS_PAGE_SIZE"
-            :total-records="dados.total"
-            class="hist-paginator"
-            @page="filtroAtual.pagina = $event.page + 1"
-          />
+        <!-- Rodapé sempre presente, dentro da moldura da tabela (altura fixa). -->
+        <TableFooter
+          :first="(filtroAtual.pagina - 1) * CRM_EVIDENCIAS_PAGE_SIZE"
+          :rows="CRM_EVIDENCIAS_PAGE_SIZE"
+          :total-records="dados.total"
+          :unidade="unidadeRodape"
+          :detalhe="detalheRodape"
+          :disabled="carregando"
+          @page="filtroAtual.pagina = $event.page + 1"
+        />
         </div>
       </template>
     </div>
@@ -534,13 +556,13 @@ const exportacao = computed(() => ({
 .ev-erro { display: flex; align-items: center; gap: .45rem; margin: 0; font-size: .76rem; color: var(--color-error); }
 
 /* Alturas fixas: cabeçalho + N linhas (--ev-linhas vem da config), resumo e paginador. */
-.ev-panel { --ev-linha: 3.1rem; --ev-cabecalho: 2.1rem; --ev-resumo: 1.75rem; --ev-paginacao: 4.4rem; --ev-tabela: calc(var(--ev-cabecalho) + var(--ev-linhas) * var(--ev-linha)); }
-.ev-estado { display: flex; align-items: center; justify-content: center; min-height: calc(var(--ev-resumo) + var(--ev-tabela) + var(--ev-paginacao) + 1.2rem + 2px); }
+.ev-panel { --ev-linha: 3.1rem; --ev-cabecalho: 2.1rem; --ev-resumo: 1.75rem; --ev-rodape: 2.5rem; --ev-tabela: calc(var(--ev-cabecalho) + var(--ev-linhas) * var(--ev-linha)); }
+.ev-estado { display: flex; align-items: center; justify-content: center; min-height: calc(var(--ev-resumo) + var(--ev-tabela) + var(--ev-rodape) + .6rem + 2px); }
 .ev-resumo { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: nowrap; min-height: var(--ev-resumo); }
 .ev-resumo-texto { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ev-severidades { flex-shrink: 0; }
-.ev-paginacao { display: flex; align-items: center; justify-content: center; height: var(--ev-paginacao); }
-.ev-tabela-wrap { position: relative; }
+.ev-moldura { border: 1px solid var(--tabs-border); border-radius: 8px; overflow: hidden; }
+.ev-tabela-wrap { position: relative; overflow-x: auto; }
 .ev-vazio-sobre { position: absolute; inset: var(--ev-cabecalho) 0 0 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0 1rem; font-size: .76rem; color: var(--text-muted); text-align: center; pointer-events: none; }
 .ev-resumo-texto { font-size: .74rem; color: var(--text-secondary); }
 .ev-severidades { display: flex; gap: .35rem; flex-wrap: wrap; }
@@ -552,14 +574,14 @@ const exportacao = computed(() => ({
 .ev-sev-ponto { width: .5rem; height: .5rem; border-radius: 50%; background: var(--sev-cor); }
 .ev-sev-qtd { color: var(--text-muted); font-weight: 600; }
 
-.hist-tabela-wrap { overflow-x: auto; border: 1px solid var(--tabs-border); border-radius: 8px; }
 .ev-tabela { width: 100%; min-width: 62rem; table-layout: fixed; border-collapse: collapse; font-size: .74rem; color: var(--text-color-85); }
 .ev-tabela thead tr { height: var(--ev-cabecalho); }
 .ev-tabela tbody tr { height: var(--ev-linha); }
 .ev-tabela th { padding: 0 .65rem; border-bottom: 1px solid color-mix(in srgb, var(--tabs-border) 65%, transparent); background: color-mix(in srgb, var(--text-color) 2%, var(--card-bg)); color: var(--text-muted); font-size: .6rem; font-weight: 600; letter-spacing: .04em; text-align: left; text-transform: uppercase; white-space: nowrap; }
 .ev-tabela th.num, .ev-tabela td.num { text-align: right; }
 .ev-tabela td { padding: 0 .65rem; border-top: 1px solid color-mix(in srgb, var(--tabs-border) 65%, transparent); vertical-align: middle; overflow: hidden; }
-.ev-tabela tbody tr:not(.ev-linha-branca):hover { background: var(--table-hover); }
+.ev-tabela tbody tr:not(.ev-linha-branca):hover, .ev-tabela tbody tr.ev-linha-clicavel:focus-visible { background: var(--table-hover); outline: none; }
+.ev-tabela tbody tr.ev-linha-clicavel { cursor: pointer; }
 .ev-tabela tr.ev-linha-branca td { border-top-color: transparent; }
 .ev-tabela .c-data, .ev-tabela .c-mes { width: 7rem; }
 .ev-tabela .c-farm { width: 30%; }
@@ -580,6 +602,5 @@ const exportacao = computed(() => ({
 .ev-abrir { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; transition: color .15s ease, border-color .15s ease; }
 .ev-abrir:hover, .ev-abrir:focus-visible { border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); color: var(--primary-color); outline: none; }
 .ev-abrir .pi { font-size: .72rem; }
-.hist-paginator { font-size: .74rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 </style>

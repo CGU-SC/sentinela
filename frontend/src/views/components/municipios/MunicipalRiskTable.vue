@@ -1,11 +1,21 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
 import { useFormatting } from '@/composables/useFormatting';
 import { useRiskMetrics } from '@/composables/useRiskMetrics';
 import { useDelayedLoading } from '@/composables/useDelayedLoading';
+import TableFooter from '@/views/components/common/TableFooter.vue';
+
+// Paginação no cliente (o rodapé padrão controla a página da DataTable).
+const LINHAS_POR_PAGINA_OPCOES = [25, 50, 100];
+const paginaFirst = ref(0);
+const paginaRows = ref(LINHAS_POR_PAGINA_OPCOES[0]);
+function mudarPagina(evento) {
+  paginaRows.value = evento.rows;
+  paginaFirst.value = evento.first;
+}
 
 const props = defineProps({
   municipios: { type: Array, default: () => [] },
@@ -167,12 +177,12 @@ function onRowClick(event) {
       size="small"
       removableSort
       paginator
-      :rows="25"
-      :rowsPerPageOptions="[25, 50, 100]"
+      v-model:first="paginaFirst"
+      :rows="paginaRows"
       :sortField="defaultSortField"
       :sortOrder="-1"
       class="municipal-table"
-      :class="['enterprise-table', 'municipal-risk-table', 'clickable-rows']"
+      :class="['enterprise-table', 'com-rodape', 'municipal-risk-table', 'clickable-rows']"
       :rowClass="rowClass"
       @row-click="onRowClick"
     >
@@ -284,6 +294,16 @@ function onRowClick(event) {
         <template #footer>{{ footer.totalMov }}</template>
       </Column>
 
+      <template #footer>
+        <TableFooter
+          :first="paginaFirst"
+          :rows="paginaRows"
+          :total-records="tableRows.length"
+          :rows-per-page-options="LINHAS_POR_PAGINA_OPCOES"
+          :unidade="['município', 'municípios']"
+          @page="mudarPagina"
+        />
+      </template>
     </DataTable>
   </section>
 </template>

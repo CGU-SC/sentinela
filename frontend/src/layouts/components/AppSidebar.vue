@@ -2581,7 +2581,15 @@ const clearSearch = () => {
 :deep(.clear-filters-btn.p-button) {
   background: transparent !important;
   transition: all 0.2s ease !important;
+  height: 2.125rem;
+  padding: 0 0.75rem;
+  justify-content: center;
+  gap: 0.45rem;
 }
+/* Tamanho alinhado aos campos de filtro (34px de altura, texto de 12,5px);
+   ícone e texto juntos no centro. */
+:deep(.clear-filters-btn.p-button .p-button-label) { flex: 0 0 auto; font-size: 0.78rem; font-weight: 600; }
+:deep(.clear-filters-btn.p-button .p-button-icon) { margin: 0; font-size: 0.78rem; }
 
 :deep(.clear-filters-btn.p-button:hover) {
   background: transparent !important;

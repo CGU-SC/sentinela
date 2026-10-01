@@ -8,6 +8,7 @@
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { analysisTooltip } from '@/config/analysisTooltipConfig';
+import { filterActionTooltip } from '@/config/filterTooltipConfig';
 import { CRM_FAIXAS } from '@/config/crmFiltrosMedico';
 import { formatarValorFaixa, useCrmFiltrosMedicoStore } from '@/stores/crmFiltrosMedico';
 import NumberRangePicker from '@/views/components/common/NumberRangePicker.vue';
@@ -24,6 +25,9 @@ const tooltip = analysisTooltip(config.tooltip);
 const filtrosStore = useCrmFiltrosMedicoStore();
 const { faixas } = storeToRefs(filtrosStore);
 const valor = computed(() => [faixas.value[props.tipo].min, faixas.value[props.tipo].max]);
+// Filtro ligado: destaque no rótulo e no campo, e borracha para voltar ao padrão.
+const ativo = computed(() => valor.value[0] !== null || valor.value[1] !== null);
+const limparTooltip = filterActionTooltip('Limpar filtro', 'Restaura este filtro ao valor padrão.', 'pi-eraser');
 
 function formatar(v) {
   return formatarValorFaixa(props.tipo, v);
@@ -47,10 +51,20 @@ function aplicar([min, max]) {
 </script>
 
 <template>
-  <div class="filtro filtro-faixa">
+  <div class="filtro filtro-faixa" :class="{ 'is-ativo': ativo }">
     <div class="filtro-rotulo">
       <span>{{ config.label }}</span>
       <i class="pi pi-info-circle filtro-info" v-tooltip.left="tooltip" tabindex="0" :aria-label="`Sobre ${config.label.toLowerCase()}`" />
+      <button
+        v-if="ativo"
+        type="button"
+        class="filtro-limpar"
+        :aria-label="`Limpar o filtro ${config.label.toLowerCase()}`"
+        v-tooltip.left="limparTooltip"
+        @click="filtrosStore.limparFaixa(tipo)"
+      >
+        <i class="pi pi-eraser" aria-hidden="true" />
+      </button>
     </div>
     <NumberRangePicker
       aberto

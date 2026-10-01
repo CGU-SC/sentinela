@@ -6,7 +6,7 @@
  * espelhando a lógica da coluna "Classificação" do relatório Excel (aba_regiao.py).
  * A coluna "Conexão" usa o campo `conexao_ms` já presente no backend.
  */
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useMetodologiaConfigStore } from '@/stores/metodologiaConfig';
 import { useFormatting } from '@/composables/useFormatting';
@@ -14,6 +14,11 @@ import { RISK_THRESHOLDS, RISK_CSS_CLASSES, AUDIT_THRESHOLDS } from '@/config/ri
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
+import TableFooter from '@/views/components/common/TableFooter.vue';
+
+// Paginação no cliente (o rodapé padrão controla a página da DataTable).
+const LINHAS_POR_PAGINA = 15;
+const paginaFirst = ref(0);
 
 const props = defineProps({
   /** Array de objetos RegionalFarmaciaSchema vindos da API */
@@ -117,11 +122,12 @@ const totals = computed(() => {
       size="small"
       removableSort
       paginator
-      :rows="15"
+      v-model:first="paginaFirst"
+      :rows="LINHAS_POR_PAGINA"
       sortField="score_risco"
       :sortOrder="-1"
       :row-class="rowClass"
-      class="custom-table enterprise-table clickable-rows"
+      class="custom-table enterprise-table com-rodape clickable-rows"
       @row-click="goToDetail"
     >
       <!-- Ranking -->
@@ -209,6 +215,15 @@ const totals = computed(() => {
           <Tag :value="data.is_conexao_ativa ? 'Ativa' : 'Inativa'" :class="conexaoClass(data.is_conexao_ativa)" />
         </template>
       </Column>
+      <template #footer>
+        <TableFooter
+          :first="paginaFirst"
+          :rows="LINHAS_POR_PAGINA"
+          :total-records="farmacias.length"
+          :unidade="['farmácia', 'farmácias']"
+          @page="paginaFirst = $event.first"
+        />
+      </template>
     </DataTable>
   </div>
 </template>

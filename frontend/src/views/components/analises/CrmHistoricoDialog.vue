@@ -12,8 +12,9 @@ const atuacaoCache = criarCacheModulo(40);
  *
  * Indicadores, pontos de atenção, tabela de farmácias e mapa de calor usam o
  * período filtrado; a linha do tempo mostra todo o histórico.
- * Filtros do próprio modal (não mexem nos filtros da página): período e uma
- * farmácia (só uma por vez: dias de farmácias diferentes não se somam).
+ * Filtros do próprio modal (não mexem nos filtros da página): período, um
+ * município (as farmácias dele juntas, com dias exatos vindos do backend) e
+ * uma farmácia (só uma por vez: dias de farmácias diferentes não se somam).
  * Dados: GET /analytics/crm-medico-historico.
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
@@ -21,7 +22,7 @@ import { useRouter } from 'vue-router';
 import axios from 'axios';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
-import Paginator from 'primevue/paginator';
+import TableFooter from '@/views/components/common/TableFooter.vue';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { BarChart, HeatmapChart, LineChart, ScatterChart } from 'echarts/charts';
@@ -71,7 +72,7 @@ const TOP_FARMACIAS_GRAFICO = 5;
 const TOP_FARMACIAS_CALOR = 15;
 
 // Respostas guardadas (historicoCache/atuacaoCache, no <script> do módulo) por
-// médico + período + farmácia + versão do cache: fechar e reabrir o modal, ou
+// médico + período + município + farmácia + versão do cache: fechar e reabrir o modal, ou
 // voltar a um filtro já visto, não refaz a consulta.
 const dados = ref(null);
 const carregando = ref(false);
@@ -101,6 +102,7 @@ const COMP_MAX_BASE = AUDIT_PERIOD.END_YEAR * 100 + AUDIT_PERIOD.END_MONTH + 1;
 const periodoModo = ref('analise');
 const personalizado = ref(null); // { inicio, fim } em AAAAMM
 const farmaciaFiltro = ref(null); // id_cnpj
+const municipioFiltro = ref(null); // id_ibge7
 // Painel "Evidências": aba ativa (os pontos de atenção levam direto a ela).
 const abaEvidencias = ref('unico');
 const painelEvidencias = ref(null);
@@ -118,6 +120,7 @@ function resetFiltros() {
   periodoModo.value = 'analise';
   personalizado.value = null;
   farmaciaFiltro.value = null;
+  municipioFiltro.value = null;
   abaEvidencias.value = 'unico';
   farmaciasConhecidas.value = new Map();
   ultimaCompetencia.value = null;
@@ -181,6 +184,7 @@ async function carregar() {
   const params = { id_medico: props.medico.id_medico };
   if (periodo.inicio) params.data_inicio = periodo.inicio;
   if (periodo.fim) params.data_fim = periodo.fim;
+  if (municipioFiltro.value != null) params.id_ibge7 = municipioFiltro.value;
   if (farmaciaFiltro.value != null) params.id_cnpj = farmaciaFiltro.value;
   const chave = JSON.stringify(params);
   if (chave === chaveCarregada) return;
@@ -200,13 +204,16 @@ async function carregar() {
     if ((data.id_cnpj_filtro ?? null) !== (params.id_cnpj ?? null)) {
       throw new Error('Contrato inválido em crm-medico-historico: farmácia filtrada diferente da solicitada.');
     }
+    if ((data.id_ibge7_filtro ?? null) !== (params.id_ibge7 ?? null)) {
+      throw new Error('Contrato inválido em crm-medico-historico: município filtrado diferente do solicitado.');
+    }
     if (typeof data.tem_evidencias !== 'boolean') {
       throw new Error('Contrato inválido em crm-medico-historico: tem_evidencias ausente.');
     }
     const conhecidas = new Map(farmaciasConhecidas.value);
     for (const f of data.farmacias) conhecidas.set(f.id_cnpj, f);
     farmaciasConhecidas.value = conhecidas;
-    if (data.id_cnpj_filtro == null && data.meses.length) {
+    if (data.id_cnpj_filtro == null && data.id_ibge7_filtro == null && data.meses.length) {
       ultimaCompetencia.value = data.meses[data.meses.length - 1].competencia;
     }
     erro.value = null;
@@ -218,7 +225,11 @@ async function carregar() {
     const detalhe = err?.response?.data?.detail;
     dados.value = null;
     erro.value = status === 404
-      ? (farmaciaFiltro.value != null ? 'Este CRM não tem prescrições na farmácia escolhida.' : 'Este CRM não tem prescrições registradas.')
+      ? (farmaciaFiltro.value != null
+        ? 'Este CRM não tem prescrições na farmácia escolhida.'
+        : municipioFiltro.value != null
+          ? 'Este CRM não tem prescrições no município escolhido neste período.'
+          : 'Este CRM não tem prescrições registradas.')
       : status === 503
         ? (detalhe || 'Os dados de prescrições por médico não estão disponíveis. Sincronize os módulos CRM.')
         : status === 422 && typeof detalhe === 'string'
@@ -250,9 +261,19 @@ watch(
 );
 // Filtros do modal e período da página (no modo "Período da análise").
 watch(
-  () => [periodoConsulta.value.valido, periodoConsulta.value.inicio, periodoConsulta.value.fim, farmaciaFiltro.value],
+  () => [
+    periodoConsulta.value.valido, periodoConsulta.value.inicio, periodoConsulta.value.fim,
+    municipioFiltro.value, farmaciaFiltro.value,
+  ],
   () => { if (props.modelValue) carregar(); },
 );
+// Município escolhido: a farmácia filtrada que for de outro município é desmarcada
+// (os dois filtros juntos só valem para farmácia do município). Síncrono: a
+// farmácia sai antes de a consulta ser disparada, sem pedir a combinação inválida.
+watch(municipioFiltro, (idIbge7) => {
+  if (idIbge7 == null || farmaciaFiltro.value == null) return;
+  if (cadastroFarmacia(farmaciaFiltro.value).id_ibge7 !== idIbge7) farmaciaFiltro.value = null;
+}, { flush: 'sync' });
 onBeforeUnmount(() => controller?.abort());
 
 function filtrarFarmacia(idCnpj) {
@@ -337,6 +358,34 @@ const kpis = computed(() => {
       },
     ];
   }
+  if (municipioAtivo.value != null) {
+    // Município filtrado: números das farmácias dele juntas; taxa elevada continua a do total do médico.
+    return [
+      {
+        label: 'Prescrições no município',
+        value: formatNumberFull(k.nu_prescricoes),
+        detail: `${formatNumberFull(k.qtd_dias_com_prescricao)} dias com prescrição`,
+      },
+      { label: 'Taxa diária no município', value: formatDecimal(k.taxa_prescricoes_dia) },
+      {
+        label: 'Meses ativos no município',
+        value: formatNumberFull(k.qtd_meses_ativos),
+        detail: `${formatNumberFull(k.qtd_meses_alta_intensidade)} com taxa elevada (total do médico)`,
+      },
+      {
+        label: 'Participação no total do médico',
+        value: formatPct(k.percentual_farmacia_principal),
+        detail: `${formatNumberFull(k.qtd_farmacias)} ${k.qtd_farmacias === 1 ? 'farmácia' : 'farmácias'} no município`,
+      },
+      {
+        label: 'Pior mês no município',
+        value: k.pior_mes_competencia
+          ? `${formatDecimal(k.pior_mes_taxa_prescricoes_dia)}/dia em ${formatComp(k.pior_mes_competencia)}`
+          : '—',
+        detail: k.pior_mes_competencia ? `${formatNumberFull(k.pior_mes_prescricoes)} prescrições` : null,
+      },
+    ];
+  }
   return [
     {
       label: 'Prescrições',
@@ -367,6 +416,21 @@ const kpis = computed(() => {
 const farmacias = computed(() => dados.value?.farmacias ?? []);
 // Farmácia filtrada na resposta exibida (null = todas).
 const filtroAtivo = computed(() => dados.value?.id_cnpj_filtro ?? null);
+// Município filtrado na resposta exibida (id_ibge7; null = todos).
+const municipioAtivo = computed(() => dados.value?.id_ibge7_filtro ?? null);
+// Farmácias do recorte exibido: as do município filtrado, ou todas. É o que a
+// tabela, as cores, a linha do tempo e o mapa de calor mostram.
+const farmaciasEscopo = computed(() => (
+  municipioAtivo.value == null ? farmacias.value : farmacias.value.filter((f) => f.id_ibge7 === municipioAtivo.value)
+));
+// Sufixo dos rótulos de taxa conforme o recorte (farmácia tem precedência).
+const recorteSufixo = computed(() => (
+  filtroAtivo.value != null ? ' na farmácia' : municipioAtivo.value != null ? ' no município' : ''
+));
+function rotuloMunicipio(f) {
+  if (!Number.isInteger(f.id_ibge7)) throw new Error(`Contrato inválido em crm-medico-historico: farmácia ${f.id_cnpj} sem id_ibge7.`);
+  return `${formatTitleCase(f.municipio)} / ${f.uf}`;
+}
 function cadastroFarmacia(idCnpj) {
   const f = farmaciasConhecidas.value.get(idCnpj);
   if (!f) throw new Error(`Farmácia ${idCnpj} sem cadastro nas respostas do histórico.`);
@@ -374,7 +438,11 @@ function cadastroFarmacia(idCnpj) {
 }
 const opcoesFarmacia = computed(() => (
   [...farmaciasConhecidas.value.values()]
-    .filter((f) => farmacias.value.some((x) => x.id_cnpj === f.id_cnpj) || f.id_cnpj === farmaciaFiltro.value)
+    .filter((f) => (
+      f.id_cnpj === farmaciaFiltro.value
+      || (farmacias.value.some((x) => x.id_cnpj === f.id_cnpj)
+        && (municipioFiltro.value == null || f.id_ibge7 === municipioFiltro.value))
+    ))
     .map((f) => ({
       value: f.id_cnpj,
       label: `${nomeFarmacia(f)} · ${f.cnpj ? formatCnpj(f.cnpj) : f.id_cnpj}${f.municipio ? ` · ${formatTitleCase(f.municipio)}/${f.uf ?? ''}` : ''}`,
@@ -382,7 +450,7 @@ const opcoesFarmacia = computed(() => (
 ));
 const corPorFarmacia = computed(() => {
   const mapa = new Map();
-  farmacias.value.slice(0, TOP_FARMACIAS_GRAFICO).forEach((f, i) => mapa.set(f.id_cnpj, cores.value[i]));
+  farmaciasEscopo.value.slice(0, TOP_FARMACIAS_GRAFICO).forEach((f, i) => mapa.set(f.id_cnpj, cores.value[i]));
   return mapa;
 });
 function nomeFarmacia(f) {
@@ -392,28 +460,58 @@ const legenda = computed(() => {
   if (filtroAtivo.value != null) {
     return [{ nome: nomeFarmacia(cadastroFarmacia(filtroAtivo.value)), cor: corPorFarmacia.value.get(filtroAtivo.value) ?? corOutras.value }];
   }
-  const itens = farmacias.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => ({
+  const itens = farmaciasEscopo.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => ({
     nome: nomeFarmacia(f),
     cor: corPorFarmacia.value.get(f.id_cnpj),
   }));
-  if (farmacias.value.length > TOP_FARMACIAS_GRAFICO || outrasForaDoPeriodo.value) {
+  if (farmaciasEscopo.value.length > TOP_FARMACIAS_GRAFICO || outrasForaDoPeriodo.value) {
     itens.push({ nome: 'Outras farmácias', cor: corOutras.value });
   }
   return itens;
 });
 const outrasForaDoPeriodo = computed(() => (
-  (dados.value?.farmacia_mes ?? []).some((r) => !corPorFarmacia.value.has(r.id_cnpj))
+  (dados.value?.farmacia_mes ?? []).some((r) => (
+    !corPorFarmacia.value.has(r.id_cnpj) && (municipioAtivo.value == null || r.id_ibge7 === municipioAtivo.value)
+  ))
 ));
 
 // Tabela paginada (sem rolagem interna, para nao disputar a rolagem do modal).
-const FARMACIAS_POR_PAGINA = 10;
+// Altura fixa: linhas de altura fixa e linhas em branco completam a ultima
+// pagina (e a tabela vazia), para o modal nao se deslocar ao paginar.
+const FARMACIAS_POR_PAGINA = 6;
 const farmaciasInicio = ref(0);
+// Filtro de município: os municípios das farmácias onde o CRM atuou no período,
+// com a quantidade de farmácias de cada um. O escolhido fica na lista mesmo
+// sem atuação no período exibido (como a farmácia filtrada).
+const opcoesMunicipio = computed(() => {
+  const porMunicipio = new Map();
+  for (const f of farmacias.value) {
+    const atual = porMunicipio.get(f.id_ibge7) ?? { value: f.id_ibge7, nome: rotuloMunicipio(f), qtd: 0 };
+    atual.qtd += 1;
+    porMunicipio.set(f.id_ibge7, atual);
+  }
+  const escolhido = municipioFiltro.value;
+  if (escolhido != null && !porMunicipio.has(escolhido)) {
+    porMunicipio.set(escolhido, { value: escolhido, nome: nomeMunicipio(escolhido), qtd: 0 });
+  }
+  return [...porMunicipio.values()]
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((m) => ({ value: m.value, label: `${m.nome} (${m.qtd})` }));
+});
+function nomeMunicipio(idIbge7) {
+  for (const f of farmaciasConhecidas.value.values()) {
+    if (f.id_ibge7 === idIbge7) return rotuloMunicipio(f);
+  }
+  throw new Error(`Município ${idIbge7} sem farmácia nas respostas do histórico.`);
+}
+const municipioAtivoNome = computed(() => (municipioAtivo.value == null ? '' : nomeMunicipio(municipioAtivo.value)));
 const farmaciasPagina = computed(() => (
-  farmacias.value.slice(farmaciasInicio.value, farmaciasInicio.value + FARMACIAS_POR_PAGINA)
+  farmaciasEscopo.value.slice(farmaciasInicio.value, farmaciasInicio.value + FARMACIAS_POR_PAGINA)
 ));
-// Volta à 1ª página ao trocar de médico ou de período (não ao filtrar farmácia).
+const farmaciasEmBranco = computed(() => Math.max(0, FARMACIAS_POR_PAGINA - farmaciasPagina.value.length));
+// Volta à 1ª página ao trocar de médico, de período ou de município (não ao filtrar farmácia).
 watch(
-  () => [dados.value?.id_medico, dados.value?.periodo_inicio, dados.value?.periodo_fim],
+  () => [dados.value?.id_medico, dados.value?.periodo_inicio, dados.value?.periodo_fim, dados.value?.id_ibge7_filtro],
   () => { farmaciasInicio.value = 0; },
 );
 
@@ -568,10 +666,12 @@ const linhaDoTempo = computed(() => {
   const porMes = new Map(d.meses.map((m) => [m.competencia, m]));
   const topIds = filtroAtivo.value != null
     ? [filtroAtivo.value]
-    : farmacias.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => f.id_cnpj);
+    : farmaciasEscopo.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => f.id_cnpj);
   const series = new Map(topIds.map((id) => [id, new Map()]));
   const outras = new Map();
   for (const r of d.farmacia_mes) {
+    // Município filtrado: só as farmácias dele entram nas barras.
+    if (municipioAtivo.value != null && r.id_ibge7 !== municipioAtivo.value) continue;
     const alvo = series.get(r.id_cnpj) ?? outras;
     alvo.set(r.competencia, (alvo.get(r.competencia) ?? 0) + r.nu_prescricoes);
   }
@@ -608,8 +708,10 @@ const chartOption = computed(() => {
     lt.series.get(id),
   ));
   if (!filtrada) barras.push(barra('Outras farmácias', corOutras.value, lt.outras));
-  const nomeTaxa = filtrada ? 'Taxa diária na farmácia' : 'Taxa diária';
-  const nomeAlta = filtrada ? 'Mês com taxa elevada (total do médico)' : 'Mês com taxa elevada';
+  // Recorte (farmácia ou município): a taxa é a do recorte; "taxa elevada" é a do total do médico.
+  const recortada = recorteSufixo.value !== '';
+  const nomeTaxa = `Taxa diária${recorteSufixo.value}`;
+  const nomeAlta = recortada ? 'Mês com taxa elevada (total do médico)' : 'Mês com taxa elevada';
   // Marca a 1ª inscrição no CFM na primeira série.
   if (inscricaoNoEixo) {
     barras[0].markLine = {
@@ -653,15 +755,15 @@ const chartOption = computed(() => {
           .map((p) => linha(`${p.marker}${p.seriesName}`, formatNumberFull(p.value)))
           .join('');
         return `<div style="min-width:240px">
-          <div style="font-weight:600;margin-bottom:6px">${formatComp(comp)}${mes.alta_intensidade ? ' · <span style="color:' + corAlerta + '">taxa elevada' + (filtrada ? ' (total do médico)' : '') + '</span>' : ''}</div>
+          <div style="font-weight:600;margin-bottom:6px">${formatComp(comp)}${mes.alta_intensidade ? ' · <span style="color:' + corAlerta + '">taxa elevada' + (recortada ? ' (total do médico)' : '') + '</span>' : ''}</div>
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:18px;margin:2px 0 8px;padding:6px 8px;border-radius:6px;background:${mes.alta_intensidade ? corAlerta + '22' : c.axisShadow}">
             <span style="font-weight:600">${nomeTaxa}</span>
-            <span><strong style="font-size:16px;font-weight:600;color:${mes.alta_intensidade ? corAlerta : c.tooltipText}">${formatDecimal(mes.taxa_prescricoes_dia)}</strong><span style="opacity:.72"> /dia${filtrada ? '' : ` · ${formatDecimal(mes.taxa_prescricoes_dia / mes.p95_taxa_dia, 1)}× o P95`}</span></span>
+            <span><strong style="font-size:16px;font-weight:600;color:${mes.alta_intensidade ? corAlerta : c.tooltipText}">${formatDecimal(mes.taxa_prescricoes_dia)}</strong><span style="opacity:.72"> /dia${recortada ? '' : ` · ${formatDecimal(mes.taxa_prescricoes_dia / mes.p95_taxa_dia, 1)}× o P95`}</span></span>
           </div>
           ${linha('Prescrições', formatNumberFull(mes.nu_prescricoes))}
           ${linha('Dias com prescrição', formatNumberFull(mes.qtd_dias_com_prescricao))}
           ${linha('P95 nacional do mês', formatDecimal(mes.p95_taxa_dia))}
-          ${filtrada ? '' : linha('Farmácias / UFs', `${mes.qtd_farmacias} / ${mes.qtd_ufs}`)}
+          ${filtrada ? '' : municipioAtivo.value != null ? linha('Farmácias no município', formatNumberFull(mes.qtd_farmacias)) : linha('Farmácias / UFs', `${mes.qtd_farmacias} / ${mes.qtd_ufs}`)}
           <div style="border-top:1px solid ${c.tooltipBorder};margin-top:6px;padding-top:4px">${farm}</div>
         </div>`;
       },
@@ -742,12 +844,21 @@ const chartOption = computed(() => {
 // ── Mapa de calor farmácia x mês (período filtrado) ──────────────────────────
 const calor = computed(() => {
   const d = dados.value;
-  // Com farmácia filtrada vira uma linha só (repetiria a linha do tempo).
-  if (!d || !farmacias.value.length || filtroAtivo.value != null) return null;
+  if (!d || !farmacias.value.length) return null;
+  // Eixo de meses: todos os meses do médico (p95_meses). Com farmácia filtrada,
+  // `meses` traz só os dela, e o mapa mostra todas as farmácias do mesmo jeito.
+  if (!Array.isArray(d.p95_meses) || !d.p95_meses.length) throw new Error('Contrato inválido em crm-medico-historico: p95_meses ausente.');
+  const primeiro = d.p95_meses[0].competencia;
+  const ultimo = d.p95_meses[d.p95_meses.length - 1].competencia;
   const meses = mesesEntre(compDaData(d.periodo_inicio), compDaData(d.periodo_fim))
-    .filter((m) => m >= d.meses[0].competencia && m <= d.meses[d.meses.length - 1].competencia);
+    .filter((m) => m >= primeiro && m <= ultimo);
   if (!meses.length) return null;
-  const linhas = farmacias.value.slice(0, TOP_FARMACIAS_CALOR);
+  // As farmácias com mais prescrições (do município filtrado, se houver); a
+  // farmácia filtrada entra sempre (no lugar da última, se preciso).
+  const linhas = farmaciasEscopo.value.slice(0, TOP_FARMACIAS_CALOR);
+  if (!linhas.length) return null;
+  const filtrada = filtroAtivo.value == null ? null : farmaciasEscopo.value.find((f) => f.id_cnpj === filtroAtivo.value) ?? null;
+  if (filtrada && !linhas.includes(filtrada)) linhas[linhas.length - 1] = filtrada;
   const idxMes = new Map(meses.map((m, i) => [m, i]));
   const idxFarm = new Map(linhas.map((f, i) => [f.id_cnpj, i]));
   // Celula = taxa diaria do medico nesta farmacia no mes (prescricoes / dias).
@@ -764,7 +875,12 @@ const calor = computed(() => {
     maximo = Math.max(maximo, taxa);
   }
   if (!pontos.length) return null;
-  return { meses, linhas, pontos, minimo, maximo, omitidas: farmacias.value.length - linhas.length };
+  return {
+    meses, linhas, pontos, minimo, maximo,
+    omitidas: farmaciasEscopo.value.length - linhas.length,
+    // Linha da farmácia filtrada (ou -1): fica em destaque e as demais, esmaecidas.
+    linhaFiltrada: filtrada ? linhas.indexOf(filtrada) : -1,
+  };
 });
 
 const taxaSelecionada = ref(null);
@@ -819,7 +935,12 @@ const calorOption = computed(() => {
       type: 'category',
       data: nomes,
       inverse: true,
-      axisLabel: { color: c.text, fontSize: 11 },
+      axisLabel: {
+        color: c.text,
+        fontSize: 11,
+        formatter: (nome, i) => (i === h.linhaFiltrada ? `{filtrada|${nome}}` : nome),
+        rich: { filtrada: { color: themeStore.tokens.primary, fontSize: 11, fontWeight: 600 } },
+      },
       axisLine: { show: false },
       axisTick: { show: false },
     },
@@ -844,7 +965,9 @@ const calorOption = computed(() => {
     series: [
       {
         type: 'heatmap',
-        data: h.pontos,
+        data: h.linhaFiltrada < 0
+          ? h.pontos
+          : h.pontos.map((ponto) => (ponto[1] === h.linhaFiltrada ? ponto : { value: ponto, itemStyle: { opacity: 0.3 } })),
         itemStyle: { borderColor: c.tooltipSolid, borderWidth: 2, borderRadius: 2 },
         emphasis: { itemStyle: { borderColor: c.text, borderWidth: 1 } },
       },
@@ -904,7 +1027,22 @@ const calorOption = computed(() => {
               @select-atalho="escolherAtalhoPeriodo"
             />
           </div>
-          <label class="hist-filtro hist-filtro--farmacia">
+          <label class="hist-filtro hist-filtro--municipio" :class="{ 'is-ativo': municipioFiltro != null }">
+            <span>Município</span>
+            <Dropdown
+              v-model="municipioFiltro"
+              :options="opcoesMunicipio"
+              option-label="label"
+              option-value="value"
+              filter
+              show-clear
+              placeholder="Todos os municípios"
+              empty-filter-message="Nenhum município encontrado"
+              class="hist-filtro-campo"
+              aria-label="Filtrar por município"
+            />
+          </label>
+          <label class="hist-filtro hist-filtro--farmacia" :class="{ 'is-ativo': farmaciaFiltro != null }">
             <span>Farmácia</span>
             <Dropdown
               v-model="farmaciaFiltro"
@@ -913,7 +1051,7 @@ const calorOption = computed(() => {
               option-value="value"
               filter
               show-clear
-              placeholder="Todas as farmácias"
+              :placeholder="municipioFiltro != null ? 'Todas as farmácias do município' : 'Todas as farmácias'"
               empty-filter-message="Nenhuma farmácia encontrada"
               class="hist-filtro-campo"
               aria-label="Filtrar por farmácia"
@@ -961,13 +1099,14 @@ const calorOption = computed(() => {
             @click="abrirEvidencia(p.codigo)"
             @keydown.enter.prevent="abrirEvidencia(p.codigo)"
             @keydown.space.prevent="abrirEvidencia(p.codigo)"
+            v-tooltip.top="p.detalhe"
           >
             <i class="pi" :class="CRM_ALERTA_ICONES[p.codigo]" aria-hidden="true" />
-            <div>
+            <div class="hist-atencao-texto">
               <strong>{{ p.titulo }}</strong>
-              <span>{{ p.detalhe }}</span>
+              <span class="hist-atencao-detalhe">{{ p.detalhe }}</span>
+              <span v-if="CRM_EVIDENCIA_ABA_DO_PONTO[p.codigo]" class="hist-atencao-ver">Ver evidências <i class="pi pi-arrow-down" aria-hidden="true" /></span>
             </div>
-            <span v-if="CRM_EVIDENCIA_ABA_DO_PONTO[p.codigo]" class="hist-atencao-ver">Ver evidências <i class="pi pi-arrow-down" aria-hidden="true" /></span>
           </li>
         </ul>
         <p v-else class="hist-vazio">Nenhum ponto de atenção no período.</p>
@@ -982,6 +1121,7 @@ const calorOption = computed(() => {
         :data-inicio="dados.periodo_inicio"
         :data-fim="dados.periodo_fim"
         :id-cnpj="dados.id_cnpj_filtro"
+        :id-ibge7="dados.id_ibge7_filtro"
         :cache-version="cacheVersion"
       />
 
@@ -989,34 +1129,35 @@ const calorOption = computed(() => {
       <section class="hist-panel">
         <header class="hist-panel-header">
           <h3>Linha do tempo mensal</h3>
-          <span class="hist-panel-sub">histórico completo{{ filtroAtivo != null ? ' · somente a farmácia filtrada' : '' }}</span>
+          <span class="hist-panel-sub">histórico completo{{ filtroAtivo != null ? ' · somente a farmácia filtrada' : municipioAtivo != null ? ` · somente as farmácias de ${municipioAtivoNome}` : '' }}</span>
         </header>
         <div class="hist-legenda">
           <span v-for="item in legenda" :key="item.nome" class="hist-legenda-item">
             <i class="hist-swatch" :style="{ backgroundColor: item.cor }" aria-hidden="true" />{{ item.nome }}
           </span>
           <span class="hist-legenda-item">
-            <i class="hist-swatch hist-swatch--linha" :style="{ backgroundColor: corTaxa }" aria-hidden="true" />{{ filtroAtivo != null ? 'Taxa diária na farmácia' : 'Taxa diária' }}
+            <i class="hist-swatch hist-swatch--linha" :style="{ backgroundColor: corTaxa }" aria-hidden="true" />Taxa diária{{ recorteSufixo }}
           </span>
           <span class="hist-legenda-item">
             <i class="hist-swatch hist-swatch--tracejada" aria-hidden="true" />P95 nacional do mês
           </span>
           <span class="hist-legenda-item">
-            <i class="hist-swatch hist-swatch--ponto" aria-hidden="true" />{{ filtroAtivo != null ? 'Mês com taxa elevada (total do médico)' : 'Mês com taxa elevada' }}
+            <i class="hist-swatch hist-swatch--ponto" aria-hidden="true" />{{ recorteSufixo ? 'Mês com taxa elevada (total do médico)' : 'Mês com taxa elevada' }}
           </span>
         </div>
         <VChart class="hist-chart" :option="chartOption" autoresize />
       </section>
 
-      <!-- Farmácias -->
-      <section class="hist-panel">
+      <!-- Farmácias: card único (título + tabela até a borda + rodapé), sem card dentro de card. -->
+      <section class="hist-panel hist-panel--tabela">
         <header class="hist-panel-header">
           <h3>Farmácias onde atuou</h3>
-          <span class="hist-panel-sub">período filtrado · clique para abrir o estabelecimento · <i class="pi pi-filter" aria-hidden="true" /> filtra o histórico pela farmácia</span>
+          <span class="hist-panel-sub">período filtrado{{ municipioAtivoNome ? ` · ${municipioAtivoNome}` : '' }} · clique na linha (ou <i class="pi pi-filter" aria-hidden="true" />) para filtrar o histórico pela farmácia · <i class="pi pi-external-link" aria-hidden="true" /> abre o estabelecimento</span>
         </header>
         <p v-if="atuacaoErro" class="hist-atuacao-erro" role="alert">
           <i class="pi pi-exclamation-triangle" aria-hidden="true" />{{ atuacaoErro }}
         </p>
+        <div class="hist-tabela-moldura">
         <div class="hist-tabela-wrap">
           <table class="hist-tabela">
             <colgroup>
@@ -1044,8 +1185,9 @@ const calorOption = computed(() => {
                 :key="f.id_cnpj"
                 :class="{ 'is-filtrada': f.id_cnpj === filtroAtivo }"
                 tabindex="0"
-                @click="abrirFarmacia(f)"
-                @keydown.enter="abrirFarmacia(f)"
+                :aria-label="f.id_cnpj === farmaciaFiltro ? `Remover o filtro de ${nomeFarmacia(f)}` : `Filtrar o histórico por ${nomeFarmacia(f)}`"
+                @click="filtrarFarmacia(f.id_cnpj)"
+                @keydown.enter="filtrarFarmacia(f.id_cnpj)"
               >
                 <td>
                   <span class="hist-farm">
@@ -1057,11 +1199,22 @@ const calorOption = computed(() => {
                     <span class="hist-farm-identidade">
                       <span class="hist-farm-nome">{{ nomeFarmacia(f) }}</span>
                       <span class="hist-farm-cnpj">{{ formatCnpj(f.cnpj ?? '') }}</span>
-                      <i class="pi pi-arrow-up-right hist-farm-abrir" aria-hidden="true" />
                     </span>
+                    <span class="hist-farm-acoes">
                     <button
                       type="button"
-                      class="hist-farm-filtrar"
+                      class="hist-farm-acao"
+                      :disabled="!f.cnpj"
+                      :aria-label="`Abrir o estabelecimento ${nomeFarmacia(f)}`"
+                      v-tooltip.top="'Abrir o estabelecimento'"
+                      @click.stop="abrirFarmacia(f)"
+                      @keydown.enter.stop
+                    >
+                      <i class="pi pi-external-link" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="hist-farm-acao hist-farm-filtrar"
                       :class="{ 'is-ativo': f.id_cnpj === farmaciaFiltro }"
                       :aria-pressed="f.id_cnpj === farmaciaFiltro"
                       :aria-label="f.id_cnpj === farmaciaFiltro ? `Remover filtro de ${nomeFarmacia(f)}` : `Filtrar o histórico por ${nomeFarmacia(f)}`"
@@ -1071,11 +1224,12 @@ const calorOption = computed(() => {
                     >
                       <i class="pi" :class="f.id_cnpj === farmaciaFiltro ? 'pi-filter-slash' : 'pi-filter'" aria-hidden="true" />
                     </button>
+                    </span>
                   </span>
                 </td>
                 <td>
-                  {{ f.municipio ? formatTitleCase(f.municipio) : '—' }}{{ f.uf ? ` / ${f.uf}` : '' }}
-                  <span v-if="f.fora_uf_crm" class="hist-badge">fora da UF do CRM</span>
+                  <span class="hist-local">{{ f.municipio ? formatTitleCase(f.municipio) : '—' }}{{ f.uf ? ` / ${f.uf}` : '' }}</span>
+                  <span v-if="f.fora_uf_crm" class="hist-badge hist-badge--local">fora da UF do CRM</span>
                 </td>
                 <td>{{ f.situacao_rf ?? '—' }}</td>
                 <td>{{ f.conexao_ativa == null ? '—' : f.conexao_ativa ? 'Ativa' : 'Inativa' }}</td>
@@ -1143,19 +1297,19 @@ const calorOption = computed(() => {
                   </button>
                 </td>
               </tr>
-              <tr v-if="!farmacias.length"><td colspan="7" class="hist-vazio">Sem prescrições no período filtrado.</td></tr>
+              <tr v-for="n in farmaciasEmBranco" :key="`branco-${n}`" class="hist-linha-branca" aria-hidden="true"><td colspan="7" /></tr>
             </tbody>
           </table>
+          <p v-if="!farmaciasEscopo.length" class="hist-tabela-vazia">Sem prescrições no período filtrado.</p>
         </div>
-        <!-- enterprise-table: mesmo estilo de paginador da tabela de /estabelecimentos (claro e escuro). -->
-        <div v-if="farmacias.length > FARMACIAS_POR_PAGINA" class="enterprise-table">
-          <Paginator
-            :first="farmaciasInicio"
-            :rows="FARMACIAS_POR_PAGINA"
-            :total-records="farmacias.length"
-            class="hist-paginator"
-            @page="farmaciasInicio = $event.first"
-          />
+        <TableFooter
+          :first="farmaciasInicio"
+          :rows="FARMACIAS_POR_PAGINA"
+          :total-records="farmaciasEscopo.length"
+          :unidade="['farmácia', 'farmácias']"
+          :detalhe="municipioAtivoNome"
+          @page="farmaciasInicio = $event.first"
+        />
         </div>
       </section>
 
@@ -1165,8 +1319,8 @@ const calorOption = computed(() => {
           <h3>Taxa diária por farmácia e mês</h3>
           <span class="hist-panel-sub">
             prescrições ÷ dias com prescrição na farmácia · período filtrado ·
-            {{ calor.linhas.length }} farmácias com mais prescrições{{ calor.omitidas ? ` (mais ${calor.omitidas} na tabela)` : '' }}
-            · escala do próprio médico
+            {{ calor.linhas.length }} farmácias com mais prescrições{{ municipioAtivo != null ? ' no município' : '' }}{{ calor.omitidas ? ` (mais ${calor.omitidas} na tabela)` : '' }}
+            · escala do próprio médico{{ calor.linhaFiltrada >= 0 ? ' · farmácia filtrada em destaque' : '' }}
           </span>
         </header>
         <VChart class="hist-calor" :style="{ height: calorAltura }" :option="calorOption" autoresize />
@@ -1258,8 +1412,13 @@ const calorOption = computed(() => {
 .hist-filtro { display: flex; flex-direction: column; gap: .2rem; font-size: .62rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
 .hist-filtro-campo { min-width: 13rem; font-size: .76rem; }
 .hist-filtro--farmacia .hist-filtro-campo { width: min(28rem, 60vw); }
+.hist-filtro--municipio .hist-filtro-campo { width: 16rem; }
 .hist-filtro-campo :deep(.p-dropdown-label) { padding: .4rem .6rem; font-size: .76rem; }
 .hist-filtros > .hist-info { margin-bottom: .55rem; }
+/* Filtro aplicado: rótulo e campo na cor primária (fica assim mesmo sem foco).
+   !important e .p-dropdown no seletor: as regras globais de dropdown do AppLayout usam !important. */
+.hist-filtro.is-ativo > span { color: var(--primary-color); }
+.hist-filtro.is-ativo .hist-filtro-campo.p-dropdown { border-color: var(--primary-color) !important; background: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg)) !important; }
 .hist-filtro-status { display: inline-flex; align-items: center; gap: .35rem; margin-bottom: .5rem; font-size: .72rem; color: var(--text-muted); }
 .hist-filtro-status--erro { color: var(--risk-critical); }
 .hist-body.is-atualizando { opacity: .55; pointer-events: none; transition: opacity .15s ease; }
@@ -1281,19 +1440,28 @@ const calorOption = computed(() => {
 
 .hist-panel { display: flex; flex-direction: column; gap: .6rem; padding: .85rem 1rem; border: 1px solid var(--card-border); border-radius: 10px; }
 .hist-panel-header { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+/* Card cuja única peça é a tabela: ela ocupa o card inteiro, sem moldura própria. */
+.hist-panel--tabela { gap: 0; padding: 0; overflow: hidden; }
+.hist-panel--tabela > .hist-panel-header { align-items: center; padding: .6rem .7rem; }
+.hist-panel--tabela > .hist-atuacao-erro { padding: 0 .7rem .6rem; }
+.hist-panel--tabela > .hist-tabela-moldura { border: 0; border-top: 1px solid var(--tabs-border); border-radius: 0; }
 .hist-panel-header h3 { margin: 0; font-size: .82rem; font-weight: 600; color: var(--text-color); }
 .hist-panel-sub { font-size: .7rem; color: var(--text-muted); }
+.hist-panel-sub .pi { font-size: .68rem; vertical-align: baseline; }
 .hist-vazio { margin: 0; font-size: .76rem; color: var(--text-muted); }
 
-.hist-atencao { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; margin: 0; padding: 0; list-style: none; }
-.hist-atencao li { display: flex; gap: .6rem; padding: .55rem .7rem; border-radius: 8px; background: color-mix(in srgb, var(--risk-critical) 7%, transparent); }
+/* Três cartões por linha, todos da mesma altura: título em uma linha, detalhe em
+   até duas (o texto inteiro fica no tooltip) e "Ver evidências" sempre no rodapé. */
+.hist-atencao { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; margin: 0; padding: 0; list-style: none; }
+.hist-atencao li { display: flex; gap: .6rem; box-sizing: border-box; height: 5.6rem; padding: .55rem .7rem; border-radius: 8px; background: color-mix(in srgb, var(--risk-critical) 7%, transparent); overflow: hidden; }
 .hist-atencao li > i { margin-top: .12rem; color: var(--risk-critical); }
-.hist-atencao strong { display: block; font-size: .76rem; font-weight: 600; color: var(--text-color); }
-.hist-atencao span { font-size: .72rem; color: var(--text-secondary); }
-.hist-atencao li.is-evidencia { position: relative; cursor: pointer; transition: background .15s ease, box-shadow .15s ease; }
+.hist-atencao-texto { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.hist-atencao strong { display: block; font-size: .76rem; font-weight: 600; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-atencao-detalhe { margin-top: .1rem; font-size: .72rem; line-height: 1.4; color: var(--text-secondary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.hist-atencao li.is-evidencia { cursor: pointer; transition: background .15s ease, box-shadow .15s ease; }
 .hist-atencao li.is-evidencia:hover,
 .hist-atencao li.is-evidencia:focus-visible { background: color-mix(in srgb, var(--risk-critical) 11%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--risk-critical) 30%, transparent); outline: none; }
-.hist-atencao .hist-atencao-ver { display: inline-flex; align-items: center; gap: .25rem; margin-left: auto; align-self: center; white-space: nowrap; font-size: .66rem; font-weight: 600; color: var(--primary-color); opacity: .75; }
+.hist-atencao .hist-atencao-ver { display: inline-flex; align-items: center; gap: .25rem; margin-top: auto; align-self: flex-end; white-space: nowrap; font-size: .66rem; font-weight: 600; color: var(--primary-color); opacity: .75; }
 .hist-atencao li.is-evidencia:hover .hist-atencao-ver { opacity: 1; }
 .hist-atencao .hist-atencao-ver .pi { font-size: .6rem; }
 
@@ -1320,8 +1488,9 @@ const calorOption = computed(() => {
 .hist-calor-slider:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 3px; border-radius: 5px; }
 .hist-calor-controle-limites { display: flex; justify-content: space-between; gap: 1rem; color: var(--text-muted); font-size: .7rem; font-variant-numeric: tabular-nums; }
 
-.hist-tabela-wrap { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--tabs-border); border-radius: 8px; }
-.hist-paginator { font-size: .74rem; }
+.hist-tabela-moldura { border: 1px solid var(--tabs-border); border-radius: 8px; overflow: hidden; }
+.hist-tabela-wrap { position: relative; overflow-x: auto; overflow-y: hidden; }
+.hist-tabela-vazia { position: absolute; inset: 2.1rem 0 0 0; display: flex; align-items: center; justify-content: center; margin: 0; font-size: .76rem; color: var(--text-muted); pointer-events: none; }
 .hist-tabela { width: 100%; min-width: 75.5rem; table-layout: fixed; border-collapse: collapse; font-size: .74rem; color: var(--text-color-85); }
 .hist-tabela .c-nome { width: 20rem; }
 .hist-tabela .c-local { width: 10rem; }
@@ -1333,24 +1502,29 @@ const calorOption = computed(() => {
 .hist-tabela th:nth-child(5), .hist-tabela th:nth-child(6) { text-align: right; }
 .hist-tabela th .hist-info { margin-left: .2rem; font-size: .66rem; vertical-align: middle; }
 .hist-atuacao-erro { display: flex; align-items: center; gap: .4rem; margin: 0; font-size: .74rem; color: var(--risk-critical); }
-.hist-tabela td { padding: .7rem .7rem; border-top: 1px solid color-mix(in srgb, var(--tabs-border) 65%, transparent); vertical-align: middle; overflow-wrap: anywhere; }
+.hist-tabela tbody tr { height: 5rem; }
+.hist-tabela td { padding: 0 .7rem; overflow: hidden; border-top: 1px solid color-mix(in srgb, var(--tabs-border) 65%, transparent); vertical-align: middle; overflow-wrap: anywhere; }
 .hist-tabela td.num { text-align: right; }
 .hist-tabela tbody tr { cursor: pointer; transition: background-color .15s ease; }
+.hist-tabela tbody tr.hist-linha-branca { cursor: default; }
+.hist-tabela tbody tr.hist-linha-branca td { border-top-color: transparent; }
+.hist-local { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-badge--local { margin: .25rem 0 0; }
 .hist-tabela tbody tr.is-filtrada { background: color-mix(in srgb, var(--primary-color) 9%, var(--card-bg)); box-shadow: inset 3px 0 0 var(--primary-color); }
-.hist-farm-filtrar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 26px; height: 26px; margin-left: auto; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; opacity: .55; transition: opacity .15s ease, border-color .15s ease, color .15s ease; }
-.hist-farm-filtrar .pi { font-size: .72rem; }
-.hist-tabela tbody tr:hover .hist-farm-filtrar, .hist-farm-filtrar:focus-visible { opacity: 1; }
-.hist-farm-filtrar:hover, .hist-farm-filtrar:focus-visible { border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); color: var(--primary-color); outline: none; }
+.hist-farm-acoes { display: inline-flex; gap: .15rem; flex-shrink: 0; margin-left: auto; }
+.hist-farm-acao { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; opacity: .6; transition: opacity .15s ease, border-color .15s ease, color .15s ease; }
+.hist-farm-acao .pi { font-size: .74rem; }
+.hist-tabela tbody tr:hover .hist-farm-acao, .hist-farm-acao:focus-visible { opacity: 1; }
+.hist-farm-acao:hover:not(:disabled), .hist-farm-acao:focus-visible { border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); color: var(--primary-color); outline: none; }
+.hist-farm-acao:disabled { opacity: .3; cursor: default; }
 .hist-farm-filtrar.is-ativo { opacity: 1; color: var(--primary-color); border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
-.hist-tabela tbody tr:hover, .hist-tabela tbody tr:focus-visible { background: var(--table-hover); outline: none; }
+.hist-tabela tbody tr:not(.hist-linha-branca):hover, .hist-tabela tbody tr:focus-visible { background: var(--table-hover); outline: none; }
 .hist-farm { display: flex; align-items: flex-start; gap: .5rem; }
 .hist-farm .hist-swatch { margin-top: .24rem; }
-.hist-farm-identidade { display: block; position: relative; min-width: 0; padding-right: .9rem; }
+.hist-farm-identidade { display: block; min-width: 0; }
 .hist-farm-nome, .hist-farm-cnpj { display: block; }
-.hist-farm-nome { color: var(--text-color); font-size: .78rem; font-weight: 600; line-height: 1.35; }
+.hist-farm-nome { color: var(--text-color); font-size: .78rem; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .hist-farm-cnpj { margin-top: .14rem; color: var(--text-muted); font-size: .63rem; font-variant-numeric: tabular-nums; line-height: 1.2; }
-.hist-farm-abrir { position: absolute; top: .2rem; right: 0; color: var(--primary-color); font-size: .58rem; opacity: 0; transform: translate(-2px, 2px); transition: opacity .15s ease, transform .15s ease; }
-.hist-tabela tbody tr:hover .hist-farm-abrir, .hist-tabela tbody tr:focus-visible .hist-farm-abrir { opacity: 1; transform: none; }
 .hist-numero { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hist-participacao-trilha { display: block; width: 100%; height: 3px; margin-top: .32rem; border-radius: 2px; background: color-mix(in srgb, var(--text-color) 9%, transparent); overflow: hidden; }
 .hist-participacao-barra { display: block; height: 100%; border-radius: inherit; }

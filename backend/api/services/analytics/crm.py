@@ -50,7 +50,6 @@ from ...schemas.analytics import (
     RegionalResponse,
     RegionalAnimationQuarterSchema,
     RegionalAnimationResponse,
-    CrmMedicoAlertasResponse,
     CrmMedicoAtuacaoResponse,
     PrescritoresResponse,
     DadosFarmaciaSchema,
@@ -266,35 +265,6 @@ def _build_crm_unico_alertas_por_medico(df_ad: pl.DataFrame) -> dict[str, list[d
             "id_severidade":  _to_int(row.get("id_severidade")),
         })
     return alertas_por_medico
-
-
-def _build_alertas_geograficos_por_medico(df_geo: pl.DataFrame) -> dict[str, list[dict]]:
-    alertas_geo_por_medico: dict[str, list[dict]] = {}
-    if df_geo is None or df_geo.is_empty():
-        return alertas_geo_por_medico
-
-    for row in df_geo.iter_rows(named=True):
-        mid = str(row["id_medico"])
-        alertas_geo_por_medico.setdefault(mid, []).append({
-            "competencia":    row["competencia"],
-            "cnpj_a":         row["cnpj_a"],
-            "municipio_a":    row["no_municipio_a"],
-            "uf_a":           row["sg_uf_a"],
-            "dt_ini_a":       str(row["dt_ini_a"]),
-            "dt_fim_a":       str(row["dt_fim_a"]),
-            "nu_presc_a":     row["nu_prescricoes_a"],
-            "vl_autorizacoes_a": _to_float(row.get("vl_autorizacoes_a")),
-            "cnpj_b":         row["cnpj_b"],
-            "municipio_b":    row["no_municipio_b"],
-            "uf_b":           row["sg_uf_b"],
-            "dt_ini_b":       str(row["dt_ini_b"]),
-            "dt_fim_b":       str(row["dt_fim_b"]),
-            "nu_presc_b":     row["nu_prescricoes_b"],
-            "vl_autorizacoes_b": _to_float(row.get("vl_autorizacoes_b")),
-            "vl_autorizacoes_total": _to_float(row.get("vl_autorizacoes_total")),
-            "distancia_km":   _to_float(row.get("distancia_km")),
-        })
-    return alertas_geo_por_medico
 
 
 def _build_alertas_crm_multiplos_por_medico(
@@ -1072,51 +1042,6 @@ def get_crm_medico_atuacao(
         serie_mensal_farmacia=serie,
     )
 
-
-def get_crm_medico_alertas(
-    cnpj: str,
-    id_medico: str,
-    data_inicio: str | None = None,
-    data_fim: str | None = None,
-) -> CrmMedicoAlertasResponse:
-    """Retorna os alertas detalhados de um CRM especifico, sob demanda."""
-    if not id_medico:
-        raise HTTPException(status_code=400, detail="id_medico obrigatorio para consulta de alertas CRM.")
-
-    cnpj_dir = _get_cnpj_cache_dir(cnpj)
-    comp_ini = _to_comp(data_inicio) if data_inicio else None
-    comp_fim = _to_comp(data_fim) if data_fim else None
-    medico_key = id_medico
-
-    df_ad = _load_crm_unico_alertas(cnpj, cnpj_dir)
-    df_ad = _filter_competencia(df_ad, comp_ini, comp_fim)
-    alertas_unico = _build_crm_unico_alertas_por_medico(df_ad).get(medico_key, [])
-
-    geo_result = load_or_sync_geografico(cnpj)
-    if geo_result.error:
-        _raise_cache_unavailable("Alertas geograficos CRM", geo_result.error)
-    df_geo = geo_result.df if geo_result.df is not None else pl.DataFrame()
-    df_geo = _filter_competencia(df_geo, comp_ini, comp_fim)
-    alertas_geograficos = _build_alertas_geograficos_por_medico(df_geo).get(medico_key, [])
-
-    df_cm = _load_crm_multi_alertas(cnpj, cnpj_dir)
-    raio_x_result = sync_crm_raiox_tx(cnpj)
-    if raio_x_result.error:
-        _raise_cache_unavailable("Raio-X CRM", raio_x_result.error)
-    alertas_multiplos = _build_alertas_crm_multiplos_por_medico(
-        cnpj_dir,
-        df_cm,
-        comp_ini,
-        comp_fim,
-    ).get(medico_key, [])
-
-    return CrmMedicoAlertasResponse(
-        cnpj=cnpj,
-        id_medico=medico_key,
-        alertas_crm_unico=alertas_unico,
-        alertas_geograficos=alertas_geograficos,
-        alertas_crm_multiplos=alertas_multiplos,
-    )
 
 _CRM_UNICO_RHYTHM_WINDOWS = (5, 10, 15, 20, 25, 30, 60)
 _CRM_MULTIPLO_RHYTHM_WINDOWS = (5, 10, 15, 20, 25, 30, 60)

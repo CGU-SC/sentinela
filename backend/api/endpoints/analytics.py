@@ -12,7 +12,7 @@ from ..schemas.analytics import (
     PrescritoresResponse, DadosFarmaciaSchema, CnpjAccessStatusSchema, MovimentacaoResponse, IndicadorAnaliseResponse,
     IndicadorCnpjPageResponse,
     PercentilesAnimationResponse, CrmTimelineDatasetResponse,
-    CrmMedicoAlertasResponse, CrmMedicoAtuacaoResponse, CrmRaioXResponse,
+    CrmMedicoAtuacaoResponse, CrmRaioXResponse,
     EvolucaoMensalGtinResponse, GtinDetalhamentoMensalResponse, RepassesResponse,
     SociosResponse, IntegrityAlertsResponse, NetworkResponse,
     CnpjBootstrapResponse,
@@ -259,6 +259,7 @@ def get_crm_medico_evidencias(
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
     id_cnpj: Optional[int] = Query(None, description="Filtra as evidencias por uma farmacia (id_cnpj)."),
+    id_ibge7: Optional[int] = Query(None, description="Filtra pelas farmacias de um municipio (id_ibge7)."),
     severidade: Optional[int] = Query(None, description="So sequencias desta severidade: 1 alta, 2 grave, 3 critica, 4 extrema."),
     sort_field: Optional[str] = Query(None, description="unico/multiplos: data, severidade, taxa_hora, autorizacoes; distancia: distancia, data."),
     sort_order: Literal["asc", "desc"] = Query("desc"),
@@ -268,7 +269,7 @@ def get_crm_medico_evidencias(
     """Evidencias do CRM em todas as farmacias: sequencias (unico e multiplos CRMs) e farmacias distantes."""
     return AnalyticsService.get_crm_medico_evidencias(
         id_medico=id_medico, tipo=tipo, data_inicio=data_inicio, data_fim=data_fim, id_cnpj=id_cnpj,
-        severidade=severidade, sort_field=sort_field, sort_order=sort_order, page=page, page_size=page_size,
+        id_ibge7=id_ibge7, severidade=severidade, sort_field=sort_field, sort_order=sort_order, page=page, page_size=page_size,
     )
 
 
@@ -289,9 +290,10 @@ def export_crm_medico_evidencias(
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
     id_cnpj: Optional[int] = Query(None, description="Filtra as evidencias por uma farmacia (id_cnpj)."),
+    id_ibge7: Optional[int] = Query(None, description="Filtra pelas farmacias de um municipio (id_ibge7)."),
 ):
     """Baixa as tres evidencias do CRM no periodo em Excel (uma aba por evidencia)."""
-    filename, content = AnalyticsService.export_crm_medico_evidencias_xlsx(id_medico, data_inicio, data_fim, id_cnpj)
+    filename, content = AnalyticsService.export_crm_medico_evidencias_xlsx(id_medico, data_inicio, data_fim, id_cnpj, id_ibge7)
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -305,6 +307,7 @@ def get_crm_medico_historico(
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
     id_cnpj: Optional[int] = Query(None, description="Filtra o historico por uma farmacia (id_cnpj)."),
+    id_ibge7: Optional[int] = Query(None, description="Filtra o historico pelas farmacias de um municipio (id_ibge7)."),
 ):
     """Historico completo de um CRM: meses, farmacias e pontos de atencao."""
     return AnalyticsService.get_crm_medico_historico(
@@ -312,6 +315,7 @@ def get_crm_medico_historico(
         data_inicio=data_inicio,
         data_fim=data_fim,
         id_cnpj=id_cnpj,
+        id_ibge7=id_ibge7,
     )
 
 
@@ -760,16 +764,6 @@ def get_crm_data_endpoint(
     """Retorna KPIs e top prescritores (CRMs) de um CNPJ, com filtro opcional de período."""
     return AnalyticsService.get_crm_data(cnpj, data_inicio=data_inicio, data_fim=data_fim)
 
-
-@router.get("/cnpj/{cnpj}/crm/medico-alertas/{id_medico:path}", response_model=CrmMedicoAlertasResponse)
-def get_crm_medico_alertas(
-    cnpj: str,
-    id_medico: str,
-    data_inicio: Optional[str] = Query(None, description="Início do período (YYYY-MM)"),
-    data_fim:    Optional[str] = Query(None, description="Fim do período (YYYY-MM)"),
-):
-    """Retorna alertas detalhados de um CRM especifico sob demanda."""
-    return AnalyticsService.get_crm_medico_alertas(cnpj, id_medico, data_inicio=data_inicio, data_fim=data_fim)
 
 @router.get("/cnpj/{cnpj}/crm/medico-atuacao/{id_medico:path}", response_model=CrmMedicoAtuacaoResponse)
 def get_crm_medico_atuacao(

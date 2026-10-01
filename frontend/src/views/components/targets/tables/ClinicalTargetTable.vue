@@ -10,6 +10,7 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
+import TableFooter from '@/views/components/common/TableFooter.vue';
 
 const props = defineProps({
   targetMeta: { type: Object, required: true },
@@ -114,7 +115,7 @@ function openIncompatibilityDialog(event, cnpj) {
     <DataTable
       :value="tableSnapshot.rows"
       size="small"
-      class="enterprise-table target-table ind-cnpj-table clickable-rows"
+      class="enterprise-table com-rodape target-table ind-cnpj-table clickable-rows"
       lazy
       paginator
       :first="tableSnapshot.first"
@@ -233,6 +234,15 @@ function openIncompatibilityDialog(event, cnpj) {
         <div class="target-table-empty">
           {{ sourceNotice || 'Nenhuma farmácia encontrada para o alvo selecionado.' }}
         </div>
+      </template>
+      <template #footer>
+        <TableFooter
+          :first="tableSnapshot.first"
+          :rows="tableSnapshot.rowsPerPage"
+          :total-records="tableSnapshot.totalRecords"
+          :unidade="['estabelecimento', 'estabelecimentos']"
+          @page="emit('lazy-load', $event)"
+        />
       </template>
     </DataTable>
   </section>

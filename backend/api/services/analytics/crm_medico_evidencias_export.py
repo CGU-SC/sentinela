@@ -13,7 +13,7 @@ import xlsxwriter
 
 from .crm_analysis import _period_bounds
 from .crm_export import _format_cnpj, _formats, _setup_page, _title_case, _write_total_row
-from .crm_medico_evidencias import evidencias_do_medico, nome_do_medico
+from .crm_medico_evidencias import _cadastro, evidencias_do_medico, nome_do_medico, nome_do_municipio
 
 SEVERIDADE_ROTULO = {1: "Alta", 2: "Grave", 3: "Crítica", 4: "Extrema"}
 _LINHA_TABELA = 7  # cabecalho da planilha nas linhas 0 a 5, tabela a partir da 7
@@ -73,20 +73,22 @@ def export_crm_medico_evidencias_xlsx(
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
     id_cnpj: Optional[int] = None,
+    id_ibge7: Optional[int] = None,
 ) -> tuple[str, bytes]:
-    """Pasta de trabalho com as tres evidencias do CRM no periodo (e farmacia)."""
+    """Pasta de trabalho com as tres evidencias do CRM no periodo (e farmacia ou municipio)."""
     id_medico = id_medico.strip()
     inicio, fim = _period_bounds(data_inicio, data_fim)
-    ev = evidencias_do_medico(id_medico, inicio, fim, id_cnpj)
+    ev = evidencias_do_medico(id_medico, inicio, fim, id_cnpj, id_ibge7)
     nome = nome_do_medico(id_medico)
     medico = f"{_title_case(nome) if nome else 'Médico não localizado no CFM'}  ·  CRM {id_medico}"
-    if id_cnpj is None:
-        filtro = "Todas as farmácias do médico"
+    if id_cnpj is not None:
+        farmacia = _cadastro([id_cnpj]).row(0, named=True)
+        filtro = f"Farmácia: {farmacia['razao_social']} · CNPJ {_format_cnpj(farmacia['cnpj'])}"
+    elif id_ibge7 is not None:
+        municipio, uf = nome_do_municipio(id_ibge7)
+        filtro = f"Farmácias do município: {_title_case(municipio)}/{uf}"
     else:
-        cad = ev.unico.vstack(ev.multiplos.select(ev.unico.columns)) if ev.multiplos.height else ev.unico
-        linha = cad.filter(pl.col("id_cnpj") == id_cnpj).head(1)
-        filtro = (f"Farmácia: {linha.item(0, 'razao_social')} · CNPJ {_format_cnpj(linha.item(0, 'cnpj'))}"
-                  if linha.height else f"Farmácia filtrada (id {id_cnpj})")
+        filtro = "Todas as farmácias do médico"
     gerado_em = datetime.now()
 
     buffer = io.BytesIO()

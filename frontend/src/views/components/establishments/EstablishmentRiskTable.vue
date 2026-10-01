@@ -22,6 +22,7 @@ import ClinicalIncompatibilityDialog from '@/views/components/cnpj/ClinicalIncom
 import ObservationDialog from '@/views/components/cnpj/ObservationDialog.vue';
 import { createCnpjPerfSession, logCnpjPerf } from '@/utils/cnpjPerfLogger';
 import { establishmentTableTooltip, establishmentRiskTooltip } from '@/config/establishmentTableTooltipConfig';
+import TableFooter from '@/views/components/common/TableFooter.vue';
 
 const props = defineProps({
   /** Array de IndicadorCnpjRowSchema */
@@ -453,7 +454,7 @@ const indicatorColumnHeader = computed(() => {
       :sortField="tableSnapshot.sortField"
       :sortOrder="tableSnapshot.sortOrder"
       :pt="dataTablePt"
-      class="enterprise-table ind-cnpj-table clickable-rows"
+      class="enterprise-table com-rodape ind-cnpj-table clickable-rows"
       @page="onLazyLoad"
       @sort="onLazyLoad"
       @row-click="goToDetail"
@@ -728,6 +729,15 @@ const indicatorColumnHeader = computed(() => {
         </template>
       </Column>
 
+      <template #footer>
+        <TableFooter
+          :first="tableSnapshot.first"
+          :rows="tableSnapshot.rows"
+          :total-records="tableSnapshot.totalRecords"
+          :unidade="['estabelecimento', 'estabelecimentos']"
+          @page="onLazyLoad"
+        />
+      </template>
     </DataTable>
     </div>
 

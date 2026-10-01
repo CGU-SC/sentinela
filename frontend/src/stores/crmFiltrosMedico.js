@@ -1,9 +1,7 @@
 import { defineStore } from 'pinia';
 import {
-  CRM_ANTES_INSCRICAO_CHIP,
   CRM_FAIXAS,
   CRM_SEQUENCIA_SEVERIDADES,
-  CRM_SITUACAO_CFM_CHIP,
   CRM_SITUACAO_CFM_OPCOES,
   CRM_UFS,
 } from '@/config/crmFiltrosMedico';
@@ -21,15 +19,6 @@ export function formatarValorFaixa(tipo, valor) {
   const config = CRM_FAIXAS[tipo];
   if (!config) throw new Error(`Faixa de filtro de médico desconhecida: ${tipo}`);
   return `${formatarNumero(valor, config.casas)}${config.sufixo}`;
-}
-
-/** Rótulo do chip de uma faixa: "Taxa/dia ≥ 30", "Exclusividade ≥ 80%"... */
-function rotuloFaixa(tipo, config, { min, max }) {
-  const fmt = (valor) => formatarValorFaixa(tipo, valor);
-  if (min !== null && min === max) return `${config.chip} = ${fmt(min)}`;
-  if (min !== null && max !== null) return `${config.chip} ${fmt(min)}–${fmt(max)}`;
-  if (min !== null) return `${config.chip} ≥ ${fmt(min)}`;
-  return `${config.chip} ≤ ${fmt(max)}`;
 }
 
 function faixaAtiva(faixa) {
@@ -55,7 +44,7 @@ export function validarFaixa(tipo, { min, max }) {
 }
 
 /**
- * Filtros de médico de /analises (grupos "Cadastro CFM", "Produção" e "Atuação nas farmácias").
+ * Filtros de médico de /analises (grupos "Cadastro CFM", "Produção e atuação" e "Autorizações em sequência").
  * Valem só durante a sessão (não são persistidos) e entram nos parâmetros do
  * mapa, do ranking e da aba "Por mês" (ver buildCrmAnalysisParams).
  */
@@ -90,27 +79,16 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
       }
       return params;
     },
+    /** Quantos filtros estão ligados (a lista de UFs conta como um filtro). */
     qtdAtivos: (state) => (
       (state.situacaoCfm ? 1 : 0)
-      + state.ufsCrm.length
+      + (state.ufsCrm.length ? 1 : 0)
       + (state.antesInscricao ? 1 : 0)
       + (state.sequenciaSeveridadeMin !== null ? 1 : 0)
       + Object.values(state.faixas).filter(faixaAtiva).length
     ),
     /** Médicos não localizados não têm data de inscrição no CFM. */
     antesInscricaoDisponivel: (state) => state.situacaoCfm !== 'nao_localizado',
-    /** Chips dos filtros ativos, na ordem do painel. */
-    chips: (state) => [
-      ...(state.situacaoCfm ? [{ key: 'situacao', label: CRM_SITUACAO_CFM_CHIP[state.situacaoCfm] }] : []),
-      ...[...state.ufsCrm].sort().map((uf) => ({ key: `uf:${uf}`, label: `CRM ${uf}` })),
-      ...(state.antesInscricao ? [{ key: 'antes', label: CRM_ANTES_INSCRICAO_CHIP }] : []),
-      ...(state.sequenciaSeveridadeMin !== null
-        ? [{ key: 'sequencia', label: SEVERIDADES.get(state.sequenciaSeveridadeMin).chip }]
-        : []),
-      ...Object.entries(CRM_FAIXAS)
-        .filter(([tipo]) => faixaAtiva(state.faixas[tipo]))
-        .map(([tipo, config]) => ({ key: `faixa:${tipo}`, label: rotuloFaixa(tipo, config, state.faixas[tipo]) })),
-    ],
   },
 
   actions: {
@@ -144,13 +122,9 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
       if (atual.min === faixa.min && atual.max === faixa.max) return;
       this.faixas = { ...this.faixas, [tipo]: { min: faixa.min, max: faixa.max } };
     },
-    removerChip(key) {
-      if (key === 'situacao') this.situacaoCfm = null;
-      else if (key === 'antes') this.antesInscricao = false;
-      else if (key === 'sequencia') this.sequenciaSeveridadeMin = null;
-      else if (key.startsWith('uf:')) this.ufsCrm = this.ufsCrm.filter((uf) => `uf:${uf}` !== key);
-      else if (key.startsWith('faixa:') && CRM_FAIXAS[key.slice(6)]) this.setFaixa(key.slice(6), { ...FAIXA_VAZIA });
-      else throw new Error(`Chip de filtro de médico desconhecido: ${key}`);
+    /** Volta uma faixa ao padrão (sem limites). */
+    limparFaixa(tipo) {
+      this.setFaixa(tipo, { ...FAIXA_VAZIA });
     },
     limpar() {
       this.situacaoCfm = null;
