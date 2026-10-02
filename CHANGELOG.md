@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.4] - 2026-10-02
+
+### Alterado
+- **Botão de abrir e fechar os painéis de filtros.** As duas barras laterais (filtros e Análises) ganharam um botão de seta no cabeçalho para fechar o painel. Fechado, o painel vira uma faixa estreita com a seta para reabrir. Atalhos: Ctrl+B (filtros) e Ctrl+Alt+B (Análises). As alças flutuantes foram removidas e o cadeado da barra de filtros passou para o cabeçalho.
+- **Largura das barras e espaçamento.** A barra de filtros tem 260px e os painéis laterais de Análises, Municípios e Estabelecimentos têm 250px. O espaço entre as barras e os cards passou a ser de 1rem, o mesmo usado entre os cards.
+- **Farmácias Monitoradas.** Nome fantasia abaixo da razão social, município em linha própria, coluna "Adicionada em" e valor sem comprovação acompanhado do percentual.
+
+### Corrigido
+- **Fechamento da barra de filtros.** Os campos não se espremem nem se reorganizam mais durante a animação.
+
 ## [2.0.3] - 2026-10-02
 
 ### Adicionado
