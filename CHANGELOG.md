@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.5] - 2026-10-02
+
+### Adicionado
+- **Médicos do Programa Mais Médicos na análise de CRMs.** Médicos fora do cadastro do CFM que constam na lista de ativos do Mais Médicos passam a aparecer com o nome e o selo "Mais Médicos · perfil"; o tooltip mostra a nacionalidade e a data da lista. Intercambistas aparecem com o registro do Ministério da Saúde (RMS) no lugar do CRM. Vale para o ranking, a aba "Por mês" e o histórico do CRM.
+- **Módulo de médicos do Mais Médicos.** Baixado da API de Dados Abertos do SUS pelo item 56 do `sincronizar_cache`, sem consulta ao banco.
+
+### Alterado
+- **Rodapé das tabelas maior.** Botões, textos e o seletor de linhas da paginação ficaram maiores em todas as tabelas.
+- **Títulos dos filtros mais legíveis.** Os títulos dos filtros das barras laterais passaram a usar o mesmo tom do texto principal.
+- **Status operacional completo.** Os módulos da análise de CRMs e o do Mais Médicos passam a ser verificados na inicialização e a aparecer no status; se algum faltar, o sistema avisa que o cache está incompleto.
+
+### Corrigido
+- **Filtro de região de saúde.** Ao trocar a região, o município selecionado que não pertence a ela é limpo.
+- **Versão exibida na tela inicial.** A tela inicial deixa de falhar ao montar o rótulo da versão.
+- **Destaque da busca.** O texto destacado preserva os espaços do nome pesquisado.
+
 ## [2.0.4] - 2026-10-02
 
 ### Alterado
