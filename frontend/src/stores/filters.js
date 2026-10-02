@@ -585,6 +585,15 @@ export const useFilterStore = defineStore('filters', () => {
       return;
     }
     if (geoStore.localidades.length > 0) {
+      if (selectedMunicipio.value !== FILTER_ALL_VALUE) {
+        const municipioSelecionado = geoStore.localidades.find(l =>
+          String(l.id_ibge7) === String(selectedMunicipio.value)
+        );
+        if (municipioSelecionado && String(municipioSelecionado.id_regiao_saude) !== String(newRegiao)) {
+          selectedMunicipio.value = FILTER_ALL_VALUE;
+        }
+      }
+
       const found = geoStore.localidades.find(l =>
         String(l.id_regiao_saude) === String(newRegiao) &&
         (selectedUF.value === FILTER_ALL_VALUE || l.sg_uf === selectedUF.value)

@@ -6,7 +6,7 @@ import OverlayPanel from 'primevue/overlaypanel';
 import { useFormatting } from '@/composables/useFormatting';
 import { useFrozenData } from '@/composables/useFrozenData';
 import {
-  analysisTooltip, crmAlturaAtuacao, CRM_LINHA_TEMPO_TETO_P95, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, crmMedicoNomeTooltip } from '@/config/analysisTooltipConfig';
+  analysisTooltip, crmAlturaAtuacao, CRM_LINHA_TEMPO_TETO_P95, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, CRM_MAIS_MEDICOS_ICONE, crmMaisMedicosTooltip, maisMedicosPerfilRotulo, siglaRegistroMedico, crmMedicoNomeTooltip } from '@/config/analysisTooltipConfig';
 import { DATA_NEUTRAL, CRM_ALERTA_BADGE_TONS } from '@/config/colors';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
 import { CRM_RANKING_PAGE_SIZE_OPTIONS, CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
@@ -205,9 +205,10 @@ function formatPercent(value) {
 // "800 sc" ou "CRM-SC 800" destacam "800/SC" na linha do CRM.
 const destaque = computed(() => destaqueBuscaMedico(props.appliedQuery));
 const naoLocalizadoIcone = CRM_NAO_LOCALIZADO_ICONE;
+const maisMedicosIcone = CRM_MAIS_MEDICOS_ICONE;
 
 function doctorLabel(row) {
-  if (!row.localizado_cfm) return 'Não localizado no CFM';
+  if (!row.localizado_cfm) return row.mais_medicos ? formatTitleCase(row.mais_medicos.no_medico) : 'Não localizado no CFM';
   if (!row.no_medico) throw new Error(`Contrato inválido: médico ${row.id_medico} localizado no CFM sem nome.`);
   return formatTitleCase(row.no_medico);
 }
@@ -240,8 +241,9 @@ function nomeTooltip(row) {
 }
 
 function crmLabel(row) {
-  if (row.nu_crm == null) return `CRM ${row.id_medico}`;
-  return `CRM ${row.nu_crm}${row.sg_uf ? `/${row.sg_uf}` : ''}`;
+  const sigla = siglaRegistroMedico(row);
+  if (row.nu_crm == null) return `${sigla} ${row.id_medico}`;
+  return `${sigla} ${row.nu_crm}${row.sg_uf ? `/${row.sg_uf}` : ''}`;
 }
 
 function onRowClick(event) {
@@ -491,7 +493,7 @@ const subtitulo = computed(() => {
           <template #body="{ data }">
             <div class="doctor-cell">
               <div class="doctor-ident">
-                <span v-if="!data.localizado_cfm" class="doctor-nao-localizado">
+                <span v-if="!data.localizado_cfm && !data.mais_medicos" class="doctor-nao-localizado">
                   <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
                 </span>
                 <span
@@ -500,7 +502,11 @@ const subtitulo = computed(() => {
                   :data-medico="data.id_medico"
                   v-tooltip.top="nomeTooltip(data)"
                 ><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
-                <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
+                <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /><span
+                  v-if="data.mais_medicos"
+                  class="doctor-mais-medicos"
+                  v-tooltip.top="crmMaisMedicosTooltip(data.mais_medicos)"
+                ><i :class="['pi', maisMedicosIcone]" aria-hidden="true" />Mais Médicos · {{ maisMedicosPerfilRotulo(data.mais_medicos.tp_perfil) }}</span></span>
               </div>
               <CrmMedicoFixar :id-medico="data.id_medico" :nome="doctorLabel(data)" :crm="crmLabel(data)" />
             </div>
@@ -649,6 +655,9 @@ const subtitulo = computed(() => {
 /* CRM fora do cadastro do CFM: selo no lugar do nome (também na aba "Por mês"). */
 .crm-ranking-panel :deep(.doctor-nao-localizado) { display: inline-flex; align-items: center; gap: .3rem; max-width: 100%; padding: .12rem .45rem; border-radius: 5px; background: color-mix(in srgb, var(--alerta-cor) 12%, var(--card-bg)); color: var(--alerta-cor); font-size: .7rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crm-ranking-panel :deep(.doctor-nao-localizado .pi) { font-size: .72rem; }
+/* Fora do CFM, mas na lista de ativos do Mais Médicos: selo neutro ao lado do CRM (também na aba "Por mês"). */
+.crm-ranking-panel :deep(.doctor-mais-medicos) { display: inline-flex; align-items: center; gap: .25rem; margin-left: .4rem; padding: 0 .4rem; border: 1px solid var(--card-border); border-radius: 999px; color: var(--text-secondary); font-size: .62rem; font-weight: 500; line-height: 1.5; vertical-align: 1px; cursor: help; }
+.crm-ranking-panel :deep(.doctor-mais-medicos .pi) { font-size: .62rem; color: var(--primary-color); }
 
 /* Coluna de alertas (também na aba "Por mês"). */
 .crm-ranking-panel :deep(.col-alertas) { width: 4.75rem; text-align: center; }

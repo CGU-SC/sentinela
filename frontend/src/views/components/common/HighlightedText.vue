@@ -11,13 +11,19 @@ const segments = computed(() => highlightSegments(props.text, props.query));
 </script>
 
 <template>
-  <template v-for="(segment, index) in segments" :key="`${segment.matched ? 'match' : 'text'}-${segment.text}-${index}`">
-    <mark v-if="segment.matched">{{ segment.text }}</mark>
-    <template v-else>{{ segment.text }}</template>
-  </template>
+  <span class="highlighted-text">
+    <template v-for="(segment, index) in segments" :key="`${segment.matched ? 'match' : 'text'}-${segment.text}-${index}`">
+      <mark v-if="segment.matched">{{ segment.text }}</mark>
+      <span v-else class="highlighted-text__plain">{{ segment.text }}</span>
+    </template>
+  </span>
 </template>
 
 <style scoped>
+.highlighted-text__plain {
+  white-space: pre-wrap;
+}
+
 mark {
   background: var(--search-highlight-bg);
   color: var(--search-highlight-text);

@@ -548,6 +548,16 @@ class CrmPrescricoesMapaItemSchema(BaseModel):
     amostra_pequena: bool = False
 
 
+class CrmMaisMedicosSchema(BaseModel):
+    """Medico da lista de ativos do Programa Mais Medicos (API do Ministerio da Saude)."""
+    no_medico: str
+    # INTERCAMBISTA, CRM BRASIL, MFC CELETISTA, TUTOR ou BOLSISTA (valores da fonte).
+    tp_perfil: str
+    no_nacionalidade: Optional[str] = None
+    # Data de atualizacao da lista na fonte.
+    dt_atualizacao: date
+
+
 class CrmPrescricoesRankingItemSchema(BaseModel):
     id_medico: str
     nu_crm: Optional[int] = None
@@ -555,6 +565,8 @@ class CrmPrescricoesRankingItemSchema(BaseModel):
     no_medico: Optional[str] = None
     # True quando o id_medico consta no cadastro do CFM (dados dos medicos).
     localizado_cfm: bool
+    # Somente quando nao localizado no CFM: medico na lista de ativos do Mais Medicos.
+    mais_medicos: Optional[CrmMaisMedicosSchema] = None
     # prescricoes / dias com prescricao no periodo e no escopo consultado
     taxa_prescricoes_dia: float
     nu_prescricoes: int
@@ -603,6 +615,8 @@ class CrmPrescricoesMensalItemSchema(BaseModel):
     no_medico: Optional[str] = None
     # True quando o id_medico consta no cadastro do CFM (dados dos medicos).
     localizado_cfm: bool
+    # Somente quando nao localizado no CFM: medico na lista de ativos do Mais Medicos.
+    mais_medicos: Optional[CrmMaisMedicosSchema] = None
     competencia: int
     nu_prescricoes: int
     qtd_dias_com_prescricao: int
@@ -775,6 +789,8 @@ class CrmMedicoHistoricoResponse(BaseModel):
     no_medico: Optional[str] = None
     dt_primeira_inscricao: Optional[date] = None
     localizado_cfm: bool
+    # Somente quando nao localizado no CFM: medico na lista de ativos do Mais Medicos.
+    mais_medicos: Optional[CrmMaisMedicosSchema] = None
     periodo_inicio: date
     periodo_fim: date
     # Farmacia filtrada (None = todas as farmacias).

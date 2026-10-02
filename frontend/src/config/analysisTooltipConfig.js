@@ -517,6 +517,72 @@ export const CRM_ALERTA_ICONES = Object.freeze({
 /** Ícone do selo "Não localizado no CFM" da coluna MÉDICO / CRM do ranking. */
 export const CRM_NAO_LOCALIZADO_ICONE = 'pi-id-card';
 
+/** Ícone do selo "Mais Médicos": fora do CFM, mas na lista de ativos do programa. */
+export const CRM_MAIS_MEDICOS_ICONE = 'pi-verified';
+
+/** Perfis da lista do Mais Médicos (valores da API do Ministério da Saúde). */
+const MAIS_MEDICOS_PERFIS = Object.freeze({
+  INTERCAMBISTA: 'Intercambista',
+  'CRM BRASIL': 'CRM Brasil',
+  'MFC CELETISTA': 'MFC celetista',
+  TUTOR: 'Tutor',
+  BOLSISTA: 'Bolsista',
+});
+
+/**
+ * Sigla do registro do médico: o intercambista do Mais Médicos atua com o
+ * registro do Ministério da Saúde (RMS); os demais, com o CRM.
+ * @param {{mais_medicos?: {tp_perfil: string}|null}} medico
+ */
+export function siglaRegistroMedico(medico) {
+  return medico?.mais_medicos?.tp_perfil === 'INTERCAMBISTA' ? 'RMS' : 'CRM';
+}
+
+/** "INTERCAMBISTA" → "Intercambista". Perfil desconhecido é contrato quebrado. */
+export function maisMedicosPerfilRotulo(tpPerfil) {
+  const rotulo = MAIS_MEDICOS_PERFIS[tpPerfil];
+  if (!rotulo) throw new Error(`Perfil do Mais Médicos desconhecido: ${tpPerfil}`);
+  return rotulo;
+}
+
+function formatarDataIso(iso) {
+  const [ano, mes, dia] = String(iso).split('-');
+  if (!ano || !mes || !dia) throw new Error(`Data inválida do Mais Médicos: ${iso}`);
+  return `${dia}/${mes}/${ano}`;
+}
+
+function nacionalidadeRotulo(valor) {
+  if (!valor || valor === 'NAO INFORMADO') return 'Não informada';
+  return valor.charAt(0) + valor.slice(1).toLowerCase();
+}
+
+/**
+ * Tooltip do selo "Mais Médicos" do ranking e do histórico do CRM.
+ * @param {{tp_perfil:string, no_nacionalidade:?string, dt_atualizacao:string}} maisMedicos
+ */
+export function crmMaisMedicosTooltip(maisMedicos) {
+  if (!maisMedicos) throw new Error('Tooltip do Mais Médicos sem dados.');
+  return {
+    value: `
+      <div class="analysis-tooltip-content">
+        <div class="analysis-tooltip-heading">
+          <i class="pi ${CRM_MAIS_MEDICOS_ICONE}" aria-hidden="true"></i>
+          <span>Programa Mais Médicos · ${escapeTooltipHtml(maisMedicosPerfilRotulo(maisMedicos.tp_perfil))}</span>
+        </div>
+        <dl class="analysis-tooltip-metrics">
+          <dt>Nacionalidade</dt><dd>${escapeTooltipHtml(nacionalidadeRotulo(maisMedicos.no_nacionalidade))}</dd>
+          <dt>Lista atualizada em</dt><dd>${formatarDataIso(maisMedicos.dt_atualizacao)}</dd>
+        </dl>
+        <p class="analysis-tooltip-rodape">Não consta no cadastro do CFM, mas está na lista de médicos ativos do programa (Ministério da Saúde).</p>
+      </div>
+    `,
+    escape: false,
+    class: 'analysis-info-tooltip',
+    showDelay: 120,
+    hideDelay: 80,
+  };
+}
+
 /**
  * Tooltip do ícone de alertas do ranking de CRMs: todos os pontos de atenção
  * do médico no período. Com `competencia` (aba "Por mês"), marca os pontos que

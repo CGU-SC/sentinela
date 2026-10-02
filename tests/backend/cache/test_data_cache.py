@@ -457,11 +457,8 @@ def test_fast_boot_records_parquet_read_and_on_demand_validation_failures(
     assert status["modules"]["movimentacao"]["loaded"] is False
 
 
-def test_fast_boot_attempts_modules_when_boot_exclusions_are_cleared(
-    monkeypatch, isolated_cache_state
-):
+def test_fast_boot_validates_every_crm_analysis_module(monkeypatch, isolated_cache_state):
     cache = isolated_cache_state
-    monkeypatch.setattr(cache, "_DISABLED_BOOT_MODULES", frozenset())
     marked = []
 
     class FrameContract:
@@ -483,12 +480,19 @@ def test_fast_boot_attempts_modules_when_boot_exclusions_are_cleared(
     monkeypatch.setattr(cache, "_mark_on_demand_global_cache_ready", mark_ready)
     cache.load_cache(engine=object(), force_refresh=False)
 
-    assert {
+    crm_analysis_modules = {
         "crm_medico_estabelecimento_mes", "crm_medico_brasil_mes",
         "crm_medico_territorio_mes", "crm_medico_brasil_ano",
-        "crm_medico_territorio_ano", "crm_mapa_municipio_regiao_periodo",
+        "crm_medico_territorio_ano", "crm_medico_dim", "crm_farmacia_medico_ano",
+        "crm_indice_bitmaps", "crm_mapa_municipio_regiao_periodo",
         "crm_mapa_uf_periodo", "crm_limiar_p95_mes",
-    }.issubset(marked)
+        "crm_concentracao_multiplo_medico_global", "mais_medicos",
+    }
+    assert crm_analysis_modules.issubset(marked)
+    # Todos os modulos registrados aparecem no status operacional.
+    assert set(cache.get_cache_status()["modules"]) == {
+        definition.key for definition in cache_registry.GLOBAL_CACHE_DEFINITIONS
+    }
 
 
 def test_forced_cache_sync_runs_weighted_tasks_and_reports_progress(monkeypatch, isolated_cache_state):

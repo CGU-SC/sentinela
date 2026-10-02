@@ -2426,9 +2426,9 @@ const clearSearch = () => {
   font-weight: 500;
   line-height: 1.2;
   margin-bottom: 0.4rem;
-  /* Texto principal do tema a 70%: abaixo do valor do campo (85%) e sem o tom
-     azulado de --text-secondary; o mesmo da barra de filtros dos médicos. */
-  color: color-mix(in srgb, var(--text-color) 70%, transparent);
+  /* Texto principal do tema a 85%, sem o tom azulado de --text-secondary; o
+     mesmo da barra de filtros dos médicos. */
+  color: var(--text-color-85);
 }
 
 .filter-clear-btn {

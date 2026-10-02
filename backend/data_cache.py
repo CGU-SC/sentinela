@@ -61,24 +61,6 @@ _GLOBAL_PARQUET_SCHEMAS = {
 _ON_DEMAND_GLOBAL_CACHE_READY: set[str] = set()
 
 # Todos os módulos globais obrigatórios participam da validação de boot.
-# TEMPORARIO: os caches globais de CRM abaixo ficam fora do boot enquanto a
-# funcionalidade correspondente ainda nao esta disponivel para o usuario.
-# Assim, arquivos ainda nao distribuidos nao aparecem como cache incompleto.
-# Reativar quando a tela de analises de CRM estiver publicada.
-_DISABLED_BOOT_MODULES: frozenset[str] = frozenset({
-    "crm_medico_estabelecimento_mes",
-    "crm_medico_brasil_mes",
-    "crm_medico_territorio_mes",
-    "crm_medico_brasil_ano",
-    "crm_medico_territorio_ano",
-    "crm_medico_dim",
-    "crm_farmacia_medico_ano",
-    "crm_indice_bitmaps",
-    "crm_concentracao_multiplo_medico_global",
-    "crm_mapa_municipio_regiao_periodo",
-    "crm_mapa_uf_periodo",
-    "crm_limiar_p95_mes",
-})
 
 _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
     "teia_fonte_nivel2": {
@@ -352,6 +334,15 @@ _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
         "severidade",
         "_crm_alerts_cache_version",
     },
+    "mais_medicos": {
+        "id_medico",
+        "nu_crm",
+        "sg_uf",
+        "no_medico",
+        "tp_perfil",
+        "no_nacionalidade",
+        "dt_atualizacao",
+    },
     "crm_concentracao_multiplo_medico_global": {
         "id_medico",
         "id_cnpj",
@@ -527,6 +518,7 @@ _CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_PATH = _global_cache_path("crm_mapa_municipio
 _CRM_MAPA_UF_PERIODO_PATH = _global_cache_path("crm_mapa_uf_periodo")
 _CRM_LIMIAR_P95_MES_PATH = _global_cache_path("crm_limiar_p95_mes")
 _DADOS_MEDICO_PARQUET_PATH = _global_cache_path("dados_medico")
+_MAIS_MEDICOS_PARQUET_PATH = _global_cache_path("mais_medicos")
 _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH = _global_cache_path("crm_prescritores_global")
 _MEMORIA_CALCULO_GLOBAL_PARQUET_PATH = _global_cache_path("memoria_calculo_global")
 _CRM_RAIOX_TX_GLOBAL_PARQUET_PATH = _global_cache_path("crm_raiox_tx_global")
@@ -1412,6 +1404,14 @@ def _sync_crm_concentracao_multiplo_medico_global(engine=None, progress_callback
         "crm_concentracao_multiplo_medico_global",
         _CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH,
     )
+
+
+def _sync_mais_medicos(engine=None, progress_callback=None):
+    """Baixa a relacao de medicos ativos do Mais Medicos (API do Ministerio da
+    Saude; nao consulta o banco). Ver mais_medicos.py."""
+    from mais_medicos import construir
+    construir(_MAIS_MEDICOS_PARQUET_PATH, progress_callback=progress_callback)
+    _mark_on_demand_global_cache_ready("mais_medicos", _MAIS_MEDICOS_PARQUET_PATH)
 
 
 def _sync_crm_timeline_dia_global(engine, progress_callback=None):
@@ -5333,31 +5333,22 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         _df_dados_ibge_demografia = _try_load("dados_ibge_demografia", _DADOS_IBGE_DEMOGRAFIA_PARQUET_PATH)
         _df_volume_atipico_semestral = _try_load("volume_atipico_semestral", _VOLUME_ATIPICO_SEMESTRAL_PARQUET_PATH)
         _try_mark_on_demand("crm_prescricoes_brasil_semestre", _CRM_PRESCRICOES_BRASIL_SEMESTRE_PATH)
-        if "crm_medico_estabelecimento_mes" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand("crm_medico_estabelecimento_mes", _CRM_MEDICO_ESTABELECIMENTO_MES_PATH)
-        if "crm_medico_brasil_mes" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand("crm_medico_brasil_mes", _CRM_MEDICO_BRASIL_MES_PATH)
-        if "crm_medico_territorio_mes" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand("crm_medico_territorio_mes", _CRM_MEDICO_TERRITORIO_MES_PATH)
-        if "crm_medico_brasil_ano" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand("crm_medico_brasil_ano", _CRM_MEDICO_BRASIL_ANO_PATH)
-        if "crm_medico_territorio_ano" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand("crm_medico_territorio_ano", _CRM_MEDICO_TERRITORIO_ANO_PATH)
-        if "crm_mapa_municipio_regiao_periodo" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand(
-                "crm_mapa_municipio_regiao_periodo",
-                _CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_PATH,
-            )
-        if "crm_mapa_uf_periodo" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand(
-                "crm_mapa_uf_periodo",
-                _CRM_MAPA_UF_PERIODO_PATH,
-            )
-        if "crm_limiar_p95_mes" not in _DISABLED_BOOT_MODULES:
-            _try_mark_on_demand(
-                "crm_limiar_p95_mes",
-                _CRM_LIMIAR_P95_MES_PATH,
-            )
+        _try_mark_on_demand("crm_medico_estabelecimento_mes", _CRM_MEDICO_ESTABELECIMENTO_MES_PATH)
+        _try_mark_on_demand("crm_medico_brasil_mes", _CRM_MEDICO_BRASIL_MES_PATH)
+        _try_mark_on_demand("crm_medico_territorio_mes", _CRM_MEDICO_TERRITORIO_MES_PATH)
+        _try_mark_on_demand("crm_medico_brasil_ano", _CRM_MEDICO_BRASIL_ANO_PATH)
+        _try_mark_on_demand("crm_medico_territorio_ano", _CRM_MEDICO_TERRITORIO_ANO_PATH)
+        _try_mark_on_demand("crm_medico_dim", _CRM_MEDICO_DIM_PATH)
+        _try_mark_on_demand("crm_farmacia_medico_ano", _CRM_FARMACIA_MEDICO_ANO_PATH)
+        _try_mark_on_demand("crm_indice_bitmaps", _CRM_INDICE_BITMAPS_PATH)
+        _try_mark_on_demand("crm_mapa_municipio_regiao_periodo", _CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_PATH)
+        _try_mark_on_demand("crm_mapa_uf_periodo", _CRM_MAPA_UF_PERIODO_PATH)
+        _try_mark_on_demand("crm_limiar_p95_mes", _CRM_LIMIAR_P95_MES_PATH)
+        _try_mark_on_demand(
+            "crm_concentracao_multiplo_medico_global",
+            _CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH,
+        )
+        _try_mark_on_demand("mais_medicos", _MAIS_MEDICOS_PARQUET_PATH)
         _try_mark_on_demand("dados_medico", _DADOS_MEDICO_PARQUET_PATH)
         _try_mark_on_demand("crm_prescritores_global", _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH)
         _try_mark_on_demand("memoria_calculo_global", _MEMORIA_CALCULO_GLOBAL_PARQUET_PATH)
@@ -5663,6 +5654,26 @@ def get_dados_medico_df() -> pl.DataFrame:
         return df
 
 
+_MAIS_MEDICOS_MEMORIA: tuple[tuple, pl.DataFrame] | None = None
+_MAIS_MEDICOS_MEMORIA_LOCK = threading.Lock()
+
+
+def get_mais_medicos_df() -> pl.DataFrame:
+    """Medicos ativos do Mais Medicos (uma linha por id_medico), em memoria."""
+    global _MAIS_MEDICOS_MEMORIA
+    assinatura = get_global_cache_signature("mais_medicos")
+    atual = _MAIS_MEDICOS_MEMORIA
+    if atual is not None and atual[0] == assinatura:
+        return atual[1]
+    with _MAIS_MEDICOS_MEMORIA_LOCK:
+        atual = _MAIS_MEDICOS_MEMORIA
+        if atual is not None and atual[0] == assinatura:
+            return atual[1]
+        df = _scan_on_demand_global_parquet("mais_medicos", _MAIS_MEDICOS_PARQUET_PATH).collect()
+        _MAIS_MEDICOS_MEMORIA = (assinatura, df)
+        return df
+
+
 def get_medicamentos_df() -> pl.DataFrame:
     global _df_medicamentos
     if _df_medicamentos is None:
@@ -5851,6 +5862,7 @@ def get_cache_status() -> dict:
         "crm_mapa_uf_periodo": {"label": "CRM Mapa UF/Periodo", "path": _CRM_MAPA_UF_PERIODO_PATH, "loaded": _is_on_demand_global_cache_ready("crm_mapa_uf_periodo", _CRM_MAPA_UF_PERIODO_PATH)},
         "crm_limiar_p95_mes": {"label": "CRM Limiar P95/Mes", "path": _CRM_LIMIAR_P95_MES_PATH, "loaded": _is_on_demand_global_cache_ready("crm_limiar_p95_mes", _CRM_LIMIAR_P95_MES_PATH)},
         "dados_medico": {"label": "Dados Medico", "path": _DADOS_MEDICO_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("dados_medico", _DADOS_MEDICO_PARQUET_PATH)},
+        "mais_medicos": {"label": "Mais Medicos (API do Ministerio da Saude)", "path": _MAIS_MEDICOS_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("mais_medicos", _MAIS_MEDICOS_PARQUET_PATH)},
         "crm_prescritores_global": {"label": "CRM Prescritores Global", "path": _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_prescritores_global", _CRM_PRESCRITORES_GLOBAL_PARQUET_PATH)},
         "memoria_calculo_global": {"label": "Memoria Calculo Global", "path": _MEMORIA_CALCULO_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("memoria_calculo_global", _MEMORIA_CALCULO_GLOBAL_PARQUET_PATH)},
         "crm_raiox_tx_global": {"label": "CRM Raio-X Global", "path": _CRM_RAIOX_TX_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_raiox_tx_global", _CRM_RAIOX_TX_GLOBAL_PARQUET_PATH)},
@@ -5897,8 +5909,6 @@ def get_cache_status() -> dict:
         "dados_par":      {"label": "Indicadores PAR",          "path": _DADOS_PAR_PARQUET_PATH,       "loaded": _df_dados_par is not None},
         "par_teia_alvos": {"label": "PAR na Teia dos Alvos",     "path": _PAR_TEIA_ALVOS_PARQUET_PATH,  "loaded": _df_par_teia_alvos is not None},
     }
-    for module_name in _DISABLED_BOOT_MODULES:
-        modules.pop(module_name, None)
 
     modules_status = {}
     for key, v in modules.items():

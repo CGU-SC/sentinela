@@ -36,7 +36,7 @@ import {
 } from 'echarts/components';
 import VChart from 'vue-echarts';
 import { API_ENDPOINTS } from '@/config/api';
-import { CRM_ALERTA_ICONES, analysisTooltip, crmAlturaAtuacao, crmFaixaP95, crmMesTooltip } from '@/config/analysisTooltipConfig';
+import { CRM_ALERTA_ICONES, CRM_MAIS_MEDICOS_ICONE, analysisTooltip, crmAlturaAtuacao, crmFaixaP95, crmMaisMedicosTooltip, crmMesTooltip, maisMedicosPerfilRotulo, siglaRegistroMedico } from '@/config/analysisTooltipConfig';
 import { CRM_FARMACIA_SERIES, CRM_HEATMAP_TAXA_RAMP, DATA_NEUTRAL } from '@/config/colors';
 import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
@@ -323,13 +323,15 @@ function compDaData(iso) {
 
 // ── Cabeçalho ─────────────────────────────────────────────────────────────────
 const titulo = computed(() => {
-  const nome = dados.value?.no_medico ?? props.medico?.no_medico;
+  const nome = dados.value?.no_medico ?? props.medico?.no_medico
+    ?? dados.value?.mais_medicos?.no_medico ?? props.medico?.mais_medicos?.no_medico;
   return nome ? formatTitleCase(nome) : 'Médico não localizado no cadastro do CFM';
 });
 const registro = computed(() => {
   const d = dados.value ?? props.medico;
   if (!d) return '';
-  return d.nu_crm ? `CRM ${d.nu_crm}/${d.sg_uf ?? ''}` : `CRM ${d.id_medico}`;
+  const sigla = siglaRegistroMedico(d);
+  return d.nu_crm ? `${sigla} ${d.nu_crm}/${d.sg_uf ?? ''}` : `${sigla} ${d.id_medico}`;
 });
 const periodoTexto = computed(() => (
   dados.value ? `${formatarData(dados.value.periodo_inicio)} a ${formatarData(dados.value.periodo_fim)}` : ''
@@ -978,7 +980,14 @@ const calorOption = computed(() => {
           <span>{{ registro }}</span>
           <span v-if="dados?.dt_primeira_inscricao">1ª inscrição no CFM: {{ formatarData(dados.dt_primeira_inscricao) }}</span>
           <span v-if="periodoTexto">Período: {{ periodoTexto }}</span>
-          <span v-if="dados && !dados.localizado_cfm" class="hist-badge hist-badge--alerta">
+          <span
+            v-if="dados?.mais_medicos"
+            class="hist-badge hist-badge--mais-medicos"
+            v-tooltip.bottom="crmMaisMedicosTooltip(dados.mais_medicos)"
+          >
+            <i :class="['pi', CRM_MAIS_MEDICOS_ICONE]" /> Mais Médicos · {{ maisMedicosPerfilRotulo(dados.mais_medicos.tp_perfil) }}
+          </span>
+          <span v-else-if="dados && !dados.localizado_cfm" class="hist-badge hist-badge--alerta">
             <i class="pi pi-exclamation-triangle" /> Não localizado no cadastro do CFM
           </span>
         </div>
@@ -1372,6 +1381,8 @@ const calorOption = computed(() => {
 .hist-info:hover { opacity: 1; }
 .hist-badge { display: inline-flex; align-items: center; gap: .3rem; margin-left: .35rem; padding: .08rem .45rem; border: 1px solid var(--card-border); border-radius: 999px; font-size: .64rem; color: var(--text-secondary); white-space: nowrap; }
 .hist-badge--alerta { margin-left: 0; border-color: color-mix(in srgb, var(--risk-critical) 45%, transparent); color: var(--risk-critical); }
+.hist-badge--mais-medicos { margin-left: 0; cursor: help; }
+.hist-badge--mais-medicos .pi { color: var(--primary-color); }
 
 .hist-estado { display: flex; align-items: center; justify-content: center; gap: .5rem; min-height: 260px; color: var(--text-muted); font-size: .82rem; }
 .hist-estado--erro { color: var(--risk-critical); }

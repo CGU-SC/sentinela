@@ -38,6 +38,7 @@ CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_PARQUET = _module("crm_mapa_municipio_regiao_p
 CRM_MAPA_UF_PERIODO_PARQUET = _module("crm_mapa_uf_periodo")
 CRM_LIMIAR_P95_MES_PARQUET = _module("crm_limiar_p95_mes")
 DADOS_MEDICO_PARQUET = _module("dados_medico")
+MAIS_MEDICOS_PARQUET = _module("mais_medicos")
 CRM_PRESCRITORES_GLOBAL_PARQUET = _module("crm_prescritores_global")
 MEMORIA_CALCULO_GLOBAL_PARQUET = _module("memoria_calculo_global")
 FARMACIAS_PARQUET = _module("farmacias")

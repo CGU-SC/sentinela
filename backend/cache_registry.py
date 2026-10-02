@@ -184,6 +184,19 @@ def _dados_medico_schema() -> dict:
     }
 
 
+def _mais_medicos_schema() -> dict:
+    """Medicos ativos do Programa Mais Medicos (fonte externa; ver mais_medicos.py)."""
+    return {
+        "id_medico": pl.Utf8,
+        "nu_crm": pl.Int64,
+        "sg_uf": pl.Utf8,
+        "no_medico": pl.Utf8,
+        "tp_perfil": pl.Utf8,
+        "no_nacionalidade": pl.Utf8,
+        "dt_atualizacao": pl.Date,
+    }
+
+
 def _crm_raiox_tx_global_schema() -> dict:
     return {
         "id_cnpj": pl.Int32,
@@ -520,6 +533,7 @@ GLOBAL_CACHE_DEFINITIONS = (
     CacheDefinition("crm_mapa_uf_periodo", cache_files.CRM_MAPA_UF_PERIODO_PARQUET, "global", _crm_mapa_uf_periodo_schema()),
     CacheDefinition("crm_limiar_p95_mes", cache_files.CRM_LIMIAR_P95_MES_PARQUET, "global", _crm_limiar_p95_mes_schema()),
     CacheDefinition("dados_medico", cache_files.DADOS_MEDICO_PARQUET, "global", _dados_medico_schema()),
+    CacheDefinition("mais_medicos", cache_files.MAIS_MEDICOS_PARQUET, "global", _mais_medicos_schema()),
     CacheDefinition("crm_prescritores_global", cache_files.CRM_PRESCRITORES_GLOBAL_PARQUET, "global", _crm_prescritores_schema(include_id_cnpj=True, include_no_medico=False)),
     CacheDefinition("memoria_calculo_global", cache_files.MEMORIA_CALCULO_GLOBAL_PARQUET, "global", _memoria_calculo_global_schema()),
     CacheDefinition("crm_raiox_tx_global", cache_files.CRM_RAIOX_TX_GLOBAL_PARQUET, "global", _crm_raiox_tx_global_schema()),

@@ -355,7 +355,7 @@ const ufTooltip = analysisTooltip('crmFiltroUfCrm');
 .filtro-bloco-titulo .pi { font-size: 0.78rem; }
 .filtro { display: flex; flex-direction: column; gap: 0.4rem; }
 /* Título do filtro: texto principal do tema a 70% (o mesmo da sidebar esquerda). */
-.filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); font-size: 0.8125rem; font-weight: 500; }
+.filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 500; }
 .filtro-rotulo label { cursor: pointer; }
 /* Filtro composto (Autorizações em sequência): campos recuados sob o título e ligados
    por uma linha-guia, laranja quando o filtro tem valor (mesmo desenho da AppSidebar). */

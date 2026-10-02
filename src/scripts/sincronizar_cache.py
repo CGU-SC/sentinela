@@ -45,6 +45,7 @@ from data_cache import (
     _sync_dados_farmacia,
     _sync_dados_ibge_demografia,
     _sync_dados_medico,
+    _sync_mais_medicos,
     _sync_dados_par,
     _sync_dados_socios,
     _sync_esocial,
@@ -390,6 +391,8 @@ MODULOS = sorted([
     {"id": 36, "name": "CRM ConcMulti Global", "func": _sync_crm_concentracao_multiplo_alertas_global, "peso": "pesado", "ordem": 36},
     # Monta localmente a partir de 16 (Raio-X) e 36 (sem consultar o banco).
     {"id": 55, "name": "CRM ConcMulti por Medico (local, depois de 16/36)", "func": _sync_crm_concentracao_multiplo_medico_global, "peso": "pesado", "ordem": 36.1},
+    # Fonte externa (API de Dados Abertos do SUS), sem consultar o banco.
+    {"id": 56, "name": "Mais Medicos (API do Ministerio da Saude)", "func": _sync_mais_medicos, "peso": "rapido", "ordem": 36.2},
     {"id": 37, "name": "CRM Dia Global", "func": _sync_crm_timeline_dia_global, "peso": "pesado", "ordem": 37},
     {"id": 38, "name": "CRM Hora Global", "func": _sync_crm_timeline_hora_global, "peso": "pesado", "ordem": 38},
     {"id": 39, "name": "CRM Eventos Global", "func": _sync_crm_timeline_eventos_global, "peso": "pesado", "ordem": 39},

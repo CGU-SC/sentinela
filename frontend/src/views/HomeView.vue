@@ -11,7 +11,7 @@ import RiskChart from './components/charts/RiskChart.vue';
 import BrazilMap from './components/maps/BrazilMap.vue';
 import TopUfRiskChart from './components/charts/TopUfRiskChart.vue';
 import SemesterProductionChart from './components/charts/SemesterProductionChart.vue';
-import { getAppVersionLabel, APP_RUNTIME, getAppRuntimeLabel } from '@/config/appInfo';
+import { getAppVersionLabel, APP_RUNTIME, APP_VERSION, getAppRuntimeLabel } from '@/config/appInfo';
 import { useSystemUpdateStore } from '@/stores/systemUpdate';
 import { homeTooltip } from '@/config/homeTooltipConfig';
 import { panoramaAlertTooltip } from '@/config/integrityAlertTooltipConfig';

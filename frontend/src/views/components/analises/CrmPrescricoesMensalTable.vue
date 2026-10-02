@@ -9,7 +9,7 @@ import Column from 'primevue/column';
 import { useFormatting } from '@/composables/useFormatting';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
 import { CRM_RANKING_PAGE_SIZE_OPTIONS, CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
-import { analysisTooltip, CRM_NAO_LOCALIZADO_ICONE } from '@/config/analysisTooltipConfig';
+import { analysisTooltip, CRM_NAO_LOCALIZADO_ICONE, CRM_MAIS_MEDICOS_ICONE, crmMaisMedicosTooltip, maisMedicosPerfilRotulo, siglaRegistroMedico } from '@/config/analysisTooltipConfig';
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
 import { destaqueBuscaMedico } from '@/utils/crmBusca';
 import CrmAlertasBadge from './CrmAlertasBadge.vue';
@@ -47,14 +47,16 @@ function formatComp(comp) {
 // "800 sc" ou "CRM-SC 800" destacam "800/SC" na linha do CRM.
 const destaque = computed(() => destaqueBuscaMedico(props.appliedQuery));
 const naoLocalizadoIcone = CRM_NAO_LOCALIZADO_ICONE;
+const maisMedicosIcone = CRM_MAIS_MEDICOS_ICONE;
 function doctorLabel(row) {
-  if (!row.localizado_cfm) return 'Não localizado no CFM';
+  if (!row.localizado_cfm) return row.mais_medicos ? formatTitleCase(row.mais_medicos.no_medico) : 'Não localizado no CFM';
   if (!row.no_medico) throw new Error(`Contrato inválido: médico ${row.id_medico} localizado no CFM sem nome.`);
   return formatTitleCase(row.no_medico);
 }
 function crmLabel(row) {
-  if (row.nu_crm == null) return `CRM ${row.id_medico}`;
-  return `CRM ${row.nu_crm}${row.sg_uf ? `/${row.sg_uf}` : ''}`;
+  const sigla = siglaRegistroMedico(row);
+  if (row.nu_crm == null) return `${sigla} ${row.id_medico}`;
+  return `${sigla} ${row.nu_crm}${row.sg_uf ? `/${row.sg_uf}` : ''}`;
 }
 function rowKey(row) {
   return `${row.id_medico}|${row.competencia}`;
@@ -112,11 +114,15 @@ function onPage(event) {
       <template #body="{ data }">
         <div class="doctor-cell">
           <div class="doctor-ident">
-            <span v-if="!data.localizado_cfm" class="doctor-nao-localizado">
+            <span v-if="!data.localizado_cfm && !data.mais_medicos" class="doctor-nao-localizado">
               <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
             </span>
             <span v-else class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
-            <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
+            <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /><span
+              v-if="data.mais_medicos"
+              class="doctor-mais-medicos"
+              v-tooltip.top="crmMaisMedicosTooltip(data.mais_medicos)"
+            ><i :class="['pi', maisMedicosIcone]" aria-hidden="true" />Mais Médicos · {{ maisMedicosPerfilRotulo(data.mais_medicos.tp_perfil) }}</span></span>
           </div>
           <CrmMedicoFixar :id-medico="data.id_medico" :nome="doctorLabel(data)" :crm="crmLabel(data)" />
         </div>

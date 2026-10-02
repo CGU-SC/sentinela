@@ -24,6 +24,7 @@ from data_cache import (
     get_dados_medico_df,
 )
 from .crm_filtros_medico import SEM_FILTRO_MEDICO, FiltrosMedico, farmacias_dos_medicos, farmacias_por_medico
+from .crm_mais_medicos import mais_medicos_por_id
 from ...schemas.analytics import (
     CrmPrescricoesAnaliseResponse,
     CrmPrescricoesMapaItemSchema,
@@ -1003,6 +1004,9 @@ def _montar_resposta_ranking(
             (pl.col("nu_prescricoes_farmacias_filtradas") / pl.col("nu_prescricoes") * 100)
             .alias("percentual_prescricoes_farmacias_filtradas")
         )
+    mais_medicos = mais_medicos_por_id(
+        ranking_scope.filter(~pl.col("localizado_cfm")).get_column("id_medico").cast(pl.Utf8)
+    )
     ranking = [
         CrmPrescricoesRankingItemSchema(
             id_medico=str(row["id_medico"]),
@@ -1010,6 +1014,7 @@ def _montar_resposta_ranking(
             sg_uf=str(row["sg_uf"]) if row["sg_uf"] is not None else None,
             no_medico=str(row["no_medico"]) if row["no_medico"] is not None else None,
             localizado_cfm=bool(row["localizado_cfm"]),
+            mais_medicos=mais_medicos.get(str(row["id_medico"])),
             taxa_prescricoes_dia=float(row["taxa_prescricoes_dia"]),
             nu_prescricoes=int(row["nu_prescricoes"]),
             qtd_dias_com_prescricao=int(row["qtd_dias_com_prescricao"]),

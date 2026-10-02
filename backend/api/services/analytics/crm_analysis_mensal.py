@@ -36,6 +36,7 @@ from ...schemas.analytics import (
 from . import crm_analysis as base
 from . import crm_analysis_filtrado as filtrado
 from .crm_filtros_medico import SEM_FILTRO_MEDICO, FiltrosMedico
+from .crm_mais_medicos import mais_medicos_por_id
 from .filtros_farmacia import SEM_FILTRO_FARMACIA, FiltrosFarmacia
 
 # Coluna escolhida + desempates fixos (para a paginacao ser estavel).
@@ -262,6 +263,9 @@ def get_crm_prescricoes_mensal(
         .with_columns(pl.lit(True).alias("localizado_cfm")),
         on="id_medico", how="left", maintain_order="left",
     ).with_columns(pl.col("localizado_cfm").is_not_null())
+    mais_medicos = mais_medicos_por_id(
+        pagina.filter(~pl.col("localizado_cfm")).get_column("id_medico").cast(pl.Utf8)
+    )
     return resposta([
         CrmPrescricoesMensalItemSchema(
             id_medico=str(row["id_medico"]),
@@ -269,6 +273,7 @@ def get_crm_prescricoes_mensal(
             sg_uf=str(row["sg_uf"]) if row["sg_uf"] is not None else None,
             no_medico=str(row["no_medico"]) if row["no_medico"] is not None else None,
             localizado_cfm=bool(row["localizado_cfm"]),
+            mais_medicos=mais_medicos.get(str(row["id_medico"])),
             competencia=int(row["competencia"]),
             nu_prescricoes=int(row["nu_prescricoes"]),
             qtd_dias_com_prescricao=int(row["qtd_dias_com_prescricao"]),

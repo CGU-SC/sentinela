@@ -61,6 +61,7 @@ from ...schemas.analytics import (
     CrmMedicoHistoricoResponse,
 )
 from .crm_analysis import _competencia, _period_bounds
+from .crm_mais_medicos import mais_medicos_por_id
 from .crm_medico_evidencias import conferir_farmacia_no_municipio, evidencias_do_medico
 
 # Farmacia com esta fatia (ou mais) das prescricoes do medico no periodo vira
@@ -572,6 +573,7 @@ def get_crm_medico_historico(
         no_medico=info.get("no_medico"),
         dt_primeira_inscricao=dt_inscricao if isinstance(dt_inscricao, date) else None,
         localizado_cfm=bool(info),
+        mais_medicos=None if info else mais_medicos_por_id([id_medico]).get(id_medico),
         periodo_inicio=inicio,
         periodo_fim=fim,
         id_cnpj_filtro=id_cnpj,

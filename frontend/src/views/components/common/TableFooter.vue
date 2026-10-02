@@ -96,20 +96,20 @@ function mudarLinhas(evento) {
   justify-content: space-between;
   gap: 1rem;
   box-sizing: border-box;
-  height: 2.5rem;
-  padding: 0 .65rem;
+  height: 3rem;
+  padding: 0 .75rem;
   border-top: 1px solid color-mix(in srgb, var(--tabs-border) 65%, transparent);
   background: color-mix(in srgb, var(--text-color) 2%, var(--card-bg));
   color: var(--text-secondary);
-  font-size: .74rem;
+  font-size: .82rem;
   font-weight: 400;
 }
 .tf-contagem { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tf-controles { display: flex; align-items: center; gap: 1rem; flex-shrink: 0; }
 .tf-linhas { display: inline-flex; align-items: center; gap: .4rem; color: var(--text-muted); }
 .tf-linhas select {
-  height: 1.7rem;
-  padding: 0 .35rem;
+  height: 2.15rem;
+  padding: 0 .45rem;
   border: 1px solid var(--card-border);
   border-radius: 6px;
   background: var(--card-bg);
@@ -118,15 +118,15 @@ function mudarLinhas(evento) {
   cursor: pointer;
 }
 .tf-linhas select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
-.tf-navegacao { display: inline-flex; align-items: center; gap: .35rem; }
+.tf-navegacao { display: inline-flex; align-items: center; gap: .45rem; }
 .tf-pagina { padding: 0 .6rem; color: var(--text-color-85); white-space: nowrap; }
 .tf-botao {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: .3rem;
-  height: 1.8rem;
-  padding: 0 .65rem;
+  gap: .35rem;
+  height: 2.15rem;
+  padding: 0 .85rem;
   border: 1px solid var(--card-border);
   border-radius: 6px;
   background: var(--card-bg);
@@ -137,7 +137,7 @@ function mudarLinhas(evento) {
   cursor: pointer;
   transition: color .15s ease, border-color .15s ease, background .15s ease;
 }
-.tf-botao .pi { font-size: .78rem; }
+.tf-botao .pi { font-size: .85rem; }
 .tf-botao:hover:not(:disabled) { color: var(--primary-color); border-color: color-mix(in srgb, var(--primary-color) 45%, transparent); background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
 .tf-botao:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
 .tf-botao:disabled { opacity: .4; cursor: default; }

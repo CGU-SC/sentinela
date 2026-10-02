@@ -7,6 +7,7 @@ from pathlib import Path
 from collections.abc import Iterator
 from unittest.mock import Mock
 
+import polars as pl
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -16,6 +17,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+
+
+@pytest.fixture(autouse=True)
+def lista_mais_medicos_vazia(monkeypatch: pytest.MonkeyPatch) -> None:
+    """O cruzamento com o Mais Medicos le um modulo baixado da API do Ministerio
+    da Saude; a suite nao depende dele (testes que precisam o substituem)."""
+    import mais_medicos
+
+    monkeypatch.setattr(
+        "api.services.analytics.crm_mais_medicos.get_mais_medicos_df",
+        lambda: pl.DataFrame(schema=mais_medicos.SCHEMA),
+    )
 
 
 @pytest.fixture
