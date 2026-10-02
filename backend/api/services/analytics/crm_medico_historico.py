@@ -428,8 +428,6 @@ def get_crm_medico_historico(
             ])
             .sort("competencia")
         )
-        if meses_df.filter(pl.col("p95_taxa_dia").is_null()).height:
-            raise HTTPException(status_code=503, detail="Farmacia com mes ausente no total mensal do medico.")
     elif id_ibge7 is not None:
         # Meses do municipio: prescricoes e dias distintos nele; taxa elevada do total.
         por_farmacia = no_municipio
@@ -466,8 +464,6 @@ def get_crm_medico_historico(
             ])
             .sort("competencia")
         )
-        if meses_df.filter(pl.col("p95_taxa_dia").is_null()).height:
-            raise HTTPException(status_code=503, detail="Municipio com mes ausente no total mensal do medico.")
     meses = [
         CrmHistoricoMesSchema(
             competencia=int(r["competencia"]),

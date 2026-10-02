@@ -23,6 +23,13 @@ yarn-error.log*
 .playwright-mcp/
 /targets-map-*.png
 
+# === ARTEFATOS DE TESTE (PYTEST/COVERAGE) ===
+.coverage
+.coverage*
+.pytest_cache/
+/.pytest-*/
+htmlcov/
+
 # === TAURI (SE USAR NO FUTURO) ===
 src-tauri/target/
 

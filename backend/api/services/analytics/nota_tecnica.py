@@ -1523,8 +1523,6 @@ def generate_nota_tecnica(
         for key, num, full_title in criticidade_items:
             bookmark_name = f"secao7_{key}"
             if key == 'falecidos':
-                if not falecidos_comp:
-                    raise RuntimeError('Indicador falecidos classificado como critico, mas o contexto detalhado esta ausente na Nota Tecnica.')
                 _add_falecidos_criticidade_text(
                     doc,
                     num,

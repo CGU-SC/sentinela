@@ -680,8 +680,8 @@ const FILTER_INDEX = [
   { id: "socioBeneficio", section: "integridade", label: "Sócio no CadÚnico/Defeso", keywords: "socio beneficio bolsa familia cadunico seguro defeso pobreza" },
   { id: "socioEsocial", section: "integridade", label: "Sócio com Vínculo eSocial", keywords: "socio esocial vinculo emprego clt vinculo trabalhista" },
   { id: "dispersaoUf", section: "integridade", label: "Vendas para UFs sem Fronteira", keywords: "dispersao uf sem fronteira geografica distancia venda autorizado" },
-  { id: "seq", section: "integridade", label: "Autorizações em sequência", keywords: "sequencia rajada surto unico multiplos crms autorizacoes minutos alerta severidade" },
   { id: "volumeAtipico", section: "integridade", label: "Aumento Semestral Atípico", keywords: "volume atipico crescimento semestral faturamento auditoria aumento anomalo" },
+  { id: "seq", section: "integridade", label: "Autorizações em sequência", keywords: "sequencia rajada surto unico multiplos crms autorizacoes minutos alerta severidade" },
   { id: "percentual", section: "geral", label: "% de não comprovação", keywords: "percentual nao comprovacao risco faixa auditoria" },
   { id: "slider", section: "geral", label: "Período de Análise", keywords: "periodo slider semestral mensal tempo data" },
   { id: "populacao", section: "geral", label: "População do município", keywords: "populacao habitantes municipio porte pequeno medio grande metropole ibge" },
@@ -754,12 +754,12 @@ const shouldDisplayFilter = (sectionId, filterId) => {
 // Grupos de cada seção (subtítulos na barra). O subtítulo aparece quando algum
 // filtro do grupo está visível (seção aberta, filtro disponível e dentro da busca).
 const FILTER_GROUPS = Object.freeze({
+  periodoValores: ["slider", "percentual", "valorMin"],
   territorio: ["uf", "regiao", "municipio", "unidadePf", "populacao"],
   estabelecimento: ["situacao", "ms", "porte", "grandeRede", "cnpjRaiz"],
-  periodoValores: ["slider", "percentual", "valorMin"],
   empresa: ["parTeia", "cnaeIncompativel"],
   socios: ["socioIdadeAtipica", "socioFalecido", "socioBeneficio", "socioEsocial"],
-  vendas: ["dispersaoUf", "seq", "volumeAtipico"],
+  vendas: ["dispersaoUf", "volumeAtipico", "seq"],
 });
 const shouldDisplayGroup = (sectionId, groupId) => {
   const filtros = FILTER_GROUPS[groupId];
@@ -897,7 +897,154 @@ const clearSearch = () => {
 
       <!-- FILTROS GLOBAIS -->
       <div v-show="!isSectionCollapsed('geral')" class="sidebar-section-body">
-      <div v-show="shouldDisplayGroup('geral', 'territorio')" class="filter-group-title"><i class="pi pi-map-marker" aria-hidden="true" />Território</div>
+      <div v-show="shouldDisplayGroup('geral', 'periodoValores')" class="filter-group-title"><i class="pi pi-filter" aria-hidden="true" />Período e valores</div>
+      <div
+        v-show="shouldDisplayFilter('geral', 'slider')"
+        class="filter-section"
+        :class="{ 'filter-locked-alt': periodFilterLocked }"
+      >
+        <label class="filter-label" style="pointer-events: auto">
+          Período de análise
+          <i
+            class="pi pi-info-circle filter-info-icon help-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Período de Análise"
+            v-tooltip.right="filterTooltips.periodo"
+          />
+          <button
+            v-if="isFilterActive('sliderValue')"
+            class="filter-clear-btn"
+            @click="clearPeriodFilter"
+            v-tooltip.right="filterTooltips.clear"
+          >
+            <i class="pi pi-eraser" />
+          </button>
+        </label>
+        <div
+          class="slider-container"
+          :class="{
+            'filter-locked': periodFilterLocked,
+            'filter-active-box': isFilterActive('sliderValue'),
+          }"
+        >
+          <MonthRangePicker
+            :rotulo="periodoRotulo"
+            :inicio="periodoSelecionado.inicio"
+            :fim="periodoSelecionado.fim"
+            :min="PERIODO_MIN"
+            :max="PERIODO_MAX"
+            :atalhos="periodoAtalhos"
+            :atalho-ativo="periodoAtalhoAtivo"
+            :disabled="periodFilterLocked"
+            @select-range="aplicarPeriodo"
+            @select-atalho="aplicarAtalhoPeriodo"
+          />
+        </div>
+      </div>
+
+      <div
+        v-show="shouldDisplayFilter('geral', 'percentual')"
+        class="filter-section"
+        :class="{ 'filter-locked': allFiltersLocked }"
+      >
+        <label class="filter-label">
+          % de não comprovação
+          <i
+            class="pi pi-info-circle filter-info-icon help-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro de percentual de não comprovação"
+            v-tooltip.right="filterTooltips.percentual"
+          />
+          <button
+            v-if="isFilterActive('percentualNaoComprovacaoRange')"
+            class="filter-clear-btn"
+            @click="
+              () => {
+                filterStore.percentualNaoComprovacaoRange = [0, 100];
+                applyPercentualNaoComprovacao();
+              }
+            "
+            v-tooltip.right="filterTooltips.clear"
+          >
+            <i class="pi pi-eraser" />
+          </button>
+        </label>
+        <div
+          class="slider-container"
+          :class="{
+            'filter-active-box': isFilterActive(
+              'percentualNaoComprovacaoRange',
+            ),
+          }"
+        >
+          <NumberRangePicker
+            :mostrar-icone="false"
+            :valor="filterStore.percentualNaoComprovacaoRange"
+            :min="0"
+            :max="100"
+            sufixo="%"
+            :atalhos="percentualAtalhos"
+            :rotulo="percentualRotulo"
+            :disabled="allFiltersLocked"
+            @select-range="aplicarFaixaPercentual"
+          />
+        </div>
+      </div>
+
+      <div
+        v-show="shouldDisplayFilter('geral', 'valorMin')"
+        class="filter-section"
+        :class="{ 'filter-locked': allFiltersLocked }"
+      >
+        <label class="filter-label">
+          Valor mínimo sem comprovação
+          <i
+            class="pi pi-info-circle filter-info-icon help-icon"
+            role="img"
+            tabindex="0"
+            aria-label="Explicação do filtro Valor mínimo sem comprovação"
+            v-tooltip.right="filterTooltips.valorMin"
+          />
+          <button
+            v-if="isFilterActive('valorMinSemComp')"
+            class="filter-clear-btn"
+            @click="
+              () => {
+                filterStore.valorMinSemComp = 0;
+                applyValorMinSemComp();
+              }
+            "
+            v-tooltip.right="filterTooltips.clear"
+          >
+            <i class="pi pi-eraser" />
+          </button>
+        </label>
+        <div
+          class="slider-container"
+          :class="{ 'filter-active-box': isFilterActive('valorMinSemComp') }"
+        >
+          <NumberRangePicker
+            icone="pi-dollar"
+            unico
+            :valor="[filterStore.valorMinSemComp]"
+            :min="0"
+            :max="FILTER_DEFAULTS.VALOR_MAX"
+            :passo="10000"
+            prefixo="R$"
+            :formatar="formatarReais"
+            rotulo-personalizado="Valor personalizado"
+            rotulo-campo="A partir de"
+            :atalhos="valorMinAtalhos"
+            :rotulo="valorMinRotulo"
+            :disabled="allFiltersLocked"
+            @select-range="aplicarValorMin"
+          />
+        </div>
+      </div>
+
+      <div v-show="shouldDisplayGroup('geral', 'territorio')" class="filter-group-title"><i class="pi pi-globe" aria-hidden="true" />Território</div>
       <div
         v-show="shouldDisplayFilter('geral', 'uf')"
         class="filter-section"
@@ -921,6 +1068,8 @@ const clearSearch = () => {
             <i class="pi pi-eraser" />
           </button>
         </label>
+        <div class="filter-campo-icone">
+        <i class="pi pi-map filter-campo-icone-i" aria-hidden="true" />
         <Dropdown
           v-model="filterStore.selectedUF"
           :options="ufOptions"
@@ -929,6 +1078,7 @@ const clearSearch = () => {
           panelClass="sidebar-panel"
           :class="{ 'filter-active': isFilterActive('selectedUF') }"
         />
+        </div>
       </div>
 
       <div
@@ -995,6 +1145,8 @@ const clearSearch = () => {
             <i class="pi pi-eraser" />
           </button>
         </label>
+        <div class="filter-campo-icone">
+        <i class="pi pi-map-marker filter-campo-icone-i" aria-hidden="true" />
         <Dropdown
           v-model="filterStore.selectedMunicipio"
           :options="municipioOptions"
@@ -1011,6 +1163,7 @@ const clearSearch = () => {
           class="w-full filter-input"
           :class="{ 'filter-active': isFilterActive('selectedMunicipio') }"
         />
+        </div>
       </div>
 
       <div
@@ -1036,6 +1189,8 @@ const clearSearch = () => {
             <i class="pi pi-eraser" />
           </button>
         </label>
+        <div class="filter-campo-icone">
+        <i class="pi pi-shield filter-campo-icone-i" aria-hidden="true" />
         <Dropdown
           v-model="filterStore.selectedUnidadePf"
           :options="unidadePfOptions"
@@ -1050,6 +1205,7 @@ const clearSearch = () => {
           panelClass="sidebar-panel"
           :class="{ 'filter-active': isFilterActive('selectedUnidadePf') }"
         />
+        </div>
       </div>
 
       <div
@@ -1080,7 +1236,7 @@ const clearSearch = () => {
           :class="{ 'filter-active-box': isFilterActive('populacaoMunicipio') }"
         >
           <NumberRangePicker
-            :mostrar-icone="false"
+            icone="pi-users"
             aberto
             :valor="filterStore.populacaoMunicipio"
             :min="0"
@@ -1234,6 +1390,8 @@ const clearSearch = () => {
             <i class="pi pi-eraser" />
           </button>
         </label>
+        <div class="filter-campo-icone">
+        <i class="pi pi-search filter-campo-icone-i" aria-hidden="true" />
         <AutoComplete
           v-model="filterStore.selectedCnpjRaiz"
           :suggestions="cnpjSuggestions"
@@ -1260,153 +1418,6 @@ const clearSearch = () => {
             </div>
           </template>
         </AutoComplete>
-      </div>
-
-      <div v-show="shouldDisplayGroup('geral', 'periodoValores')" class="filter-group-title"><i class="pi pi-calendar" aria-hidden="true" />Período e valores</div>
-      <div
-        v-show="shouldDisplayFilter('geral', 'slider')"
-        class="filter-section"
-        :class="{ 'filter-locked-alt': periodFilterLocked }"
-      >
-        <label class="filter-label" style="pointer-events: auto">
-          Período de análise
-          <i
-            class="pi pi-info-circle filter-info-icon help-icon"
-            role="img"
-            tabindex="0"
-            aria-label="Explicação do filtro Período de Análise"
-            v-tooltip.right="filterTooltips.periodo"
-          />
-          <button
-            v-if="isFilterActive('sliderValue')"
-            class="filter-clear-btn"
-            @click="clearPeriodFilter"
-            v-tooltip.right="filterTooltips.clear"
-          >
-            <i class="pi pi-eraser" />
-          </button>
-        </label>
-        <div
-          class="slider-container"
-          :class="{
-            'filter-locked': periodFilterLocked,
-            'filter-active-box': isFilterActive('sliderValue'),
-          }"
-        >
-          <MonthRangePicker
-            :mostrar-icone="false"
-            :rotulo="periodoRotulo"
-            :inicio="periodoSelecionado.inicio"
-            :fim="periodoSelecionado.fim"
-            :min="PERIODO_MIN"
-            :max="PERIODO_MAX"
-            :atalhos="periodoAtalhos"
-            :atalho-ativo="periodoAtalhoAtivo"
-            :disabled="periodFilterLocked"
-            @select-range="aplicarPeriodo"
-            @select-atalho="aplicarAtalhoPeriodo"
-          />
-        </div>
-      </div>
-
-      <div
-        v-show="shouldDisplayFilter('geral', 'percentual')"
-        class="filter-section"
-        :class="{ 'filter-locked': allFiltersLocked }"
-      >
-        <label class="filter-label">
-          % de não comprovação
-          <i
-            class="pi pi-info-circle filter-info-icon help-icon"
-            role="img"
-            tabindex="0"
-            aria-label="Explicação do filtro de percentual de não comprovação"
-            v-tooltip.right="filterTooltips.percentual"
-          />
-          <button
-            v-if="isFilterActive('percentualNaoComprovacaoRange')"
-            class="filter-clear-btn"
-            @click="
-              () => {
-                filterStore.percentualNaoComprovacaoRange = [0, 100];
-                applyPercentualNaoComprovacao();
-              }
-            "
-            v-tooltip.right="filterTooltips.clear"
-          >
-            <i class="pi pi-eraser" />
-          </button>
-        </label>
-        <div
-          class="slider-container"
-          :class="{
-            'filter-active-box': isFilterActive(
-              'percentualNaoComprovacaoRange',
-            ),
-          }"
-        >
-          <NumberRangePicker
-            :mostrar-icone="false"
-            :valor="filterStore.percentualNaoComprovacaoRange"
-            :min="0"
-            :max="100"
-            sufixo="%"
-            :atalhos="percentualAtalhos"
-            :rotulo="percentualRotulo"
-            :disabled="allFiltersLocked"
-            @select-range="aplicarFaixaPercentual"
-          />
-        </div>
-      </div>
-
-      <div
-        v-show="shouldDisplayFilter('geral', 'valorMin')"
-        class="filter-section"
-        :class="{ 'filter-locked': allFiltersLocked }"
-      >
-        <label class="filter-label">
-          Valor mínimo sem comprovação
-          <i
-            class="pi pi-info-circle filter-info-icon help-icon"
-            role="img"
-            tabindex="0"
-            aria-label="Explicação do filtro Valor mínimo sem comprovação"
-            v-tooltip.right="filterTooltips.valorMin"
-          />
-          <button
-            v-if="isFilterActive('valorMinSemComp')"
-            class="filter-clear-btn"
-            @click="
-              () => {
-                filterStore.valorMinSemComp = 0;
-                applyValorMinSemComp();
-              }
-            "
-            v-tooltip.right="filterTooltips.clear"
-          >
-            <i class="pi pi-eraser" />
-          </button>
-        </label>
-        <div
-          class="slider-container"
-          :class="{ 'filter-active-box': isFilterActive('valorMinSemComp') }"
-        >
-          <NumberRangePicker
-            :mostrar-icone="false"
-            unico
-            :valor="[filterStore.valorMinSemComp]"
-            :min="0"
-            :max="FILTER_DEFAULTS.VALOR_MAX"
-            :passo="10000"
-            prefixo="R$"
-            :formatar="formatarReais"
-            rotulo-personalizado="Valor personalizado"
-            rotulo-campo="A partir de"
-            :atalhos="valorMinAtalhos"
-            :rotulo="valorMinRotulo"
-            :disabled="allFiltersLocked"
-            @select-range="aplicarValorMin"
-          />
         </div>
       </div>
 
@@ -1745,6 +1756,50 @@ const clearSearch = () => {
       </div>
 
       <div
+        v-show="shouldDisplayFilter('integridade', 'volumeAtipico')"
+        class="filter-section"
+        :class="{ 'filter-locked': volumeAtipicoFilterLocked }"
+      >
+        <label class="filter-label">
+          Aumento semestral atípico
+          <i
+            class="pi pi-info-circle filter-info-icon help-icon"
+            v-tooltip.right="filterTooltips.volumeAtipico"
+          />
+          <button
+            v-if="isFilterActive('volumeAtipicoEnabled')"
+            class="filter-clear-btn"
+            @click="clearVolumeAtipico"
+            v-tooltip.right="filterTooltips.clear"
+          >
+            <i class="pi pi-eraser" />
+          </button>
+        </label>
+        <div
+          class="slider-container"
+          :class="{ 'filter-active-box': isFilterActive('volumeAtipicoEnabled') }"
+        >
+          <NumberRangePicker
+            :limpavel="false"
+            :mostrar-icone="false"
+            unico
+            :valor="volumeAtipicoValor"
+            :sugestao="filterStore.volumeAtipicoEnabled ? null : [FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL]"
+            :min="FILTER_DEFAULTS.VOLUME_ATIPICO_MIN"
+            :max="FILTER_DEFAULTS.VOLUME_ATIPICO_MAX"
+            :passo="10"
+            :formatar="formatarPercentual"
+            sufixo="%"
+            rotulo-personalizado="Mínimo personalizado"
+            :atalhos="volumeAtipicoAtalhos"
+            :rotulo="volumeAtipicoRotulo"
+            :disabled="volumeAtipicoFilterLocked"
+            @select-range="aplicarVolumeAtipico"
+          />
+        </div>
+      </div>
+
+      <div
         v-show="shouldDisplayFilter('integridade', 'seq')"
         class="filter-section"
         :class="{ 'filter-locked': allFiltersLocked }"
@@ -1797,50 +1852,6 @@ const clearSearch = () => {
             :rotulo="seqDiasRotulo"
             :disabled="allFiltersLocked"
             @select-range="filterStore.seqDias = $event"
-          />
-        </div>
-      </div>
-
-      <div
-        v-show="shouldDisplayFilter('integridade', 'volumeAtipico')"
-        class="filter-section"
-        :class="{ 'filter-locked': volumeAtipicoFilterLocked }"
-      >
-        <label class="filter-label">
-          Aumento semestral atípico
-          <i
-            class="pi pi-info-circle filter-info-icon help-icon"
-            v-tooltip.right="filterTooltips.volumeAtipico"
-          />
-          <button
-            v-if="isFilterActive('volumeAtipicoEnabled')"
-            class="filter-clear-btn"
-            @click="clearVolumeAtipico"
-            v-tooltip.right="filterTooltips.clear"
-          >
-            <i class="pi pi-eraser" />
-          </button>
-        </label>
-        <div
-          class="slider-container"
-          :class="{ 'filter-active-box': isFilterActive('volumeAtipicoEnabled') }"
-        >
-          <NumberRangePicker
-            :limpavel="false"
-            :mostrar-icone="false"
-            unico
-            :valor="volumeAtipicoValor"
-            :sugestao="filterStore.volumeAtipicoEnabled ? null : [FILTER_DEFAULTS.VOLUME_ATIPICO_PERCENTUAL]"
-            :min="FILTER_DEFAULTS.VOLUME_ATIPICO_MIN"
-            :max="FILTER_DEFAULTS.VOLUME_ATIPICO_MAX"
-            :passo="10"
-            :formatar="formatarPercentual"
-            sufixo="%"
-            rotulo-personalizado="Mínimo personalizado"
-            :atalhos="volumeAtipicoAtalhos"
-            :rotulo="volumeAtipicoRotulo"
-            :disabled="volumeAtipicoFilterLocked"
-            @select-range="aplicarVolumeAtipico"
           />
         </div>
       </div>
@@ -2638,6 +2649,28 @@ const clearSearch = () => {
 }
 .slider-container :deep(.rp-gatilho-seta) {
   color: var(--text-muted);
+}
+/* Ícone dentro do campo, na cor primária: nos seletores (.rp-gatilho-icone) e, nos
+   selects e no campo Estabelecimento, sobreposto à esquerda (.filter-campo-icone). */
+.slider-container :deep(.rp-gatilho-icone) {
+  color: var(--primary-color);
+}
+.filter-campo-icone {
+  position: relative;
+}
+.filter-campo-icone-i {
+  position: absolute;
+  top: 50%;
+  left: 0.6rem;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: var(--primary-color);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+.filter-campo-icone :deep(.estabelecimento-ac .p-autocomplete-input),
+.filter-campo-icone :deep(.filter-input .p-dropdown-label) {
+  padding-left: 1.9rem;
 }
 
 .filter-input {

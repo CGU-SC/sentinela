@@ -326,24 +326,8 @@ def load_or_sync_geografico(cnpj: str, engine=None) -> CacheLoadResult:
         {"cnpj": cnpj},
         engine,
         read_existing=False,
+        required_columns=required,
     )
-    result_df = result.df
-    if result_df is not None:
-        missing_cols = sorted(required - set(result_df.columns))
-        if missing_cols:
-            result_df = result_df.with_columns([
-                pl.lit(None, dtype=schema[col]).alias(col)
-                for col in missing_cols
-            ])
-            result_df.write_parquet(parquet_path, compression="zstd")
-            return CacheLoadResult(
-                result_df,
-                from_cache=result.from_cache,
-                read_time_ms=result.read_time_ms,
-                query_time_ms=result.query_time_ms,
-                save_time_ms=result.save_time_ms,
-                error=result.error,
-            )
     return result
 
 
@@ -714,12 +698,6 @@ def sync_crm_raiox_tx(cnpj: str, engine=None) -> CacheLoadResult:
             return CacheLoadResult(df, from_cache=True, read_time_ms=read_time_ms)
 
     def write_final(df_final: pl.DataFrame) -> float:
-        missing_columns = sorted(required_columns - set(df_final.columns))
-        if missing_columns:
-            raise RuntimeError(
-                f"Contrato invalido de {CRM_RAIOX_TX_PARQUET}: "
-                f"colunas ausentes {', '.join(missing_columns)}."
-            )
         df_final = df_final.select(list(schema.keys()))
         tmp_final_path = parquet_path + ".tmp"
         started_at = time.perf_counter()
@@ -868,6 +846,7 @@ def _load_or_sync_sql_cache(
     params: dict,
     engine=None,
     read_existing: bool = True,
+    required_columns: set[str] | None = None,
 ) -> CacheLoadResult:
     parquet_path = _path(cnpj, filename)
     if read_existing:
@@ -883,6 +862,19 @@ def _load_or_sync_sql_cache(
             t0 = time.perf_counter()
             pdf = pd.read_sql(query, conn, params=params)
             query_time_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+        if required_columns and not pdf.empty:
+            missing_columns = sorted(required_columns - set(pdf.columns))
+            if missing_columns:
+                return CacheLoadResult(
+                    None,
+                    from_cache=False,
+                    query_time_ms=query_time_ms,
+                    error=(
+                        f"Contrato invalido de {filename}: colunas ausentes "
+                        f"{', '.join(missing_columns)}."
+                    ),
+                )
 
         df = pl.from_pandas(pdf) if not pdf.empty else pl.DataFrame(schema=_empty_schema(filename))
         t1 = time.perf_counter()

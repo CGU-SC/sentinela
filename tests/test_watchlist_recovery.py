@@ -132,6 +132,103 @@ class WatchlistRecoveryTests(unittest.TestCase):
         self.assertTrue(Recovery.recovery_status()["backup"]["valid"])
         self.assertEqual(Recovery.restore("backup", True), self.preferences)
 
+    def test_validation_rejects_duplicate_pharmacies_or_unowned_duplicate_evidence(self):
+        duplicate_preferences = {
+            **self.preferences,
+            "watchlist": [self.a, {"cnpj": self.a["cnpj"]}],
+        }
+        with self.assertRaisesRegex(ValueError, "farmácias duplicadas"):
+            Recovery._validate(duplicate_preferences, [])
+
+        with self.assertRaisesRegex(ValueError, "fora da lista"):
+            Recovery._validate(
+                {**self.preferences, "watchlist": [self.a]},
+                [self.eb],
+            )
+        with self.assertRaisesRegex(ValueError, "evidências duplicadas"):
+            Recovery._validate(self.preferences, [self.ea, self.ea])
+
+    def test_readers_reject_unsupported_evidence_and_joint_snapshot_versions(self):
+        evidence_path = EvidenciasService._file_path()
+        self.write(evidence_path, {"schema_version": 999, "evidencias": []})
+        with self.assertRaisesRegex(ValueError, "Versão do arquivo de evidências"):
+            Recovery._read_evidence_path(evidence_path)
+
+        joint_path = Recovery._backup_path()
+        self.write(joint_path, {"schema_version": 999})
+        with self.assertRaisesRegex(ValueError, "Versão da cópia conjunta"):
+            Recovery._read_joint()
+
+        self.write(
+            joint_path,
+            {
+                "schema_version": Recovery.SCHEMA_VERSION,
+                "preferences": {**self.preferences, "schema_version": 999},
+                "evidencias": Recovery._evidence_document([]),
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "Versão das preferências"):
+            Recovery._read_joint()
+
+        self.write(
+            joint_path,
+            {
+                "schema_version": Recovery.SCHEMA_VERSION,
+                "preferences": self.preferences,
+                "evidencias": {"schema_version": 999, "evidencias": []},
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "Versão das evidências"):
+            Recovery._read_joint()
+
+    def test_joint_commit_reports_failure_when_rollback_also_fails(self):
+        first = PreferencesService.BASE_DIR / "first.json"
+        second = PreferencesService.BASE_DIR / "second.json"
+        first.write_bytes(b"first-original")
+        second.write_bytes(b"second-original")
+
+        def write_with_second_failure(path, data):
+            if path == second:
+                raise OSError("second write failed")
+            path.write_text(json.dumps(data), encoding="utf-8")
+
+        with patch.object(PreferencesService, "_atomic_write", side_effect=write_with_second_failure), patch.object(
+            Recovery, "_atomic_bytes", side_effect=OSError("rollback failed")
+        ):
+            with self.assertRaisesRegex(PreferencesError, "gravação e na reversão"):
+                Recovery._commit([(first, {"updated": True}), (second, {"updated": True})])
+
+    def test_restore_rejects_evidence_outside_both_backup_and_current_lists(self):
+        self.legacy([self.eb])
+        only_a = {**self.preferences, "watchlist": [self.a]}
+        self.write(PreferencesService.BACKUP_PATH, only_a)
+        self.write(PreferencesService.FILE_PATH, only_a)
+
+        with self.assertRaisesRegex(PreferencesError, "lista atual nem nesta cópia"):
+            Recovery.restore("backup", True)
+
+    def test_restore_rejects_same_evidence_id_with_different_record_content(self):
+        self.legacy([self.ea])
+        changed_a = {**self.ea, "dt_janela": "2026-09-03"}
+        self.write(EvidenciasService._file_path(), Recovery._evidence_document([changed_a]))
+
+        with self.assertRaisesRegex(PreferencesError, "identificador de evidência representa registros diferentes"):
+            Recovery.restore("backup", True)
+
+    def test_restore_rejects_unknown_source(self):
+        with self.assertRaisesRegex(PreferencesError, "Fonte de recuperação inválida"):
+            Recovery.restore("principal")
+
+    def test_recovery_status_reports_invalid_evidence_backup_without_hiding_list_backup(self):
+        self.write(PreferencesService.BACKUP_PATH, self.preferences)
+        EvidenciasService._backup_path().write_text("{broken", encoding="utf-8")
+
+        status = Recovery.recovery_status()["backup"]
+
+        self.assertTrue(status["valid"])
+        self.assertFalse(status["evidencias_backup_valid"])
+        self.assertIn("evidencias_error", status)
+
     def legacy(self, current_items):
         self.write(PreferencesService.BACKUP_PATH, self.preferences)
         self.write(EvidenciasService._backup_path(), Recovery._evidence_document([self.ea, self.eb]))
@@ -253,6 +350,17 @@ class WatchlistRecoveryTests(unittest.TestCase):
         Recovery.undo_removal(self.a["cnpj"])
         with self.assertRaises(RemocaoIndisponivelError):
             Recovery.undo_removal(self.a["cnpj"])  # já desfeita
+
+    def test_undo_rejects_evidence_id_reused_for_a_different_pharmacy(self):
+        Recovery.update_watchlist([self.b])
+        conflicting = self.evidence("a", self.b["cnpj"])
+        self.write(EvidenciasService._file_path(), Recovery._evidence_document([conflicting]))
+        before = self.files()
+
+        with self.assertRaisesRegex(PreferencesError, "identificador de evidência representa registros diferentes"):
+            Recovery.undo_removal(self.a["cnpj"])
+
+        self.assertEqual(self.files(), before)
 
     def test_first_use_without_evidence_file_is_not_an_error(self):
         EvidenciasService._file_path().unlink()

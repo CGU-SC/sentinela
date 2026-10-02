@@ -90,5 +90,6 @@ function aplicar([min, max]) {
 .filtro-info { color: var(--text-muted); font-size: 0.8rem; opacity: 0.75; cursor: help; }
 .filtro-info:hover, .filtro-info:focus-visible { opacity: 1; }
 /* Botão do seletor ocupa a largura do bloco, como na barra lateral esquerda. */
-.filtro-faixa :deep(.rp-gatilho) { width: 100%; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }
+/* Mesma altura e recuo dos campos da sidebar esquerda (32px; 0,6rem). */
+.filtro-faixa :deep(.rp-gatilho) { width: 100%; height: 32px; min-height: 32px; padding: 0 0.6rem; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }
 </style>

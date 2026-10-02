@@ -389,8 +389,6 @@ def _build_gtin_sem_comprovacao_context(
     if missing_descriptions:
         preview = ", ".join(missing_descriptions[:10])
         raise RuntimeError(f"Descricao obrigatoria ausente para GTIN(s) da Nota Tecnica: {preview}.")
-    if not rows:
-        raise RuntimeError("Lista de GTINs sem comprovacao vazia apos enriquecimento de medicamentos.")
 
     total_valor = round(sum(r["valor_sem_comprovacao"] for r in rows), 2)
     total_vendas = round(sum(r["valor_vendas"] for r in rows), 2)

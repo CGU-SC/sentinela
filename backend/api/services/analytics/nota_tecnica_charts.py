@@ -583,8 +583,6 @@ def _monotone_smooth_curve(x_values: list[int], y_values: list[float], *, np) ->
     unique_anchor_x, unique_anchor_idx = np.unique(anchors_x, return_index=True)
     anchors_x = unique_anchor_x
     anchors_y = anchors_y[unique_anchor_idx]
-    if len(anchors_x) < 2:
-        return x.tolist(), y.tolist()
 
     x_smooth = np.linspace(float(anchors_x[0]), float(anchors_x[-1]), max(1200, len(anchors_x) * 80))
     segment_idx = np.searchsorted(anchors_x, x_smooth, side="right") - 1

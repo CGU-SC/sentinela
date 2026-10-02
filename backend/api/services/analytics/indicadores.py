@@ -769,34 +769,30 @@ def _build_indicador_dataset(
         return indicador_dataset, perfil_df, df_risco, c_val, c_mr, None, score_col
 
     rr_col = c_rr if c_rr in indicador_dataset.columns else None
-    has_flags = c_crit in indicador_dataset.columns and c_aten in indicador_dataset.columns
-    if has_flags:
-        indicador_dataset = (
-            indicador_dataset
-            .with_columns([
-                _benchmark_escopo_expr(),
-                pl.when(pl.col("_total_regiao_benchmark") >= MIN_REGIAO_BENCHMARK)
-                  .then(pl.col(c_mr))
-                  .otherwise(pl.col(c_mu))
-                  .alias("med_benchmark"),
-                pl.when(pl.col("_total_regiao_benchmark") >= MIN_REGIAO_BENCHMARK)
-                  .then(pl.col(c_rr))
-                  .otherwise(pl.col(c_ru))
-                  .alias("risco_benchmark"),
-            ])
-            .with_columns([
-                pl.when(pl.col(c_val).is_null())
-                  .then(pl.lit("SEM DADOS"))
-                  .when(pl.col(c_crit).cast(pl.Int32) == 1)
-                  .then(pl.lit("CRÍTICO"))
-                  .when(pl.col(c_aten).cast(pl.Int32) == 1)
-                  .then(pl.lit("ATENÇÃO"))
-                  .otherwise(pl.lit("NORMAL"))
-                  .alias("status")
-            ])
-        )
-    else:
-        indicador_dataset = indicador_dataset.with_columns(pl.lit("SEM DADOS").alias("status"))
+    indicador_dataset = (
+        indicador_dataset
+        .with_columns([
+            _benchmark_escopo_expr(),
+            pl.when(pl.col("_total_regiao_benchmark") >= MIN_REGIAO_BENCHMARK)
+              .then(pl.col(c_mr))
+              .otherwise(pl.col(c_mu))
+              .alias("med_benchmark"),
+            pl.when(pl.col("_total_regiao_benchmark") >= MIN_REGIAO_BENCHMARK)
+              .then(pl.col(c_rr))
+              .otherwise(pl.col(c_ru))
+              .alias("risco_benchmark"),
+        ])
+        .with_columns([
+            pl.when(pl.col(c_val).is_null())
+              .then(pl.lit("SEM DADOS"))
+              .when(pl.col(c_crit).cast(pl.Int32) == 1)
+              .then(pl.lit("CRÍTICO"))
+              .when(pl.col(c_aten).cast(pl.Int32) == 1)
+              .then(pl.lit("ATENÇÃO"))
+              .otherwise(pl.lit("NORMAL"))
+              .alias("status")
+        ])
+    )
 
     return indicador_dataset, perfil_df, df_risco, c_val, c_mr, rr_col, score_col
 
@@ -1239,8 +1235,6 @@ def get_indicador_evolucao_benchmark(
     if indicador == "volume_atipico":
         num_col = "volume_atipico_valor_aumento_atipico"
         den_col = None
-        if num_col not in matriz_required:
-            matriz_required.append(num_col)
 
     _require_columns(matriz, matriz_required, "matriz_risco_anual")
 

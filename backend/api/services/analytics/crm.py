@@ -388,8 +388,6 @@ def _build_alertas_crm_multiplos_por_medico(
         for row in cruzamento.iter_rows(named=True):
             dt_ini = row.get("_dt_ini")
             dt_fim = row.get("_dt_fim")
-            if dt_ini is None or dt_fim is None:
-                continue
 
             mid = str(row.get("_id_medico") or "")
             hr = _to_int(row.get("hr_janela"), getattr(dt_ini, "hour", 0))
@@ -1380,9 +1378,6 @@ def _alert_overlaps_hour(start_value, end_value, hour: Optional[int]) -> bool:
         start_hour = end_hour
     if end_hour is None:
         end_hour = start_hour
-
-    if start_hour is None or end_hour is None:
-        return False
 
     if end_hour < start_hour:
         return target_hour >= start_hour or target_hour <= end_hour

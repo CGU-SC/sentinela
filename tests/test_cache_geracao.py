@@ -22,6 +22,10 @@ class CacheGeracaoTests(unittest.TestCase):
     def tearDown(self):
         self.patcher.stop()
 
+    def test_rejeita_cache_sem_capacidade_positiva(self):
+        with self.assertRaisesRegex(ValueError, "max_itens deve ser pelo menos 1"):
+            CacheGeracao(max_itens=0)
+
     def test_reaproveita_e_descarta_geracao_antiga(self):
         cache, chamadas = CacheGeracao(max_itens=4), []
         calcular = lambda: chamadas.append(1) or len(chamadas)

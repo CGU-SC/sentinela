@@ -5279,7 +5279,11 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         _df_movimentacao    = _try_load("movimentacao",    _PARQUET_PATH)
         _df_localidades     = _try_load("localidades",     _LOCALIDADES_PARQUET_PATH)
         _df_rede            = _try_load("rede",            _REDE_PARQUET_PATH)
-        _df_matriz_risco    = _try_load("matriz_risco",    _MATRIZ_PARQUET_PATH)
+        _df_matriz_risco    = _try_load(
+            "matriz_risco",
+            _MATRIZ_PARQUET_PATH,
+            validate_schema=True,
+        )
         _df_bench_crm_uf    = _try_load("bench_crm_uf",   _BENCH_CRM_UF_PATH)
         _df_bench_crm_regiao= _try_load("bench_crm_regiao", _BENCH_CRM_REGIAO_PATH)
         _df_bench_crm_br    = _try_load("bench_crm_br",   _BENCH_CRM_BR_PATH)
@@ -5356,7 +5360,11 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         _try_mark_on_demand("esocial_cnpj_movimentacao_ano", _ESOCIAL_CNPJ_MOVIMENTACAO_ANO_PARQUET_PATH)
         _try_mark_on_demand("esocial_cnpj_ultima_movimentacao", _ESOCIAL_CNPJ_ULTIMA_MOVIMENTACAO_PARQUET_PATH)
         _df_sentinela_metadados_base = _try_load("sentinela_metadados_base", _SENTINELA_METADADOS_BASE_PARQUET_PATH)
-        _df_falecidos = _try_load("falecidos", _FALECIDOS_PARQUET_PATH)
+        _df_falecidos = _try_load(
+            "falecidos",
+            _FALECIDOS_PARQUET_PATH,
+            validate_schema=True,
+        )
         dados_par_loaded = _try_load("dados_par", _DADOS_PAR_PARQUET_PATH)
         _df_dados_par = dados_par_loaded
         par_teia_alvos_loaded = _try_load("par_teia_alvos", _PAR_TEIA_ALVOS_PARQUET_PATH)

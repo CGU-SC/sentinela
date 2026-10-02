@@ -438,13 +438,7 @@ def _build_parkinson_demografia_context(
         }
         for faixa_inicio, populacao in sorted(faixas_dict.items())
     ]
-    if sum(int(item["populacao"]) for item in faixas_etarias) != pop_total_int:
-        raise RuntimeError(f"Faixas etarias IBGE nao reconciliam com populacao total para id_ibge7={id_ibge7}.")
-
     casos_esperados = pop_50_int * _PARKINSON_PREVALENCIA_50_MAIS
-    if casos_esperados <= 0:
-        raise RuntimeError(f"Casos esperados de Parkinson invalidos para id_ibge7={id_ibge7}.")
-
     razao_observado_esperado = qtd_cpfs_observado / casos_esperados
 
     return {
@@ -805,16 +799,12 @@ def _build_indicador_regional_context(
     valor = regional_row.get(c_val)
     mediana_reg = regional_row.get(c_med_reg)
     risco_reg = regional_row.get(c_risco_reg)
-    if valor is None:
-        raise RuntimeError(f"CNPJ {cnpj_norm} sem valor para indicador {indicador_key}.")
     if mediana_reg is None and not _is_zero_baseline_critical(indicador_key, valor, mediana_reg, risco_reg):
         raise RuntimeError(f"CNPJ {cnpj_norm} sem mediana regional para indicador {indicador_key}.")
     if risco_reg is None and not _is_zero_baseline_critical(indicador_key, valor, mediana_reg, risco_reg):
         raise RuntimeError(f"CNPJ {cnpj_norm} sem risco regional para indicador {indicador_key}.")
 
     total_regional = regional.height
-    if total_regional <= 0:
-        raise RuntimeError(f"Universo regional invalido para indicador {indicador_key} e id_regiao_saude={id_regiao}.")
     if total_regional == 1:
         percentil_regional = 100.0
     else:

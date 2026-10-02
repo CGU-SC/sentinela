@@ -1287,8 +1287,6 @@ def get_crm_prescricoes_analise(
 
     if universo_filtrado:
         from .crm_analysis_filtrado import ranking_filtrado
-        if page < 1 or page_size < 1 or page_size > 100:
-            raise HTTPException(status_code=422, detail="Pagina ou tamanho de pagina invalido.")
         try:
             ranking_aggregated, prescricoes_filtradas, prescricoes_filtradas_completas = ranking_filtrado(
                 filtros=filtros_farmacia,

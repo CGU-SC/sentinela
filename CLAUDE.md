@@ -134,7 +134,21 @@ npm run preview
 pyinstaller Sentinela.spec
 ```
 
-There are no automated test suites defined; validation is done manually via the dev servers.
+### Tests
+```bash
+# Install test dependencies (pytest + pytest-cov on top of requirements.txt)
+pip install -r requirements-test.txt
+
+# Run the backend suite (config in pytest.ini; always measures coverage of backend/)
+.\.venv\Scripts\python.exe -m pytest
+
+# Run a single file without the coverage report
+.\.venv\Scripts\python.exe -m pytest tests/backend/analytics/test_indicadores.py --no-cov
+```
+
+- Tests live in `tests/` (legacy unittest files at the root, pytest suite in `tests/backend/` split into `analytics`, `api`, `cache`, `services`).
+- The suite runs without SQL Server and without the production cache: sources are replaced by fixtures/mocks (`tests/backend/conftest.py`).
+- The backend suite is kept at 100% line coverage of `backend/`; new backend code should come with tests. There is no automated frontend test suite; frontend validation is still manual via the dev servers.
 
 ---
 

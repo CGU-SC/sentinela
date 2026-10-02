@@ -306,10 +306,10 @@ const ufTooltip = analysisTooltip('crmFiltroUfCrm');
 .filtro-info { color: var(--text-muted); font-size: 0.8rem; opacity: 0.75; cursor: help; }
 .filtro-info:hover, .filtro-info:focus-visible { opacity: 1; }
 /* Mesma caixa dos seletores (.rp-gatilho): fundo, raio, recuo e tamanho do texto. */
-.filtro-busca { display: flex; align-items: center; gap: 0.45rem; box-sizing: border-box; height: 34px; padding: 0 0.7rem; border: 1px solid var(--card-border); border-radius: 6px; background: var(--card-bg); color: var(--text-muted); transition: border-color 0.15s ease; }
+.filtro-busca { display: flex; align-items: center; gap: 0.45rem; box-sizing: border-box; height: 32px; padding: 0 0.6rem; border: 1px solid var(--card-border); border-radius: 6px; background: var(--card-bg); color: var(--text-muted); transition: border-color 0.15s ease; }
 .filtro-busca:focus-within { border-color: var(--primary-color); }
 .filtro-busca.is-disabled { opacity: 0.6; }
-.filtro-busca > .pi { font-size: 0.75rem; }
+.filtro-busca > .pi { color: var(--primary-color); font-size: 0.8rem; }
 .filtro-busca input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-color-85); font: inherit; font-size: 0.8125rem; font-weight: 400; }
 .filtro-busca input::placeholder { color: var(--text-muted); }
 .filtro-busca button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--color-error); opacity: 0.7; cursor: pointer; }
@@ -330,7 +330,8 @@ const ufTooltip = analysisTooltip('crmFiltroUfCrm');
 .filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); font-size: 0.8125rem; font-weight: 500; }
 .filtro-rotulo label { cursor: pointer; }
 /* Botão do seletor ocupa a largura do bloco, como os filtros de faixa. */
-.filtro-picker :deep(.rp-gatilho) { width: 100%; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }
+/* Mesma altura e recuo dos campos da sidebar esquerda (32px; 0,6rem). */
+.filtro-picker :deep(.rp-gatilho) { width: 100%; height: 32px; min-height: 32px; padding: 0 0.6rem; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }
 /* Hover neutro, a mesma cor da barra de filtros da esquerda (AppSidebar): borda
    clareada com o cinza do texto. Filtro ativo e campo em foco continuam na cor primária. */
 .filtro:not(.is-ativo) :deep(.rp-gatilho:not(:disabled):hover),

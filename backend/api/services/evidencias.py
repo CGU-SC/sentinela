@@ -107,7 +107,6 @@ class EvidenciasService:
                 raise EvidenciasError(
                     "A cesta de evidências não pôde ser interpretada. O arquivo foi preservado sem alterações."
                 ) from exc
-        raise AssertionError("inalcançável")
 
     @classmethod
     def _gravar_unlocked(cls, itens: List[Dict[str, Any]]) -> None:

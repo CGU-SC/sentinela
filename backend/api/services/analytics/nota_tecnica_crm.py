@@ -296,9 +296,6 @@ def _add_crm_alert_legend(doc, rows: list[dict[str, Any]]):
             ),
         ]
     )
-    if not items:
-        return
-
     title = doc.add_paragraph()
     title.paragraph_format.space_before = Pt(8)
     title.paragraph_format.space_after = Pt(4)

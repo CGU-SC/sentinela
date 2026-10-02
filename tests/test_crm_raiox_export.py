@@ -41,7 +41,7 @@ class CrmRaioxExportTests(unittest.TestCase):
             crm_export,
             "sync_crm_raiox_tx",
             return_value=_ok(self.transactions if transactions is None else transactions),
-        ), patch.object(crm_export, "scan_dados_medico", return_value=self.medicos.lazy()):
+        ), patch.object(crm_export, "get_dados_medico_df", return_value=self.medicos):
             filename, chunks = crm_export.export_crm_raiox_csv("11.483.531/0001-07", inicio, fim)
             body = b"".join(chunks)
         return filename, list(csv.reader(io.StringIO(body.decode("utf-8-sig")), delimiter=";")), body
@@ -107,6 +107,9 @@ class CrmRaioxExportTests(unittest.TestCase):
         self.assertEqual(crm_export._csv_text("123/PA"), "123/PA")
 
     def test_invalid_range_and_empty_range_are_explicit(self):
+        with self.assertRaises(HTTPException) as invalid_cnpj:
+            crm_export.export_crm_raiox_csv("123")
+        self.assertEqual(invalid_cnpj.exception.status_code, 422)
         with self.assertRaises(HTTPException) as invalid:
             crm_export.export_crm_raiox_csv("11483531000107", date(2024, 2, 1), date(2024, 1, 1))
         self.assertEqual(invalid.exception.status_code, 422)
@@ -133,6 +136,54 @@ class CrmRaioxExportTests(unittest.TestCase):
         self.assertEqual(time_ctx.exception.status_code, 500)
         self.assertIn("data/hora inválida", time_ctx.exception.detail)
 
+    def test_csv_stream_flushes_rows_at_configured_chunk_boundary(self):
+        with patch.object(crm_export, "_CHUNK_ROWS", 2):
+            _, rows, body = self._export()
+        self.assertEqual(len(rows), 5)
+        self.assertTrue(body.endswith(b"\r\n"))
+
+    def test_non_finite_amount_and_invalid_window_date_fail_before_stream(self):
+        non_finite = self.transactions.with_columns(pl.lit(float("inf")).alias("valor_pago"))
+        with self.assertRaises(HTTPException) as amount_error:
+            self._export(transactions=non_finite)
+        self.assertEqual(amount_error.exception.status_code, 500)
+        self.assertIn("valor pago inválido", amount_error.exception.detail)
+
+        invalid_date = self.transactions.with_columns(pl.lit("not-a-date").alias("dt_janela"))
+        with self.assertRaises(HTTPException) as date_error:
+            self._export(transactions=invalid_date)
+        self.assertEqual(date_error.exception.status_code, 500)
+        self.assertIn("data inválida", date_error.exception.detail)
+
+    def test_doctor_lookup_rejects_conflicting_registry_names(self):
+        duplicate = pl.DataFrame(
+            {"id_medico": ["123/PA", "123/PA"], "no_medico": ["Nome A", "Nome B"]}
+        )
+        with patch.object(crm_export, "get_dados_medico_df", return_value=duplicate):
+            with self.assertRaises(HTTPException) as error:
+                crm_export._load_doctor_names(["123/PA"])
+        self.assertEqual(error.exception.status_code, 500)
+        self.assertIn("Cadastro médico inconsistente", error.exception.detail)
+
+    def test_export_rejects_unavailable_and_missing_raiox_data(self):
+        with patch.object(
+            crm_export,
+            "sync_crm_raiox_tx",
+            return_value=SimpleNamespace(error="offline", df=self.transactions),
+        ):
+            with self.assertRaises(HTTPException) as unavailable:
+                crm_export.export_crm_raiox_csv("11483531000107")
+        self.assertEqual(unavailable.exception.status_code, 503)
+
+        with patch.object(
+            crm_export,
+            "sync_crm_raiox_tx",
+            return_value=SimpleNamespace(error=None, df=None),
+        ):
+            with self.assertRaises(HTTPException) as missing:
+                crm_export.export_crm_raiox_csv("11483531000107")
+        self.assertEqual(missing.exception.status_code, 503)
+
 
 class CrmRaioxXlsxExportTests(unittest.TestCase):
     """Reaproveita os fixtures do CSV e valida a pasta de trabalho Excel."""
@@ -151,7 +202,7 @@ class CrmRaioxXlsxExportTests(unittest.TestCase):
 
         with patch.object(crm_export, "sync_crm_raiox_tx",
                           return_value=_ok(self.transactions if transactions is None else transactions)), \
-            patch.object(crm_export, "scan_dados_medico", return_value=self.medicos.lazy()), \
+            patch.object(crm_export, "get_dados_medico_df", return_value=self.medicos), \
             patch.object(crm_export, "get_df_perfil_estabelecimento",
                          return_value=self.perfil if perfil is None else perfil):
             filename, content = crm_export.export_crm_raiox_xlsx("11.483.531/0001-07", inicio, fim)
@@ -228,6 +279,31 @@ class CrmRaioxXlsxExportTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             self._export_xlsx(perfil=self.perfil.clear())
         self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_profile_contract_and_empty_labels_are_rejected(self):
+        incomplete_profile = pl.DataFrame({"cnpj": ["11483531000107"]})
+        with patch.object(crm_export, "get_df_perfil_estabelecimento", return_value=incomplete_profile):
+            with self.assertRaises(HTTPException) as missing_columns:
+                crm_export._load_farmacia("11483531000107")
+        self.assertEqual(missing_columns.exception.status_code, 500)
+        self.assertIn("colunas obrigatórias", missing_columns.exception.detail)
+
+        blank_profile = pl.DataFrame(
+            {"cnpj": ["11483531000107"], "razao_social": [""], "no_municipio": ["Cidade"], "uf": ["SC"]}
+        )
+        with patch.object(crm_export, "get_df_perfil_estabelecimento", return_value=blank_profile):
+            with self.assertRaises(HTTPException) as missing_label:
+                crm_export._load_farmacia("11483531000107")
+        self.assertEqual(missing_label.exception.status_code, 500)
+        self.assertIn("sem razão social", missing_label.exception.detail)
+
+    def test_xlsx_export_enforces_excel_row_limit_before_loading_pharmacy(self):
+        with patch.object(crm_export, "_XLSX_MAX_ROWS", 2), patch.object(
+            crm_export, "sync_crm_raiox_tx", return_value=_ok(self.transactions)
+        ), patch.object(crm_export, "get_dados_medico_df", return_value=self.medicos):
+            with self.assertRaises(HTTPException) as too_many:
+                crm_export.export_crm_raiox_xlsx("11483531000107")
+        self.assertEqual(too_many.exception.status_code, 413)
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ from backend.api.services.evidencias import (
 )
 from backend.api.services import evidencias_export
 from backend.api.services.analytics.crm_export import _Farmacia
-from backend.api.services.preferences import PreferencesService
+from backend.api.services.preferences import PreferencesError, PreferencesService
 
 CNPJ_A = "04570047000141"
 CNPJ_B = "05363613000107"
@@ -151,6 +151,84 @@ class EvidenciasServiceTests(EvidenciasBase):
         with self.assertRaises(EvidenciasError):
             EvidenciasService.listar()
         self.assertFalse(EvidenciasService._file_path().exists())
+
+    def test_arquivo_com_estrutura_invalida_e_preservado(self):
+        casos = [
+            [],
+            {"evidencias": {}},
+            {"evidencias": ["registro"]},
+            {"evidencias": [{"id": "id-incompleto"}]},
+            {"evidencias": [{"id": "id", "cnpj": CNPJ_A, "tipo": "desconhecido",
+                             "dt_janela": "2021-01-29", "criado_em": "2021-01-29T00:00:00+00:00"}]},
+        ]
+        path = EvidenciasService._file_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for conteudo in casos:
+            with self.subTest(conteudo=conteudo):
+                original = json.dumps(conteudo)
+                path.write_text(original, encoding="utf-8")
+                with self.assertRaises(EvidenciasError):
+                    EvidenciasService.listar()
+                self.assertEqual(path.read_text(encoding="utf-8"), original)
+
+    def test_falha_transitoria_de_leitura_e_tentada_novamente(self):
+        EvidenciasService.criar(dia())
+        original_open = Path.open
+        chamadas = 0
+
+        def open_com_falha_transitoria(path, *args, **kwargs):
+            nonlocal chamadas
+            if path == EvidenciasService._file_path() and args[:1] == ("r",) and chamadas == 0:
+                chamadas += 1
+                raise OSError("falha temporária de leitura")
+            if path == EvidenciasService._file_path() and args[:1] == ("r",):
+                chamadas += 1
+            return original_open(path, *args, **kwargs)
+
+        with patch.object(Path, "open", open_com_falha_transitoria), patch(
+            "backend.api.services.evidencias.time.sleep"
+        ) as sleep:
+            itens = EvidenciasService.listar()
+
+        self.assertEqual(len(itens), 1)
+        self.assertEqual(chamadas, 2)
+        sleep.assert_called_once_with(0.1)
+
+    def test_falha_permanente_de_leitura_esgota_tres_tentativas(self):
+        path = EvidenciasService._file_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"evidencias": []}', encoding="utf-8")
+
+        original_open = Path.open
+
+        def open_com_falha(path, *args, **kwargs):
+            if path == EvidenciasService._file_path() and args[:1] == ("r",):
+                raise OSError("arquivo indisponível")
+            return original_open(path, *args, **kwargs)
+
+        with patch.object(Path, "open", open_com_falha), patch(
+            "backend.api.services.evidencias.time.sleep"
+        ) as sleep, self.assertRaisesRegex(EvidenciasError, "Não foi possível ler"):
+            EvidenciasService.listar()
+
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_falha_de_gravacao_preserva_arquivo_principal_e_expõe_erro(self):
+        existente = EvidenciasService.criar(dia())
+        original = EvidenciasService._file_path().read_bytes()
+
+        with patch.object(PreferencesService, "_atomic_write", side_effect=OSError("disco sem espaço")):
+            with self.assertRaisesRegex(EvidenciasError, "alteração não foi confirmada"):
+                EvidenciasService.atualizar_nota(existente["id"], "nova nota")
+
+        self.assertEqual(EvidenciasService._file_path().read_bytes(), original)
+        self.assertTrue(EvidenciasService._backup_path().exists())
+        self.assertEqual(EvidenciasService.listar()[0]["nota"], "")
+
+    def test_erro_ao_adquirir_bloqueio_vira_erro_de_armazenamento(self):
+        with patch.object(EvidenciasService, "_locked", side_effect=PreferencesError("bloqueio indisponível")):
+            with self.assertRaisesRegex(EvidenciasError, "bloqueio indisponível"):
+                EvidenciasService.listar()
 
 
 class EvidenciasEndpointTests(EvidenciasBase):
