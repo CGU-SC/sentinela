@@ -13,9 +13,9 @@ import { CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
  */
 export const CRM_RANKING_TABS = Object.freeze(['resumo', 'linha', 'mes']);
 const DEFAULT_PAGE_SIZE = CRM_RANKING_DEFAULT_PAGE_SIZE;
-const DEFAULT_SORT_FIELD = 'razao_p95';
+const DEFAULT_SORT_FIELD = 'taxa_prescricoes_dia';
 const DEFAULT_SORT_ORDER = 'desc';
-const MENSAL_SORT_FIELDS = new Set(['razao_p95', 'taxa_prescricoes_dia', 'nu_prescricoes', 'competencia']);
+const MENSAL_SORT_FIELDS = new Set(['taxa_prescricoes_dia', 'nu_prescricoes', 'competencia']);
 const SERIE_PARAM_KEYS = ['data_inicio', 'data_fim', 'uf', 'regiao_id', 'id_ibge7'];
 const MAX_CACHED = 24;
 const pageCache = new Map();

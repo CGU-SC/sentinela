@@ -38,17 +38,6 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
     body: 'UF de registro do CRM usado nas prescrições (a UF do CRM, não a da farmácia). Vale também para CRMs não localizados no CFM. Marque uma ou mais.',
     icon: 'pi-map-marker',
   },
-  crmFiltroAntesInscricao: {
-    title: 'Prescreveu antes da 1ª inscrição',
-    body: 'Médicos com prescrição, no período, em algum mês anterior ao mês da 1ª inscrição no CFM. Mesma regra do ponto de atenção do histórico do CRM.',
-    icon: 'pi-calendar-times',
-    sections: [
-      {
-        label: 'Sem data de inscrição',
-        text: 'Médicos localizados sem data de inscrição no cadastro não podem ser avaliados e não entram neste filtro.',
-      },
-    ],
-  },
   crmFiltroTaxaDia: {
     title: 'Taxa diária',
     body: 'Prescrições ÷ dias com prescrição do médico no período, no recorte da página (Brasil, UF, região ou município): o mesmo número da coluna TAXA / DIA do ranking.',
@@ -174,7 +163,7 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
     ],
   },
   crmRanking: {
-    title: 'Ranking de médicos por taxa diária',
+    title: 'Ranking de médicos',
     body: 'Médicos com prescrição no escopo e no período selecionados. A ordem segue a coluna e a direção de ordenação escolhidas; inicialmente, a tabela mostra as maiores taxas diárias.',
     icon: 'pi-sort-amount-down',
     sections: [
@@ -187,18 +176,18 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
         text: 'Mês em que a taxa do médico ficou acima do P95 nacional daquele mês, o corte dos 5% de médicos com maior taxa do Brasil.',
       },
       {
-        label: '% meses com taxa elevada',
-        text: 'Meses com taxa elevada ÷ meses com prescrição no período.',
+        label: 'Farmácias',
+        text: 'Farmácias e municípios distintos onde o médico prescreveu no período, no Brasil todo (não só no recorte da página). São os mesmos números dos filtros Nº de farmácias e Nº de municípios.',
       },
         {
           label: 'Colunas agrupadas',
-          text: 'Produção ordena pelo número de prescrições; Meses com taxa elevada ordena pelo percentual; Farmácias filtradas, quando presente, ordena pelas prescrições nessas farmácias. Os valores complementares aparecem abaixo em cada célula.',
+          text: 'Produção ordena pelo número de prescrições; Farmácias ordena pelo número de farmácias; Farmácias filtradas, quando presente, ordena pelas prescrições nessas farmácias. Os valores complementares aparecem abaixo em cada célula.',
         },
     ],
   },
   crmRankingMensal: {
     title: 'Por mês',
-    body: 'Uma linha por médico e mês, no escopo e no período selecionados. Inicialmente, os meses mais distantes do P95 aparecem primeiro, de qualquer médico do recorte.',
+    body: 'Uma linha por médico e mês, no escopo e no período selecionados. Inicialmente, os meses com maior taxa diária aparecem primeiro, de qualquer médico do recorte.',
     icon: 'pi-calendar',
     sections: [
       {
@@ -206,27 +195,31 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
         text: 'Prescrições ÷ dias com prescrição naquele mês, dentro do escopo.',
       },
       {
-        label: '×P95',
-        text: 'Taxa do mês ÷ P95 nacional do mesmo mês. Acima de 1× o mês tem taxa elevada. Comparar pelo ×P95 deixa meses de anos diferentes na mesma régua.',
-      },
-      {
         label: 'Colunas agrupadas',
-        text: 'Produção ordena pelo número de prescrições; ×P95 / P95 do mês ordena pelo ×P95. Os valores complementares aparecem abaixo em cada célula.',
+        text: 'Produção ordena pelo número de prescrições; os dias com prescrição aparecem abaixo, na mesma célula.',
       },
     ],
   },
   crmRankingLinhaTempo: {
     title: 'Taxa diária mensal',
-    body: 'Uma barra por mês do período, na mesma linha do tempo para todos os médicos. A altura é a taxa diária do mês (prescrições ÷ dias com prescrição) relativa ao maior mês do próprio médico.',
+    body: 'Uma barra por mês do período, na mesma linha do tempo para todos os médicos. O seletor Escala, ao lado das abas, escolhe a régua da altura das barras.',
     icon: 'pi-chart-bar',
     sections: [
       {
         label: 'Cor',
-        text: 'Tons de vermelho: mês com taxa elevada (acima do P95 nacional do mês), do mais claro ao mais marcado conforme o ×P95 — de 1× a 2×, de 2× a 3× e acima de 3×. Azul: demais meses.',
+        text: 'Tons de vermelho conforme o ×P95 do mês (taxa ÷ P95 nacional do mês), do mais claro ao mais marcado: de 1,5× a 2,5×, de 2,5× a 3,5×, de 3,5× a 4,5×, de 4,5× a 5,5×, de 5,5× a 6,5× e acima de 6,5×. Azul: demais meses (inclusive os pouco acima do P95, até 1,5×, que continuam contando como taxa elevada).',
       },
       {
-        label: 'Comparação entre médicos',
-        text: 'Cada linha tem a própria escala: a altura mostra os meses que destoam do padrão do médico. Para comparar médicos entre si, use a cor ou o tooltip de cada mês, que traz a taxa, o ×P95 e o P95 do mês.',
+        label: 'Escala comum',
+        text: 'Altura = quantas vezes a taxa diária do mês passou do P95 nacional daquele mês (×P95), de 0 a 10×, igual para todos os médicos (acima de 10×, barra cheia com marca escura no topo). Barras mais altas são meses mais acima do P95, em qualquer linha. Meses abaixo do P95 ficam com até 1/10 da altura.',
+      },
+      {
+        label: 'Escala por médico',
+        text: 'Altura = taxa diária do mês ÷ o maior mês do próprio médico. Mostra o formato da atuação de cada um (quando cresceu, quando caiu), mas não compara médicos entre si.',
+      },
+      {
+        label: 'Nas duas escalas',
+        text: 'A cor segue o ×P95 do mês e o tooltip de cada mês traz a taxa, o ×P95 e o P95 do mês.',
       },
       {
         label: 'Mês sem barra',
@@ -260,7 +253,7 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
       },
       {
         label: 'Cor',
-        text: 'Tons de vermelho: mês com taxa elevada (acima do P95 nacional do mês), do mais claro ao mais marcado conforme o ×P95 — de 1× a 2×, de 2× a 3× e acima de 3×. Azul: demais meses.',
+        text: 'Tons de vermelho conforme o ×P95 do mês (taxa ÷ P95 nacional do mês), do mais claro ao mais marcado: de 1,5× a 2,5×, de 2,5× a 3,5×, de 3,5× a 4,5×, de 4,5× a 5,5×, de 5,5× a 6,5× e acima de 6,5×. Azul: demais meses (inclusive os pouco acima do P95, até 1,5×, que continuam contando como taxa elevada).',
       },
       {
         label: 'Detalhe',
@@ -422,12 +415,23 @@ function formatTooltipDecimal(value, casas = 2) {
  * Faixa da taxa do mês em relação ao P95 nacional do mês (tons de vermelho da
  * linha do tempo). Só meses de taxa elevada (acima do P95) têm faixa.
  */
+/**
+ * Faixa de cor de um mês pelo ×P95 (barras, tooltips e legendas de todo o sistema).
+ * Só meses de taxa elevada (acima do P95) têm faixa; até 1,5× a faixa não tem cor
+ * (chave null: a barra fica neutra, mas o mês continua "taxa elevada" no tooltip).
+ * Acima, um tom a cada 1×: leve (até 2,5×), media (até 3,5×), media-forte (até
+ * 4,5×), forte (até 5,5×), muito-forte (até 6,5×) e extrema (acima de 6,5×).
+ */
 export function crmFaixaP95(ponto) {
   if (!ponto.taxa_elevada) return null;
   const razao = Number(ponto.razao_p95);
-  if (razao > 3) return { chave: 'forte', rotulo: 'acima de 3× o P95' };
-  if (razao > 2) return { chave: 'media', rotulo: '2× a 3× o P95' };
-  return { chave: 'leve', rotulo: '1× a 2× o P95' };
+  if (razao > 6.5) return { chave: 'extrema', rotulo: 'acima de 6,5× o P95' };
+  if (razao > 5.5) return { chave: 'muito-forte', rotulo: '5,5× a 6,5× o P95' };
+  if (razao > 4.5) return { chave: 'forte', rotulo: '4,5× a 5,5× o P95' };
+  if (razao > 3.5) return { chave: 'media-forte', rotulo: '3,5× a 4,5× o P95' };
+  if (razao > 2.5) return { chave: 'media', rotulo: '2,5× a 3,5× o P95' };
+  if (razao > 1.5) return { chave: 'leve', rotulo: '1,5× a 2,5× o P95' };
+  return { chave: null, rotulo: '1× a 1,5× o P95' };
 }
 
 /**
@@ -436,12 +440,13 @@ export function crmFaixaP95(ponto) {
  * a barra fica cheia e marcada como cortada (valor real no tooltip/detalhe).
  */
 export const CRM_ATUACAO_TETO_P95 = 4;
-export function crmAlturaAtuacao(razaoP95) {
+export function crmAlturaAtuacao(razaoP95, teto = CRM_ATUACAO_TETO_P95) {
   const razao = Number(razaoP95);
   if (!(razao >= 0)) throw new Error(`×P95 inválido: ${razaoP95}.`);
+  if (!(teto > 0)) throw new Error(`Teto de ×P95 inválido: ${teto}.`);
   return {
-    fracao: Math.min(razao, CRM_ATUACAO_TETO_P95) / CRM_ATUACAO_TETO_P95,
-    cortada: razao > CRM_ATUACAO_TETO_P95,
+    fracao: Math.min(razao, teto) / teto,
+    cortada: razao > teto,
   };
 }
 
@@ -449,6 +454,9 @@ export function crmAlturaAtuacao(razaoP95) {
  * Mesma faixa a partir da taxa e do P95 do mês (quando a resposta não traz o
  * ×P95 pronto). Taxa elevada: taxa arredondada em 6 casas > P95, como no backend.
  */
+/** Teto da escala comum da Linha do tempo do ranking: 0 a 10× o P95 (as barras de atuação usam 4×). */
+export const CRM_LINHA_TEMPO_TETO_P95 = 10;
+
 export function crmFaixaPorTaxa(taxa, p95) {
   const t = Number(taxa);
   const limite = Number(p95);
@@ -493,7 +501,6 @@ export const CRM_ALERTA_ICONES = Object.freeze({
 });
 
 /** Controle "antes da 1ª inscrição" desabilitado com "Não localizado" marcado. */
-export const CRM_ANTES_INSCRICAO_INDISPONIVEL_TOOLTIP = 'Indisponível para médicos não localizados: eles não têm data de inscrição no CFM.';
 
 /** Ícone do selo "Não localizado no CFM" da coluna MÉDICO / CRM do ranking. */
 export const CRM_NAO_LOCALIZADO_ICONE = 'pi-id-card';

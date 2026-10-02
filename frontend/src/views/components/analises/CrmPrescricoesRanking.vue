@@ -2,11 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
+import OverlayPanel from 'primevue/overlaypanel';
 import { useFormatting } from '@/composables/useFormatting';
 import { useFrozenData } from '@/composables/useFrozenData';
 import {
-  analysisTooltip, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP, crmMedicoNomeTooltip } from '@/config/analysisTooltipConfig';
-import { DATA_NEUTRAL, CRM_TAXA_P95_TONS, CRM_ALERTA_BADGE_TONS } from '@/config/colors';
+  analysisTooltip, crmAlturaAtuacao, CRM_LINHA_TEMPO_TETO_P95, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP, crmMedicoNomeTooltip } from '@/config/analysisTooltipConfig';
+import { DATA_NEUTRAL, CRM_ALERTA_BADGE_TONS } from '@/config/colors';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
 import { CRM_RANKING_PAGE_SIZE_OPTIONS, CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
 import { useThemeStore } from '@/stores/theme';
@@ -14,7 +15,11 @@ import HighlightedText from '@/views/components/common/HighlightedText.vue';
 import { destaqueBuscaMedico } from '@/utils/crmBusca';
 import CrmPrescricoesMensalTable from './CrmPrescricoesMensalTable.vue';
 import CrmAlertasBadge from './CrmAlertasBadge.vue';
+import CrmMedicoFixar from './CrmMedicoFixar.vue';
+import PinIcon from '@/views/components/common/PinIcon.vue';
+import { useCrmMedicosFixadosStore } from '@/stores/crmMedicosFixados';
 import TableFooter from '@/views/components/common/TableFooter.vue';
+import CrmBarrasMensais from '@/views/components/common/CrmBarrasMensais.vue';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -32,6 +37,8 @@ const props = defineProps({
   isStale: { type: Boolean, default: false },
   farmaciasFiltradas: { type: Boolean, default: false },
   appliedQuery: { type: String, default: '' },
+  /** "Só fixados" na resposta exibida do ranking: nº de médicos fixados pedidos (null = sem o recorte). */
+  fixadosPedidos: { type: Number, default: null },
   /** Aba ativa: 'resumo' | 'linha' | 'mes' */
   tab: { type: String, default: 'resumo' },
   /** Aba "Por mês": { response, loading, error, first, pageSize, sortField, sortOrder, appliedQuery } */
@@ -50,16 +57,24 @@ const TABS = [
   { value: 'mes', label: 'Por mês' },
 ];
 const themeStore = useThemeStore();
+
+// ── Médicos fixados: alfinete nas linhas + chave "só fixados" nas três abas ──
+const fixadosStore = useCrmMedicosFixadosStore();
+const painelFixados = ref(null);
+const fixadosTooltip = computed(() => (
+  fixadosStore.soFixados
+    ? 'Mostrando só os médicos fixados nas três abas. Clique para voltar a todos.'
+    : 'Mostrar só os médicos fixados nas três abas (Resumo, Linha do tempo e Por mês). Os filtros continuam valendo.'
+));
+// Sem fixados o botão some: fecha a lista para ela não ficar solta na tela.
+watch(() => fixadosStore.total, (total) => { if (!total) painelFixados.value?.hide(); });
+
 const dataColorVars = computed(() => {
   const tema = themeStore.isDark ? 'dark' : 'light';
   const cores = DATA_NEUTRAL[tema];
-  const tons = CRM_TAXA_P95_TONS[tema];
   return {
     '--data-color': cores.strong,
     '--data-color-soft': cores.soft,
-    '--p95-leve': tons.leve,
-    '--p95-media': tons.media,
-    '--p95-forte': tons.forte,
   };
 });
 // Mesmo vermelho pastel da coluna ALERTAS, usado no selo "Não localizado no CFM"
@@ -97,7 +112,16 @@ const { formatNumberFull, formatTitleCase } = useFormatting();
 // ── Aba "Por mês" ────────────────────────────────────────────────────────────
 const mensalRows = computed(() => props.mensal.response?.linhas ?? []);
 const mensalTotal = computed(() => props.mensal.response?.qtd_linhas ?? 0);
-const mensalInitialLoading = computed(() => props.mensal.loading && !props.mensal.response);
+// Abas "Por mês" e "Linha do tempo" ainda sem dados (só na primeira vez): em vez
+// do bloco de carregamento (ou da linha do tempo vazia), a tabela do Resumo
+// continua na tela, esmaecida, até os dados da aba chegarem.
+const mensalPronta = computed(() => Boolean(props.mensal.response) || Boolean(props.mensal.error && !props.mensal.loading));
+const linhaPronta = computed(() => Boolean(props.serie.response) || Boolean(props.serie.error && !props.serie.loading));
+const aguardandoMensal = computed(() => props.tab === 'mes' && !mensalPronta.value);
+const aguardandoLinha = computed(() => props.tab === 'linha' && !linhaPronta.value);
+const aguardandoAba = computed(() => aguardandoMensal.value || aguardandoLinha.value);
+// Aba que a tabela compartilhada (Resumo / Linha do tempo) está desenhando.
+const abaTabela = computed(() => (aguardandoAba.value ? 'resumo' : props.tab));
 
 // ── Aba "Linha do tempo": eixo comum (meses do período) e barras por médico ──
 const eixo = computed(() => {
@@ -113,30 +137,60 @@ const eixo = computed(() => {
   }
   return { meses, indice, anos };
 });
+// Escala da altura das barras: 'comum' (×P95 do mês, igual para todos) ou
+// 'medico' (proporcional ao maior mês do próprio médico). Lembrada no navegador.
+const ESCALAS_LINHA = Object.freeze([
+  Object.freeze({ value: 'comum', label: 'Comum', tooltip: 'Altura = ×P95 do mês, de 0 a 10×, igual para todos: compara médicos entre si.' }),
+  Object.freeze({ value: 'medico', label: 'Por médico', tooltip: 'Altura proporcional ao maior mês de cada médico: mostra o formato da atuação de cada um.' }),
+]);
+const ESCALA_LINHA_STORAGE = 'sentinela_crm_linha_tempo_escala';
+function escalaSalva() {
+  try {
+    const valor = localStorage.getItem(ESCALA_LINHA_STORAGE);
+    return ESCALAS_LINHA.some((x) => x.value === valor) ? valor : 'comum';
+  } catch {
+    return 'comum';
+  }
+}
+const escalaLinha = ref(escalaSalva());
+function escolherEscala(valor) {
+  escalaLinha.value = valor;
+  try { localStorage.setItem(ESCALA_LINHA_STORAGE, valor); } catch { /* preferência só do navegador */ }
+}
+
+const divisoresAno = computed(() => {
+  const e = eixo.value;
+  if (!e) return [];
+  return e.meses.flatMap((m, i) => (i > 0 && m.competencia % 100 === 1 ? [i] : []));
+});
 const barrasPorMedico = computed(() => {
   const mapa = new Map();
   const e = eixo.value;
   if (!e) return mapa;
   for (const medico of props.serie.response.medicos) {
-    const celulas = e.meses.map((m) => ({
-      competencia: m.competencia,
-      inicioAno: m.competencia % 100 === 1,
-      ponto: null,
-    }));
-    // Escala do próprio médico (como em "Farmácias onde atuou"): a barra mais
-    // alta é o mês de maior taxa diária dele; a cor indica taxa elevada.
-    const maximo = Math.max(...medico.meses.map((p) => Number(p.taxa_prescricoes_dia)));
-    for (const ponto of medico.meses) {
+    // Escala comum: ×P95 nacional do mês, de 0 a 10×, igual para todos os médicos
+    // (acima de 10×, barra cheia com marca no topo; as barras de atuação usam 4×).
+    // Escala por médico: proporcional ao maior mês do próprio médico. Nas duas, a
+    // cor indica a faixa do ×P95.
+    const porMedico = escalaLinha.value === 'medico';
+    const maximo = porMedico ? Math.max(...medico.meses.map((p) => Number(p.taxa_prescricoes_dia))) : null;
+    const barras = medico.meses.map((ponto) => {
       const i = e.indice.get(ponto.competencia);
       if (i === undefined) {
         throw new Error(`Contrato inválido em crm-prescricoes-serie-mensal: mês ${ponto.competencia} fora do período.`);
       }
-      celulas[i].ponto = ponto;
-      celulas[i].altura = `${(Number(ponto.taxa_prescricoes_dia) / maximo) * 100}%`;
-      celulas[i].tooltip = crmMesTooltip(ponto, e.meses[i].p95_taxa_dia);
-      celulas[i].faixa = crmFaixaP95(ponto)?.chave ?? null;
-    }
-    mapa.set(medico.id_medico, celulas);
+      const altura = porMedico
+        ? { fracao: Number(ponto.taxa_prescricoes_dia) / maximo, cortada: false }
+        : crmAlturaAtuacao(Number(ponto.taxa_prescricoes_dia) / Number(e.meses[i].p95_taxa_dia), CRM_LINHA_TEMPO_TETO_P95);
+      return {
+        x: i,
+        altura: altura.fracao,
+        cortada: altura.cortada,
+        faixa: crmFaixaP95(ponto)?.chave ?? null,
+        tooltip: crmMesTooltip(ponto, e.meses[i].p95_taxa_dia),
+      };
+    });
+    mapa.set(medico.id_medico, barras);
   }
   return mapa;
 });
@@ -219,7 +273,11 @@ const subtitulo = computed(() => {
   if (props.tab === 'mes') {
     const r = props.mensal.response;
     if (!r) return snapshot.value.escopo;
-    return `${r.escopo} · ${formatNumberFull(r.qtd_linhas)} ${props.mensal.appliedQuery ? 'meses encontrados' : 'linhas médico × mês'}`;
+    return `${r.escopo} · ${formatNumberFull(r.qtd_linhas)} ${props.mensal.appliedQuery ? 'meses encontrados' : 'linhas médico × mês'}${fixadosStore.soFixados ? ' · só fixados' : ''}`;
+  }
+  // "Só fixados": quantos dos fixados passam pelos filtros (e pela busca) do recorte.
+  if (props.fixadosPedidos != null && !props.isRefreshing) {
+    return `${snapshot.value.escopo} · ${formatNumberFull(snapshot.value.totalRecords)} de ${formatNumberFull(props.fixadosPedidos)} ${props.fixadosPedidos === 1 ? 'médico fixado' : 'médicos fixados'} no recorte`;
   }
   return `${snapshot.value.escopo} · ${formatNumberFull(snapshot.value.totalRecords)} ${props.appliedQuery ? 'médicos encontrados' : 'médicos no recorte'}`;
 });
@@ -237,7 +295,7 @@ const subtitulo = computed(() => {
         <i class="pi pi-list" aria-hidden="true" />
         <div>
           <div class="ranking-title-row">
-            <h2>Ranking de médicos por taxa diária</h2>
+            <h2>Ranking de médicos</h2>
             <i class="pi pi-info-circle info-icon help-icon" v-tooltip.bottom="headerInfoTooltip" aria-label="Como ler o ranking" />
           </div>
           <span v-if="tab !== 'mes' && error && snapshot.rows.length" class="ranking-status--error" role="alert" v-tooltip.bottom="error">
@@ -247,6 +305,71 @@ const subtitulo = computed(() => {
             Falha ao atualizar · resultado anterior exibido
           </span>
           <span v-else>{{ subtitulo }}</span>
+        </div>
+      </div>
+      <div v-if="fixadosStore.total" class="ranking-tabs ranking-fixados">
+        <button
+          type="button"
+          class="ranking-tab ranking-fixados-chave"
+          :class="{ 'is-active': fixadosStore.soFixados }"
+          :aria-pressed="fixadosStore.soFixados"
+          v-tooltip.bottom="fixadosTooltip"
+          @click="fixadosStore.setSoFixados(!fixadosStore.soFixados)"
+        >
+          <PinIcon :preenchido="fixadosStore.soFixados" />
+          Fixados
+          <span class="ranking-fixados-total">{{ fixadosStore.total }}</span>
+        </button>
+        <button
+          type="button"
+          class="ranking-tab ranking-fixados-lista"
+          aria-label="Ver os médicos fixados"
+          aria-haspopup="dialog"
+          v-tooltip.bottom="'Ver os médicos fixados'"
+          @click="painelFixados.toggle($event)"
+        >
+          <i class="pi pi-chevron-down" aria-hidden="true" />
+        </button>
+      </div>
+      <OverlayPanel ref="painelFixados" class="rfx-painel">
+        <div class="rfx-corpo" role="dialog" aria-label="Médicos fixados">
+          <div class="rfx-topo">
+            <span>Médicos fixados</span>
+            <button type="button" class="rfx-soltar-todos" @click="fixadosStore.soltarTodos()">Soltar todos</button>
+          </div>
+          <ul class="rfx-lista">
+            <li v-for="m in fixadosStore.medicos" :key="m.id_medico">
+              <span class="rfx-ident">
+                <span class="rfx-nome">{{ m.nome }}</span>
+                <span class="rfx-crm">{{ m.crm }}</span>
+              </span>
+              <button
+                type="button"
+                class="rfx-soltar"
+                :aria-label="`Soltar ${m.nome}`"
+                v-tooltip.left="'Soltar'"
+                @click="fixadosStore.soltar(m.id_medico)"
+              >
+                <i class="pi pi-times" aria-hidden="true" />
+              </button>
+            </li>
+          </ul>
+        </div>
+      </OverlayPanel>
+      <div v-if="tab === 'linha'" class="ranking-escala" role="radiogroup" aria-label="Escala das barras da linha do tempo">
+        <span class="ranking-escala-rotulo" aria-hidden="true">Escala</span>
+        <div class="ranking-tabs">
+          <button
+            v-for="opcao in ESCALAS_LINHA"
+            :key="opcao.value"
+            type="button"
+            role="radio"
+            class="ranking-tab"
+            :class="{ 'is-active': escalaLinha === opcao.value }"
+            :aria-checked="escalaLinha === opcao.value"
+            v-tooltip.bottom="opcao.tooltip"
+            @click="escolherEscala(opcao.value)"
+          >{{ opcao.label }}</button>
         </div>
       </div>
       <div class="ranking-tabs" role="tablist" aria-label="Visões do ranking">
@@ -263,7 +386,7 @@ const subtitulo = computed(() => {
       </div>
     </header>
 
-    <template v-if="tab === 'mes'">
+    <template v-if="tab === 'mes' && mensalPronta">
       <div v-if="mensal.error && !mensal.response && !mensal.loading" class="ranking-state ranking-state--error">
         <i class="pi pi-database" />
         <div>
@@ -271,7 +394,7 @@ const subtitulo = computed(() => {
           <span>{{ mensal.error }}</span>
         </div>
       </div>
-      <div v-else-if="mensalInitialLoading || !mensal.response" class="ranking-state">
+      <div v-else-if="!mensal.response" class="ranking-state">
         <i class="pi pi-spin pi-spinner" />
         <span>Calculando meses...</span>
       </div>
@@ -280,6 +403,7 @@ const subtitulo = computed(() => {
         <span v-if="mensal.appliedQuery">
           Nenhum médico encontrado para o termo “<HighlightedText :text="mensal.appliedQuery" :query="mensal.appliedQuery" />”
         </span>
+        <span v-else-if="fixadosStore.soFixados">Nenhum médico fixado tem mês com prescrição nos filtros atuais.</span>
         <span v-else>Nenhum mês com prescrição para os filtros atuais.</span>
       </div>
       <div v-else class="ranking-table-wrap" :aria-busy="mensal.loading">
@@ -325,11 +449,12 @@ const subtitulo = computed(() => {
       <span v-if="appliedQuery">
         Nenhum médico encontrado para o termo “<HighlightedText :text="appliedQuery" :query="appliedQuery" />”
       </span>
+      <span v-else-if="fixadosPedidos != null">Nenhum médico fixado aparece com os filtros atuais.</span>
       <span v-else>Nenhum médico encontrado para os filtros atuais.</span>
     </div>
-    <div v-else class="ranking-table-wrap" :aria-busy="isRefreshing">
+    <div v-else class="ranking-table-wrap" :class="{ 'is-aguardando': aguardandoAba }" :aria-busy="isRefreshing || aguardandoAba">
       <DataTable
-        :key="`${tab}:${snapshot.sortField}:${snapshot.sortOrder}:${pageError ?? ''}`"
+        :key="`${abaTabela}:${snapshot.sortField}:${snapshot.sortOrder}:${pageError ?? ''}`"
         :value="snapshot.rows"
         data-key="id_medico"
         size="small"
@@ -340,7 +465,7 @@ const subtitulo = computed(() => {
         :total-records="snapshot.totalRecords"
         :sort-field="snapshot.sortField"
         :sort-order="snapshot.sortOrder === 'asc' ? 1 : -1"
-        :class="['enterprise-table', 'com-rodape', 'crm-ranking-table', 'clickable-rows', { 'is-stale': isStale, 'is-linha': tab === 'linha' }]"
+        :class="['enterprise-table', 'com-rodape', 'crm-ranking-table', 'clickable-rows', { 'is-stale': isStale, 'is-linha': abaTabela === 'linha' }]"
         @row-click="onRowClick"
         @sort="onSort"
         @page="onPage"
@@ -365,19 +490,24 @@ const subtitulo = computed(() => {
         </Column>
         <Column field="no_medico" header="MÉDICO / CRM" sortable header-class="col-doctor" body-class="col-doctor">
           <template #body="{ data }">
-            <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
-              <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
-            </span>
-            <span
-              v-else
-              class="doctor-name"
-              :data-medico="data.id_medico"
-              v-tooltip.top="nomeTooltip(data)"
-            ><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
-            <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
+            <div class="doctor-cell">
+              <div class="doctor-ident">
+                <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
+                  <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
+                </span>
+                <span
+                  v-else
+                  class="doctor-name"
+                  :data-medico="data.id_medico"
+                  v-tooltip.top="nomeTooltip(data)"
+                ><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
+                <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
+              </div>
+              <CrmMedicoFixar :id-medico="data.id_medico" :nome="doctorLabel(data)" :crm="crmLabel(data)" />
+            </div>
           </template>
         </Column>
-        <Column v-if="tab === 'resumo'" field="taxa_prescricoes_dia" header="TAXA / DIA" sortable header-class="col-number col-rate" body-class="col-number col-rate rate-cell">
+        <Column v-if="abaTabela === 'resumo'" field="taxa_prescricoes_dia" header="TAXA / DIA" sortable header-class="col-number col-rate" body-class="col-number col-rate rate-cell">
           <template #body="{ data }">
             <span
               class="rate-value"
@@ -385,13 +515,13 @@ const subtitulo = computed(() => {
             >{{ Number(data.taxa_prescricoes_dia).toFixed(2).replace('.', ',') }}</span>
           </template>
         </Column>
-        <Column v-if="tab === 'resumo'" field="nu_prescricoes" header="PRODUÇÃO" sortable header-class="col-number col-production" body-class="col-number col-production">
+        <Column v-if="abaTabela === 'resumo'" field="nu_prescricoes" header="PRODUÇÃO" sortable header-class="col-number col-production" body-class="col-number col-production">
           <template #body="{ data }">
             <span class="metric-main">{{ formatNumberFull(data.nu_prescricoes) }} prescrições</span>
             <span class="metric-detail">{{ formatNumberFull(data.qtd_dias_com_prescricao) }} dias com prescrição</span>
           </template>
         </Column>
-        <Column v-if="tab === 'linha'" header-class="col-linha" body-class="col-linha">
+        <Column v-if="abaTabela === 'linha'" header-class="col-linha" body-class="col-linha">
           <template #header>
             <div class="lt-header">
               <span class="lt-header-title">
@@ -409,32 +539,23 @@ const subtitulo = computed(() => {
             </div>
           </template>
           <template #body="{ data }">
-            <div v-if="barrasPorMedico.get(data.id_medico)" class="lt-bars" :style="dataColorVars">
-              <span
-                v-for="celula in barrasPorMedico.get(data.id_medico)"
-                :key="celula.competencia"
-                class="lt-mes"
-                :class="{ 'is-ano': celula.inicioAno }"
-                v-tooltip.top="celula.tooltip ?? null"
-              >
-                <span
-                  v-if="celula.ponto"
-                  class="lt-bar"
-                  :class="celula.faixa ? `is-p95-${celula.faixa}` : null"
-                  :style="{ height: celula.altura }"
-                />
-              </span>
-            </div>
+            <CrmBarrasMensais
+              v-if="barrasPorMedico.get(data.id_medico)"
+              :total="eixo.meses.length"
+              :barras="barrasPorMedico.get(data.id_medico)"
+              :divisores="divisoresAno"
+            />
             <div v-else class="lt-placeholder" :class="{ 'is-loading': serie.loading }" aria-hidden="true" />
           </template>
         </Column>
-        <Column v-if="tab === 'resumo'" field="percentual_meses_alta_intensidade" header="MESES COM TAXA ELEVADA" sortable header-class="col-number col-months" body-class="col-number col-months">
+        <!-- Farmácias e municípios onde o médico atuou no período (Brasil, como os filtros de atuação). -->
+        <Column v-if="abaTabela === 'resumo'" field="qtd_farmacias" header="FARMÁCIAS" sortable header-class="col-number col-months" body-class="col-number col-months">
           <template #body="{ data }">
-            <span class="metric-main">{{ formatPercent(data.percentual_meses_alta_intensidade) }}</span>
-            <span class="metric-detail">{{ formatNumberFull(data.qtd_meses_alta_intensidade) }} de {{ formatNumberFull(data.qtd_meses_ativos) }} meses</span>
+            <span class="metric-main">{{ formatNumberFull(data.qtd_farmacias) }} {{ data.qtd_farmacias === 1 ? 'farmácia' : 'farmácias' }}</span>
+            <span class="metric-detail">{{ formatNumberFull(data.qtd_municipios) }} {{ data.qtd_municipios === 1 ? 'município' : 'municípios' }}</span>
           </template>
         </Column>
-        <Column v-if="tab === 'resumo' && snapshot.farmaciasFiltradas" field="nu_prescricoes_farmacias_filtradas" header="FARMÁCIAS FILTRADAS" sortable header-class="col-number col-filtered" body-class="col-number col-filtered">
+        <Column v-if="abaTabela === 'resumo' && snapshot.farmaciasFiltradas" field="nu_prescricoes_farmacias_filtradas" header="FARMÁCIAS FILTRADAS" sortable header-class="col-number col-filtered" body-class="col-number col-filtered">
           <template #body="{ data }">
             <span class="metric-main">{{ formatNumberFull(data.nu_prescricoes_farmacias_filtradas) }} prescrições</span>
             <span class="metric-detail">{{ formatPercent(data.percentual_prescricoes_farmacias_filtradas) }} do total</span>
@@ -452,16 +573,16 @@ const subtitulo = computed(() => {
           />
         </template>
       </DataTable>
-      <div v-if="isPageLoading" class="ranking-table-loading" role="status" aria-label="Atualizando ranking">
+      <div v-if="isPageLoading || aguardandoAba" class="ranking-table-loading" role="status" :aria-label="aguardandoMensal ? 'Carregando a visão mensal' : aguardandoLinha ? 'Carregando a linha do tempo' : 'Atualizando ranking'">
         <i class="pi pi-spin pi-spinner" aria-hidden="true" />
       </div>
     </div>
 
-    <div v-if="tab !== 'mes' && pageError && snapshot.rows.length" class="ranking-page-error" role="alert">
+    <div v-if="abaTabela !== 'mes' && pageError && snapshot.rows.length" class="ranking-page-error" role="alert">
       <i class="pi pi-exclamation-circle" />
       <span>{{ pageError }}</span>
     </div>
-    <div v-if="tab === 'linha' && serie.error && snapshot.rows.length" class="ranking-page-error" role="alert">
+    <div v-if="abaTabela === 'linha' && serie.error && snapshot.rows.length" class="ranking-page-error" role="alert">
       <i class="pi pi-exclamation-circle" />
       <span>{{ serie.error }}</span>
     </div>
@@ -473,7 +594,7 @@ const subtitulo = computed(() => {
 </template>
 
 <style scoped>
-.crm-ranking-panel { --ranking-row-height: 3.6rem; --ranking-column-header-height: 3.3125rem; --ranking-paginator-height: 4.35rem; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; overflow: hidden; transition: border-color .18s ease; }
+.crm-ranking-panel { --ranking-row-height: 4rem; --ranking-column-header-height: 3.3125rem; --ranking-paginator-height: 4.35rem; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; overflow: hidden; transition: border-color .18s ease; }
 .crm-ranking-panel.is-refreshing { border-color: color-mix(in srgb, var(--primary-color) 24%, var(--card-border)); }
 .ranking-header { display: flex; align-items: center; gap: .75rem; padding: .85rem 1.15rem; border-bottom: 1px solid var(--tabs-border); }
 .ranking-heading { display: flex; flex: 1; align-items: center; gap: .75rem; min-width: 0; }
@@ -497,6 +618,7 @@ const subtitulo = computed(() => {
 .ranking-table-wrap { position: relative; overflow-x: auto; }
 .crm-ranking-table { font-family: inherit; }
 .crm-ranking-table.is-stale { pointer-events: none; }
+.ranking-table-wrap.is-aguardando { pointer-events: none; }
 .crm-ranking-table :deep(.p-datatable-wrapper) { min-height: calc(var(--ranking-column-header-height) + var(--ranking-page-size) * var(--ranking-row-height)); }
 .crm-ranking-table :deep(.p-datatable-table) { width: max(100%, 45.75rem); table-layout: fixed; }
 .crm-ranking-table:has(.col-filtered) :deep(.p-datatable-table) { width: calc(max(100%, 45.75rem) + 11.25rem); }
@@ -522,6 +644,9 @@ const subtitulo = computed(() => {
 .crm-ranking-panel :deep(.doctor-name), .crm-ranking-panel :deep(.doctor-crm) { display: block; white-space: nowrap; }
 .crm-ranking-panel :deep(.doctor-name) { color: var(--text-color-85); font-weight: 500; }
 .crm-ranking-panel :deep(.doctor-crm) { margin-top: .16rem; color: var(--text-muted); font-size: .68rem; }
+/* Nome/CRM + botão de fixar (também na aba "Por mês"). */
+.crm-ranking-panel :deep(.doctor-cell) { display: flex; align-items: center; gap: .35rem; }
+.crm-ranking-panel :deep(.doctor-ident) { flex: 1; min-width: 0; }
 /* CRM fora do cadastro do CFM: selo no lugar do nome (também na aba "Por mês"). */
 .crm-ranking-panel :deep(.doctor-nao-localizado) { display: inline-flex; align-items: center; gap: .3rem; max-width: 100%; padding: .12rem .45rem; border-radius: 5px; background: color-mix(in srgb, var(--alerta-cor) 12%, var(--card-bg)); color: var(--alerta-cor); font-size: .7rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crm-ranking-panel :deep(.doctor-nao-localizado .pi) { font-size: .72rem; }
@@ -534,14 +659,25 @@ const subtitulo = computed(() => {
 @keyframes alertas-pulso { from { opacity: .15; } to { opacity: .5; } }
 
 /* Abas */
+.ranking-escala { display: inline-flex; flex-shrink: 0; align-items: center; gap: .45rem; }
+.ranking-escala-rotulo { color: var(--text-muted); font-size: .7rem; font-weight: 500; }
 .ranking-tabs { display: inline-flex; flex-shrink: 0; gap: 2px; padding: 3px; border: 1px solid var(--card-border); border-radius: 9px; background: color-mix(in srgb, var(--text-color) 4%, transparent); }
 .ranking-tab { min-height: 28px; padding: 0 .75rem; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
 .ranking-tab:hover { color: var(--text-color-85); background: color-mix(in srgb, var(--text-color-85) 6%, transparent); }
 .ranking-tab:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 2px; }
 .ranking-tab.is-active { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 45%, transparent); }
 
+/* Médicos fixados: chave "só fixados" + seta da lista. */
+.ranking-fixados-chave { display: inline-flex; align-items: center; gap: .35rem; }
+.ranking-fixados-chave .pin-icon { font-size: .8rem; }
+.ranking-fixados-total { min-width: 1.15rem; padding: 0 .3rem; border-radius: 999px; background: color-mix(in srgb, currentColor 16%, transparent); font-size: .66rem; line-height: 1.15rem; text-align: center; }
+.ranking-fixados-lista { padding: 0 .5rem; }
+.ranking-fixados-lista .pi { font-size: .62rem; }
+
 /* Linha do tempo */
-.crm-ranking-table.is-linha :deep(.p-datatable-table) { width: max(100%, 57.75rem); }
+/* Linha do tempo fluida: as barras afinam para o período inteiro caber no card, sem
+   rolagem horizontal. O mínimo (≈3 px por mês no histórico inteiro) só evita barras ilegíveis. */
+.crm-ranking-table.is-linha :deep(.p-datatable-table) { width: max(100%, 40rem); }
 .crm-ranking-table.is-linha :deep(.col-doctor) { width: 12rem; }
 .crm-ranking-table :deep(.col-linha) { width: auto; }
 .crm-ranking-table :deep(th.col-linha .p-column-header-content) { display: block; }
@@ -549,14 +685,6 @@ const subtitulo = computed(() => {
 .lt-header-title { display: inline-flex; align-items: center; gap: .3rem; }
 .lt-anos { display: flex; color: var(--text-muted); font-size: .6rem; font-weight: 500; line-height: 1; letter-spacing: 0; }
 .lt-anos > span { flex-basis: 0; min-width: 0; padding-left: .2rem; border-left: 1px solid var(--card-border); overflow: hidden; white-space: nowrap; }
-.lt-bars { position: relative; display: flex; align-items: flex-end; height: 34px; border-bottom: 1px solid var(--card-border); }
-.lt-mes { position: relative; display: flex; flex: 1 1 0; align-items: flex-end; justify-content: center; min-width: 0; height: 100%; }
-.lt-mes.is-ano:not(:first-child) { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--card-border) 70%, transparent); }
-.lt-mes:hover { background: color-mix(in srgb, var(--text-color) 6%, transparent); }
-.lt-bar { width: 72%; max-width: 10px; min-height: 1.5px; border-radius: 1px 1px 0 0; background: var(--data-color); }
-.lt-bar.is-p95-leve { background: var(--p95-leve); }
-.lt-bar.is-p95-media { background: var(--p95-media); }
-.lt-bar.is-p95-forte { background: var(--p95-forte); }
 .lt-placeholder { height: 34px; border-bottom: 1px solid var(--card-border); }
 .lt-placeholder.is-loading { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text-color) 6%, transparent), transparent); background-size: 200% 100%; animation: lt-shimmer 1.2s linear infinite; }
 @keyframes lt-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
@@ -565,4 +693,24 @@ const subtitulo = computed(() => {
 .crm-ranking-panel :deep(.rate-value--high) { padding: .18rem .38rem; margin: -.18rem -.38rem; border-radius: 5px; background: color-mix(in srgb, var(--alerta-cor) 12%, var(--card-bg)); color: var(--alerta-cor); font-weight: 600; }
 .ranking-table-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--card-bg) 72%, transparent); color: var(--text-muted); font-size: .9rem; pointer-events: none; }
 .ranking-page-error { display: flex; align-items: center; gap: .45rem; padding: .55rem 1rem; border-top: 1px solid color-mix(in srgb, var(--risk-high) 25%, var(--tabs-border)); color: var(--risk-high); font-size: .7rem; }
+</style>
+
+<style>
+/* Lista de médicos fixados: sem `scoped`, pois o OverlayPanel é teleportado para
+   o body; classes prefixadas com rfx-. */
+.rfx-painel .p-overlaypanel-content { padding: 0; }
+.rfx-corpo { width: 19rem; color: var(--text-color); font-size: .8125rem; }
+.rfx-topo { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .6rem .8rem; border-bottom: 1px solid var(--card-border); color: var(--text-secondary); font-size: .72rem; font-weight: 600; }
+.rfx-soltar-todos { padding: 0; border: 0; background: transparent; color: var(--primary-color); font: inherit; font-weight: 500; cursor: pointer; }
+.rfx-soltar-todos:hover { text-decoration: underline; }
+.rfx-lista { max-height: 18rem; margin: 0; padding: .3rem; overflow-y: auto; list-style: none; }
+.rfx-lista li { display: flex; align-items: center; gap: .5rem; padding: .35rem .5rem; border-radius: 6px; }
+.rfx-lista li:hover { background: color-mix(in srgb, var(--text-color) 6%, transparent); }
+.rfx-ident { flex: 1; min-width: 0; }
+.rfx-nome, .rfx-crm { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rfx-nome { color: var(--text-color-85); font-weight: 500; }
+.rfx-crm { margin-top: .1rem; color: var(--text-muted); font-size: .68rem; }
+.rfx-soltar { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.rfx-soltar:hover { background: color-mix(in srgb, var(--text-color) 10%, transparent); color: var(--text-color-85); }
+.rfx-soltar .pi { font-size: .65rem; }
 </style>

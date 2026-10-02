@@ -13,6 +13,7 @@ import { analysisTooltip, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP }
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
 import { destaqueBuscaMedico } from '@/utils/crmBusca';
 import CrmAlertasBadge from './CrmAlertasBadge.vue';
+import CrmMedicoFixar from './CrmMedicoFixar.vue';
 import TableFooter from '@/views/components/common/TableFooter.vue';
 
 const props = defineProps({
@@ -20,7 +21,7 @@ const props = defineProps({
   totalRecords: { type: Number, default: 0 },
   first: { type: Number, default: 0 },
   pageSize: { type: Number, default: CRM_RANKING_DEFAULT_PAGE_SIZE },
-  sortField: { type: String, default: 'razao_p95' },
+  sortField: { type: String, default: 'taxa_prescricoes_dia' },
   sortOrder: { type: String, default: 'desc' },
   isLoading: { type: Boolean, default: false },
   appliedQuery: { type: String, default: '' },
@@ -110,11 +111,16 @@ function onPage(event) {
     </Column>
     <Column header="MÉDICO / CRM" header-class="col-doctor" body-class="col-doctor">
       <template #body="{ data }">
-        <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
-          <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
-        </span>
-        <span v-else class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
-        <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
+        <div class="doctor-cell">
+          <div class="doctor-ident">
+            <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
+              <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
+            </span>
+            <span v-else class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>
+            <span class="doctor-crm"><HighlightedText :text="crmLabel(data)" :query="destaque.crm" /></span>
+          </div>
+          <CrmMedicoFixar :id-medico="data.id_medico" :nome="doctorLabel(data)" :crm="crmLabel(data)" />
+        </div>
       </template>
     </Column>
     <Column field="taxa_prescricoes_dia" header="TAXA / DIA" sortable header-class="col-number col-rate" body-class="col-number col-rate rate-cell">
@@ -136,12 +142,6 @@ function onPage(event) {
         <span class="metric-main">{{ formatComp(data.competencia) }}</span>
       </template>
     </Column>
-    <Column field="razao_p95" header="×P95 / P95 DO MÊS" sortable header-class="col-number col-p95" body-class="col-number col-p95">
-      <template #body="{ data }">
-        <span class="metric-main" :class="{ 'p95-elevada': data.taxa_elevada }">{{ formatDecimal(data.razao_p95, 1) }}×</span>
-        <span class="metric-detail">P95 {{ formatDecimal(data.p95_taxa_dia) }}</span>
-      </template>
-    </Column>
     <template #footer>
       <TableFooter
         :first="first"
@@ -157,7 +157,7 @@ function onPage(event) {
 </template>
 
 <style scoped>
-.crm-mensal-table :deep(.col-comp) { width: 7.5rem; }
-.crm-mensal-table :deep(.col-p95) { width: 9rem; }
-.p95-elevada { color: var(--risk-high); font-weight: 600; }
+/* Mesma largura da 5ª coluna do Resumo (MESES COM TAXA ELEVADA, .col-months): as
+   colunas das duas abas ficam na mesma posição. */
+.crm-mensal-table :deep(.col-comp) { width: 10rem; }
 </style>

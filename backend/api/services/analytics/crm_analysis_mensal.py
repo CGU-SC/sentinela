@@ -136,6 +136,7 @@ def get_crm_prescricoes_mensal(
     page: int = 1,
     page_size: int = 15,
     medico_query: Optional[str] = None,
+    ids_fixados: Optional[str] = None,
     sort_field: str = "razao_p95",
     sort_order: str = "desc",
     data_inicio: Optional[date] = None,
@@ -160,6 +161,7 @@ def get_crm_prescricoes_mensal(
     nivel, identificador = base.escopo_territorial(uf, regiao_id, id_ibge7)
     escopo = base._scope_label(uf=uf, regiao_id=regiao_id, id_ibge7=id_ibge7)
     termo = base._normalizar_busca_medico(medico_query or "")
+    fixados = base.ids_medicos_fixados(ids_fixados)
 
     # Nesta aba a linha e o medico x mes: as faixas de producao filtram os meses
     # (taxa e prescricoes do mes, as colunas exibidas); os demais filtros de
@@ -174,6 +176,9 @@ def get_crm_prescricoes_mensal(
     busca = base.ids_busca_medico(termo)
     if busca is not None:
         ids = busca if ids is None else ids.filter(ids.is_in(busca))
+    if fixados is not None:
+        # Medicos fixados: recorte a mais, depois dos filtros e da busca.
+        ids = pl.Series("id_medico", fixados, dtype=pl.Utf8) if ids is None else ids.filter(ids.is_in(fixados))
 
     limiares = base._limiares_do_periodo(inicio, fim)
     brutos = _meses_brutos(inicio, fim, uf, regiao_id, id_ibge7)
@@ -186,7 +191,7 @@ def get_crm_prescricoes_mensal(
         brutos = brutos.filter(filtro_meses)
     chave_recorte = (
         "mensal", nivel, identificador, filtrado._chave_filtros(filtros) if filtro_ativo else None,
-        filtros_medico.chave, termo, inicio, fim,
+        filtros_medico.chave, termo, tuple(fixados) if fixados is not None else None, inicio, fim,
     )
     colunas = [sort_field, *(nome for nome, _ in MENSAL_SORT_COLUMNS[sort_field])]
     descendente = [sort_order == "desc", *(desc for _, desc in MENSAL_SORT_COLUMNS[sort_field])]

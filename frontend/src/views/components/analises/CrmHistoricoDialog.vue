@@ -23,6 +23,7 @@ import axios from 'axios';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import TableFooter from '@/views/components/common/TableFooter.vue';
+import CrmBarrasMensais from '@/views/components/common/CrmBarrasMensais.vue';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { BarChart, HeatmapChart, LineChart, ScatterChart } from 'echarts/charts';
@@ -35,8 +36,8 @@ import {
 } from 'echarts/components';
 import VChart from 'vue-echarts';
 import { API_ENDPOINTS } from '@/config/api';
-import { CRM_ALERTA_ICONES, analysisTooltip, crmAlturaAtuacao, crmFaixaPorTaxa } from '@/config/analysisTooltipConfig';
-import { CRM_FARMACIA_SERIES, CRM_HEATMAP_TAXA_RAMP, CRM_TAXA_P95_TONS, DATA_NEUTRAL } from '@/config/colors';
+import { CRM_ALERTA_ICONES, analysisTooltip, crmAlturaAtuacao, crmFaixaP95, crmMesTooltip } from '@/config/analysisTooltipConfig';
+import { CRM_FARMACIA_SERIES, CRM_HEATMAP_TAXA_RAMP, DATA_NEUTRAL } from '@/config/colors';
 import { useChartTheme } from '@/config/chartTheme';
 import { useThemeStore } from '@/stores/theme';
 import { useFormatting } from '@/composables/useFormatting';
@@ -82,7 +83,11 @@ let controller = null;
 const tema = computed(() => (themeStore.isDark ? 'dark' : 'light'));
 const cores = computed(() => CRM_FARMACIA_SERIES[tema.value]);
 const corOutras = computed(() => CRM_FARMACIA_SERIES.outras[tema.value]);
-const corTaxa = computed(() => DATA_NEUTRAL[tema.value].line);
+// Taxa diária da linha do tempo: linha e área em gradiente, azul até o P95 do mês e,
+// acima dele, o vermelho do mapa de calor "Taxa diária por farmácia e mês" (o tom
+// vivo da rampa, índice 4 nos dois temas), para os dois cards falarem a mesma cor.
+const corAreaTaxa = computed(() => cores.value[0]);
+const corAcimaP95 = computed(() => CRM_HEATMAP_TAXA_RAMP[tema.value][4]);
 
 const infoTooltip = analysisTooltip('crmHistorico');
 const atencaoTooltip = analysisTooltip('crmHistoricoAtencao');
@@ -456,24 +461,6 @@ const corPorFarmacia = computed(() => {
 function nomeFarmacia(f) {
   return f?.razao_social ? formatTitleCase(f.razao_social) : formatCnpj(f?.cnpj ?? '');
 }
-const legenda = computed(() => {
-  if (filtroAtivo.value != null) {
-    return [{ nome: nomeFarmacia(cadastroFarmacia(filtroAtivo.value)), cor: corPorFarmacia.value.get(filtroAtivo.value) ?? corOutras.value }];
-  }
-  const itens = farmaciasEscopo.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => ({
-    nome: nomeFarmacia(f),
-    cor: corPorFarmacia.value.get(f.id_cnpj),
-  }));
-  if (farmaciasEscopo.value.length > TOP_FARMACIAS_GRAFICO || outrasForaDoPeriodo.value) {
-    itens.push({ nome: 'Outras farmácias', cor: corOutras.value });
-  }
-  return itens;
-});
-const outrasForaDoPeriodo = computed(() => (
-  (dados.value?.farmacia_mes ?? []).some((r) => (
-    !corPorFarmacia.value.has(r.id_cnpj) && (municipioAtivo.value == null || r.id_ibge7 === municipioAtivo.value)
-  ))
-));
 
 // Tabela paginada (sem rolagem interna, para nao disputar a rolagem do modal).
 // Altura fixa: linhas de altura fixa e linhas em branco completam a ultima
@@ -521,16 +508,18 @@ watch(
 const dataColorVars = computed(() => ({
   '--data-color': DATA_NEUTRAL[tema.value].strong,
   '--data-color-soft': DATA_NEUTRAL[tema.value].soft,
-  '--p95-leve': CRM_TAXA_P95_TONS[tema.value].leve,
-  '--p95-media': CRM_TAXA_P95_TONS[tema.value].media,
-  '--p95-forte': CRM_TAXA_P95_TONS[tema.value].forte,
 }));
 const eixoAtuacao = computed(() => {
   const lista = farmacias.value;
   if (!lista.length) return null;
   const inicio = Math.min(...lista.map((f) => indiceMes(f.primeira_competencia)));
   const fim = Math.max(...lista.map((f) => indiceMes(f.ultima_competencia)));
-  return { inicio, total: fim - inicio + 1 };
+  // Meses de janeiro dentro do eixo (linhas divisórias de ano).
+  const divisores = [];
+  for (let i = 1; i <= fim - inicio; i += 1) {
+    if ((inicio + i) % 12 === 0) divisores.push(i);
+  }
+  return { inicio, total: fim - inicio + 1, divisores };
 });
 const atuacaoPorFarmacia = computed(() => {
   const mapa = new Map();
@@ -555,7 +544,8 @@ const atuacaoPorFarmacia = computed(() => {
     }
     // Altura: ×P95 nacional do mês da taxa diária do CRM nesta farmácia, na
     // mesma escala para todas as farmácias (teto em crmAlturaAtuacao); cor:
-    // faixa do ×P95 (regra da linha do tempo).
+    // faixa do ×P95; tooltip: os números do mês nesta farmácia (como na linha
+    // do tempo do ranking).
     const barras = serie.map((p) => {
       const dias = Number(p.qtd_dias_com_prescricao);
       if (!(dias > 0)) {
@@ -565,13 +555,24 @@ const atuacaoPorFarmacia = computed(() => {
       if (!mes) {
         throw new Error(`Contrato inválido em crm-medico-historico: mês ${p.competencia} sem P95 em p95_meses.`);
       }
+      const p95 = Number(mes.p95_taxa_dia);
       const taxa = Number(p.nu_prescricoes) / dias;
-      const altura = crmAlturaAtuacao(taxa / Number(mes.p95_taxa_dia));
+      const ponto = {
+        competencia: p.competencia,
+        nu_prescricoes: p.nu_prescricoes,
+        qtd_dias_com_prescricao: dias,
+        taxa_prescricoes_dia: taxa,
+        razao_p95: taxa / p95,
+        // Taxa elevada: taxa arredondada em 6 casas > P95, como no backend.
+        taxa_elevada: Number(taxa.toFixed(6)) > p95,
+      };
+      const altura = crmAlturaAtuacao(ponto.razao_p95);
       return {
         x: indiceMes(p.competencia) - eixo.inicio,
-        h: Math.max(1.5, altura.fracao * 16),
+        altura: altura.fracao,
         cortada: altura.cortada,
-        faixa: crmFaixaPorTaxa(taxa, mes.p95_taxa_dia)?.chave ?? null,
+        faixa: crmFaixaP95(ponto)?.chave ?? null,
+        tooltip: crmMesTooltip(ponto, p95),
       };
     });
     const inicio = f.primeira_competencia;
@@ -581,6 +582,7 @@ const atuacaoPorFarmacia = computed(() => {
       periodo: inicio === fim ? formatComp(inicio) : `${formatComp(inicio)} – ${formatComp(fim)}`,
       meses: `${meses} ${meses === 1 ? 'mês' : 'meses'}`,
       total: eixo.total,
+      divisores: eixo.divisores,
       barras,
     });
   }
@@ -658,24 +660,13 @@ function abrirFarmacia(f) {
   router.push(`/estabelecimentos/${f.cnpj}`);
 }
 
-// ── Linha do tempo (dois painéis, mesmo eixo de meses) ───────────────────────
+// ── Linha do tempo (taxa diária por mês) ─────────────────────────────────────
 const linhaDoTempo = computed(() => {
   const d = dados.value;
   if (!d?.meses?.length) return null;
   const meses = mesesEntre(d.meses[0].competencia, d.meses[d.meses.length - 1].competencia);
   const porMes = new Map(d.meses.map((m) => [m.competencia, m]));
-  const topIds = filtroAtivo.value != null
-    ? [filtroAtivo.value]
-    : farmaciasEscopo.value.slice(0, TOP_FARMACIAS_GRAFICO).map((f) => f.id_cnpj);
-  const series = new Map(topIds.map((id) => [id, new Map()]));
-  const outras = new Map();
-  for (const r of d.farmacia_mes) {
-    // Município filtrado: só as farmácias dele entram nas barras.
-    if (municipioAtivo.value != null && r.id_ibge7 !== municipioAtivo.value) continue;
-    const alvo = series.get(r.id_cnpj) ?? outras;
-    alvo.set(r.competencia, (alvo.get(r.competencia) ?? 0) + r.nu_prescricoes);
-  }
-  return { meses, porMes, topIds, series, outras };
+  return { meses, porMes };
 });
 
 const chartOption = computed(() => {
@@ -684,44 +675,13 @@ const chartOption = computed(() => {
   const c = chartTheme.value;
   const d = dados.value;
   const rotulos = lt.meses.map(formatComp);
-  const superficie = themeStore.isDark ? '#1e1e1e' : '#ffffff';
   const compInscricao = compDaData(d.dt_primeira_inscricao);
   const inscricaoNoEixo = compInscricao && lt.meses.includes(compInscricao) ? formatComp(compInscricao) : null;
 
-  const barra = (nome, cor, valores, extra = {}) => ({
-    name: nome,
-    type: 'bar',
-    stack: 'farmacias',
-    xAxisIndex: 0,
-    yAxisIndex: 0,
-    barMaxWidth: 14,
-    itemStyle: { color: cor, borderColor: superficie, borderWidth: 1 },
-    emphasis: { focus: 'series' },
-    data: lt.meses.map((m) => valores.get(m) ?? null),
-    ...extra,
-  });
-
   const filtrada = filtroAtivo.value != null;
-  const barras = lt.topIds.map((id) => barra(
-    nomeFarmacia(cadastroFarmacia(id)),
-    corPorFarmacia.value.get(id) ?? corOutras.value,
-    lt.series.get(id),
-  ));
-  if (!filtrada) barras.push(barra('Outras farmácias', corOutras.value, lt.outras));
   // Recorte (farmácia ou município): a taxa é a do recorte; "taxa elevada" é a do total do médico.
   const recortada = recorteSufixo.value !== '';
   const nomeTaxa = `Taxa diária${recorteSufixo.value}`;
-  const nomeAlta = recortada ? 'Mês com taxa elevada (total do médico)' : 'Mês com taxa elevada';
-  // Marca a 1ª inscrição no CFM na primeira série.
-  if (inscricaoNoEixo) {
-    barras[0].markLine = {
-      silent: true,
-      symbol: 'none',
-      lineStyle: { color: c.muted, type: 'dashed', width: 1.5 },
-      label: { formatter: '1ª inscrição CFM', color: c.muted, fontSize: 10, position: 'insideEndTop' },
-      data: [{ xAxis: inscricaoNoEixo }],
-    };
-  }
 
   const taxa = lt.meses.map((m) => {
     const mes = lt.porMes.get(m);
@@ -731,13 +691,28 @@ const chartOption = computed(() => {
     const mes = lt.porMes.get(m);
     return mes ? Number(mes.p95_taxa_dia.toFixed(2)) : null;
   });
-  const alta = lt.meses.map((m, i) => (lt.porMes.get(m)?.alta_intensidade ? [i, taxa[i]] : null)).filter(Boolean);
-  const corAlerta = themeStore.isDark ? '#e66767' : '#d03b3b';
+  const corAlerta = corAcimaP95.value;
+  const areaTaxa = (nome, cor, valores, opacidade) => ({
+    name: nome,
+    type: 'line',
+    stack: 'taxa-area',
+    symbol: 'none',
+    silent: true,
+    connectNulls: false,
+    lineStyle: { width: 0 },
+    itemStyle: { color: cor },
+    areaStyle: {
+      // Mesmo gradiente das áreas da Home: cor a ~1/3 no topo, quase transparente na base.
+      color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: cor }, { offset: 1, color: `${cor}14` }] },
+      opacity: opacidade,
+    },
+    z: 2,
+    data: valores,
+  });
 
   return {
     backgroundColor: 'transparent',
     animationDuration: 300,
-    axisPointer: { link: [{ xAxisIndex: 'all' }] },
     tooltip: {
       trigger: 'axis',
       confine: true,
@@ -750,10 +725,6 @@ const chartOption = computed(() => {
         const mes = lt.porMes.get(comp);
         if (!mes) return `<strong>${formatComp(comp)}</strong><div style="opacity:.7;margin-top:6px">Sem prescrições</div>`;
         const linha = (r, v) => `<div style="display:flex;justify-content:space-between;gap:18px;margin:3px 0"><span style="opacity:.72">${r}</span><span>${v}</span></div>`;
-        const farm = params
-          .filter((p) => p.seriesType === 'bar' && p.value)
-          .map((p) => linha(`${p.marker}${p.seriesName}`, formatNumberFull(p.value)))
-          .join('');
         return `<div style="min-width:240px">
           <div style="font-weight:600;margin-bottom:6px">${formatComp(comp)}${mes.alta_intensidade ? ' · <span style="color:' + corAlerta + '">taxa elevada' + (recortada ? ' (total do médico)' : '') + '</span>' : ''}</div>
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:18px;margin:2px 0 8px;padding:6px 8px;border-radius:6px;background:${mes.alta_intensidade ? corAlerta + '22' : c.axisShadow}">
@@ -764,79 +735,78 @@ const chartOption = computed(() => {
           ${linha('Dias com prescrição', formatNumberFull(mes.qtd_dias_com_prescricao))}
           ${linha('P95 nacional do mês', formatDecimal(mes.p95_taxa_dia))}
           ${filtrada ? '' : municipioAtivo.value != null ? linha('Farmácias no município', formatNumberFull(mes.qtd_farmacias)) : linha('Farmácias / UFs', `${mes.qtd_farmacias} / ${mes.qtd_ufs}`)}
-          <div style="border-top:1px solid ${c.tooltipBorder};margin-top:6px;padding-top:4px">${farm}</div>
         </div>`;
       },
     },
-    grid: [
-      // Dois paineis da mesma altura: prescricoes (em cima) e taxa diaria.
-      { left: 56, right: 18, top: 18, height: '39%' },
-      { left: 56, right: 18, top: '51%', height: '39%' },
-    ],
-    xAxis: [0, 1].map((gi) => ({
+    grid: { left: 56, right: 18, top: 28, bottom: 54 },
+    xAxis: {
       type: 'category',
-      gridIndex: gi,
       data: rotulos,
       boundaryGap: true,
       axisLine: { lineStyle: { color: c.border } },
       axisTick: { show: false },
-      axisLabel: { show: gi === 1, color: c.muted, fontSize: 10 },
-    })),
-    yAxis: [
-      {
-        gridIndex: 0,
-        name: 'Prescrições',
-        nameTextStyle: { color: c.muted, fontSize: 10, align: 'left' },
-        axisLabel: { color: c.muted, fontSize: 10 },
-        splitLine: { lineStyle: { color: c.grid } },
-      },
-      {
-        gridIndex: 1,
-        name: 'Taxa diária',
-        nameTextStyle: { color: c.muted, fontSize: 10, align: 'left' },
-        axisLabel: { color: c.muted, fontSize: 10 },
-        splitLine: { lineStyle: { color: c.grid } },
-      },
-    ],
+      axisLabel: { color: c.muted, fontSize: 10 },
+    },
+    yAxis: {
+      name: 'Taxa diária',
+      nameTextStyle: { color: c.muted, fontSize: 10, align: 'left' },
+      axisLabel: { color: c.muted, fontSize: 10 },
+      splitLine: { lineStyle: { color: c.grid } },
+    },
     dataZoom: [
       // Sem dataZoom 'inside': mesmo desligado para a roda, ele captura o
       // evento e impede a rolagem do modal. Zoom so pela barra de baixo.
       {
-        type: 'slider', xAxisIndex: [0, 1], bottom: 4, height: 16,
+        type: 'slider', bottom: 4, height: 16,
         borderColor: c.border, textStyle: { color: c.muted, fontSize: 10 },
       },
     ],
     series: [
-      ...barras,
       {
         name: 'P95 nacional do mês',
         type: 'line',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
         symbol: 'none',
         connectNulls: false,
         lineStyle: { color: c.muted, width: 1.5, type: 'dashed' },
         data: p95,
+        // Marca a 1ª inscrição no CFM.
+        ...(inscricaoNoEixo ? {
+          markLine: {
+            silent: true,
+            symbol: 'none',
+            lineStyle: { color: c.muted, type: 'dashed', width: 1.5 },
+            label: { formatter: '1ª inscrição CFM', color: c.muted, fontSize: 10, position: 'insideEndTop' },
+            data: [{ xAxis: inscricaoNoEixo }],
+          },
+        } : {}),
       },
       {
         name: nomeTaxa,
         type: 'line',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
         symbol: 'none',
         connectNulls: false,
-        lineStyle: { color: corTaxa.value, width: 2 },
+        lineStyle: { color: corAreaTaxa.value, width: 2.5 },
+        itemStyle: { color: corAreaTaxa.value },
+        z: 4,
         data: taxa,
       },
+      // A mesma linha em vermelho por cima, só nos trechos entre dois meses acima do
+      // P95 (o ECharts não colore um trecho de linha por uma dimensão fora dos eixos).
       {
-        name: nomeAlta,
-        type: 'scatter',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        symbolSize: 8,
-        itemStyle: { color: corAlerta, borderColor: superficie, borderWidth: 2 },
-        data: alta,
+        name: 'Taxa acima do P95 (linha)',
+        type: 'line',
+        symbol: 'none',
+        silent: true,
+        connectNulls: false,
+        lineStyle: { color: corAcimaP95.value, width: 2.5 },
+        itemStyle: { color: corAcimaP95.value },
+        z: 5,
+        data: taxa.map((v, k) => (v != null && v > p95[k] ? v : null)),
       },
+      // Área sob a linha em duas partes empilhadas (a soma é a própria taxa):
+      // até o P95 do mês em azul e o excesso acima dele em vermelho vivo.
+      areaTaxa('Taxa até o P95', corAreaTaxa.value, taxa.map((v, k) => (v == null ? null : Math.min(v, p95[k]))), 0.7),
+      areaTaxa('Taxa acima do P95', corAcimaP95.value, taxa.map((v, k) => (v == null ? null : Math.max(v - p95[k], 0))), 0.9),
     ],
   };
 });
@@ -1112,42 +1082,6 @@ const calorOption = computed(() => {
         <p v-else class="hist-vazio">Nenhum ponto de atenção no período.</p>
       </section>
 
-      <!-- Evidências: os alertas do CRM em todas as farmácias -->
-      <CrmEvidenciasPanel
-        v-if="dados.tem_evidencias"
-        ref="painelEvidencias"
-        v-model:aba="abaEvidencias"
-        :id-medico="medico.id_medico"
-        :data-inicio="dados.periodo_inicio"
-        :data-fim="dados.periodo_fim"
-        :id-cnpj="dados.id_cnpj_filtro"
-        :id-ibge7="dados.id_ibge7_filtro"
-        :cache-version="cacheVersion"
-      />
-
-      <!-- Linha do tempo -->
-      <section class="hist-panel">
-        <header class="hist-panel-header">
-          <h3>Linha do tempo mensal</h3>
-          <span class="hist-panel-sub">histórico completo{{ filtroAtivo != null ? ' · somente a farmácia filtrada' : municipioAtivo != null ? ` · somente as farmácias de ${municipioAtivoNome}` : '' }}</span>
-        </header>
-        <div class="hist-legenda">
-          <span v-for="item in legenda" :key="item.nome" class="hist-legenda-item">
-            <i class="hist-swatch" :style="{ backgroundColor: item.cor }" aria-hidden="true" />{{ item.nome }}
-          </span>
-          <span class="hist-legenda-item">
-            <i class="hist-swatch hist-swatch--linha" :style="{ backgroundColor: corTaxa }" aria-hidden="true" />Taxa diária{{ recorteSufixo }}
-          </span>
-          <span class="hist-legenda-item">
-            <i class="hist-swatch hist-swatch--tracejada" aria-hidden="true" />P95 nacional do mês
-          </span>
-          <span class="hist-legenda-item">
-            <i class="hist-swatch hist-swatch--ponto" aria-hidden="true" />{{ recorteSufixo ? 'Mês com taxa elevada (total do médico)' : 'Mês com taxa elevada' }}
-          </span>
-        </div>
-        <VChart class="hist-chart" :option="chartOption" autoresize />
-      </section>
-
       <!-- Farmácias: card único (título + tabela até a borda + rodapé), sem card dentro de card. -->
       <section class="hist-panel hist-panel--tabela">
         <header class="hist-panel-header">
@@ -1266,34 +1200,12 @@ const calorOption = computed(() => {
                       <span class="atuacao-periodo">{{ atuacaoPorFarmacia.get(f.id_cnpj).periodo }}</span>
                       <span class="atuacao-meses">{{ atuacaoPorFarmacia.get(f.id_cnpj).meses }}</span>
                     </span>
-                    <svg
-                      class="atuacao-spark"
-                      :viewBox="`0 0 ${atuacaoPorFarmacia.get(f.id_cnpj).total} 16`"
-                      preserveAspectRatio="none"
-                      role="img"
-                      :aria-label="`Taxa diária mensal em ${nomeFarmacia(f)}: ${atuacaoPorFarmacia.get(f.id_cnpj).periodo}, ${atuacaoPorFarmacia.get(f.id_cnpj).meses}`"
-                    >
-                      <line class="atuacao-base" x1="0" y1="15.75" :x2="atuacaoPorFarmacia.get(f.id_cnpj).total" y2="15.75" />
-                      <rect
-                        v-for="barra in atuacaoPorFarmacia.get(f.id_cnpj).barras"
-                        :key="barra.x"
-                        class="atuacao-bar"
-                        :class="barra.faixa ? `is-p95-${barra.faixa}` : null"
-                        :x="barra.x + 0.1"
-                        :y="16 - barra.h"
-                        width="0.8"
-                        :height="barra.h"
-                      />
-                      <rect
-                        v-for="barra in atuacaoPorFarmacia.get(f.id_cnpj).barras.filter((b) => b.cortada)"
-                        :key="`corte-${barra.x}`"
-                        class="atuacao-corte"
-                        :x="barra.x + 0.1"
-                        y="0"
-                        width="0.8"
-                        height="1.4"
-                      />
-                    </svg>
+                    <CrmBarrasMensais
+                      :total="atuacaoPorFarmacia.get(f.id_cnpj).total"
+                      :barras="atuacaoPorFarmacia.get(f.id_cnpj).barras"
+                      :divisores="atuacaoPorFarmacia.get(f.id_cnpj).divisores"
+                      :rotulo="`Taxa diária mensal em ${nomeFarmacia(f)}: ${atuacaoPorFarmacia.get(f.id_cnpj).periodo}, ${atuacaoPorFarmacia.get(f.id_cnpj).meses}`"
+                    />
                   </button>
                 </td>
               </tr>
@@ -1311,6 +1223,26 @@ const calorOption = computed(() => {
           @page="farmaciasInicio = $event.first"
         />
         </div>
+      </section>
+
+      <!-- Linha do tempo -->
+      <section class="hist-panel">
+        <header class="hist-panel-header">
+          <h3>Linha do tempo mensal</h3>
+          <span class="hist-panel-sub">histórico completo{{ filtroAtivo != null ? ' · somente a farmácia filtrada' : municipioAtivo != null ? ` · somente as farmácias de ${municipioAtivoNome}` : '' }}</span>
+        </header>
+        <div class="hist-legenda">
+          <span class="hist-legenda-item">
+            <i class="hist-swatch hist-swatch--linha" :style="{ background: `linear-gradient(90deg, ${corAreaTaxa} 50%, ${corAcimaP95} 50%)` }" aria-hidden="true" />Taxa diária{{ recorteSufixo }}
+          </span>
+          <span class="hist-legenda-item">
+            <i class="hist-swatch hist-swatch--tracejada" aria-hidden="true" />P95 nacional do mês
+          </span>
+          <span class="hist-legenda-item">
+            <i class="hist-swatch" :style="{ backgroundColor: corAcimaP95 }" aria-hidden="true" />Acima do P95
+          </span>
+        </div>
+        <VChart class="hist-chart" :option="chartOption" autoresize />
       </section>
 
       <!-- Mapa de calor -->
@@ -1350,6 +1282,19 @@ const calorOption = computed(() => {
           </div>
         </div>
       </section>
+
+      <!-- Evidências: os alertas do CRM em todas as farmácias -->
+      <CrmEvidenciasPanel
+        v-if="dados.tem_evidencias"
+        ref="painelEvidencias"
+        v-model:aba="abaEvidencias"
+        :id-medico="medico.id_medico"
+        :data-inicio="dados.periodo_inicio"
+        :data-fim="dados.periodo_fim"
+        :id-cnpj="dados.id_cnpj_filtro"
+        :id-ibge7="dados.id_ibge7_filtro"
+        :cache-version="cacheVersion"
+      />
     </div>
 
     <!-- Detalhe mensal da atuação (o Dialog do PrimeVue é teleportado para o body). -->
@@ -1470,8 +1415,7 @@ const calorOption = computed(() => {
 .hist-swatch { display: inline-block; flex-shrink: 0; width: 10px; height: 10px; border-radius: 2px; }
 .hist-swatch--linha { height: 2px; border-radius: 1px; }
 .hist-swatch--tracejada { height: 0; border-top: 2px dashed var(--text-muted); border-radius: 0; }
-.hist-swatch--ponto { width: 8px; height: 8px; border-radius: 50%; background: var(--risk-critical); }
-.hist-chart { width: 100%; height: 540px; }
+.hist-chart { width: 100%; height: 293px; }
 .hist-calor { width: 100%; }
 .hist-calor-controle { display: grid; gap: .4rem; align-self: center; width: min(32rem, 100%); padding-top: .55rem; }
 .hist-calor-controle-cabecalho { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; color: var(--text-secondary); font-size: .7rem; font-weight: 600; }
@@ -1577,14 +1521,6 @@ const calorOption = computed(() => {
 }
 .atuacao-periodo { font-size: 0.76rem; font-weight: 500; color: var(--text-color-85); }
 .atuacao-meses { font-size: 0.7rem; color: var(--text-muted); }
-.atuacao-spark { display: block; width: 100%; height: 35px; overflow: visible; }
-.atuacao-base { stroke: var(--card-border); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
-.atuacao-bar { fill: var(--data-color); }
-.atuacao-bar.is-p95-leve { fill: var(--p95-leve); }
-.atuacao-bar.is-p95-media { fill: var(--p95-media); }
-.atuacao-bar.is-p95-forte { fill: var(--p95-forte); }
-/* Mês acima do teto de altura (4× o P95): barra cheia com marca no topo. */
-.atuacao-corte { fill: var(--text-color); opacity: 0.55; }
 
 .hist-fechar { min-height: 34px; padding: 0 1.1rem; border: 1px solid var(--card-border); border-radius: 8px; background: transparent; color: var(--text-color); font: inherit; font-size: .8rem; font-weight: 500; cursor: pointer; }
 .hist-fechar:hover { border-color: var(--primary-color); color: var(--primary-color); }

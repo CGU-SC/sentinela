@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.2] - 2026-10-01
+
+### Adicionado
+- **Médicos fixados na análise de prescrições por CRM.** A lista fica salva no navegador e pode ser aplicada ao ranking, à linha do tempo e à análise mensal.
+- **Barras mensais reutilizáveis para a atuação dos prescritores.** O gráfico aparece no ranking e no histórico, com marcação de anos, faixas de intensidade e detalhes por mês.
+
+### Alterado
+- **Análises de prescrições por CRM aprimoradas.** Filtros, ranking, histórico e visualizações mensais foram ajustados para facilitar o recorte e a comparação dos resultados.
+- **Controles de filtros refinados.** As telas de Análises e os seletores de faixa e múltiplas opções receberam ajustes de navegação e apresentação.
+
 ## [2.0.1] - 2026-10-01
 
 ### Alterado

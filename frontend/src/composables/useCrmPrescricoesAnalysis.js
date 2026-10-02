@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useFilterStore } from '@/stores/filters';
 import { useCrmPrescricoesAnalysisStore } from '@/stores/crmPrescricoesAnalysis';
 import { useCrmFiltrosMedicoStore } from '@/stores/crmFiltrosMedico';
+import { useCrmMedicosFixadosStore } from '@/stores/crmMedicosFixados';
 import { buildAnalyticsParams } from '@/stores/analytics';
 
 // Filtros de texto esperam o fim da digitacao; selecoes pedem imediatamente.
@@ -16,13 +17,15 @@ export function getCrmMapLevel(filterStore) {
 
 /**
  * Parâmetros das consultas de CRM de /analises: filtros globais (farmácias,
- * território, período) + filtros de médico da página + nível do mapa.
+ * território, período) + filtros de médico da página + médicos fixados (com
+ * "só fixados" ligado) + nível do mapa.
  * Fonte única da chave de cache (página e preparação da rota usam a mesma).
  */
 export function buildCrmAnalysisParams(filterStore, filtrosMedicoStore, mapLevel) {
   return {
     ...buildAnalyticsParams(filterStore.apiParams),
     ...filtrosMedicoStore.apiParams,
+    ...useCrmMedicosFixadosStore().apiParams,
     map_level: mapLevel,
   };
 }

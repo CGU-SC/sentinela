@@ -185,11 +185,13 @@ export const DATA_NEUTRAL = {
 };
 
 // ── Taxa do mês × P95 nacional (linha do tempo do ranking de CRMs) ─────────
-// Tons pastéis de vermelho, do mais claro (pouco acima do P95) ao mais marcado
-// (acima de 3× o P95). No tema escuro o tom mais marcado é o mais claro.
+// Tons pastéis de vermelho por faixa do ×P95 (crmFaixaP95), um a cada 1×: leve
+// 1,5–2,5×, media 2,5–3,5×, mediaForte 3,5–4,5×, forte 4,5–5,5×, muitoForte
+// 5,5–6,5× e extrema acima de 6,5×; até 1,5× sem cor. No tema escuro o tom mais
+// marcado é o mais claro.
 export const CRM_TAXA_P95_TONS = {
-  dark: { leve: "#7D5358", media: "#B06E72", forte: "#E39696" },
-  light: { leve: "#F3C4C4", media: "#E9A0A0", forte: "#DB7B7B" },
+  dark: { leve: "#7D5358", media: "#946266", mediaForte: "#AB7275", forte: "#C28183", muitoForte: "#D99192", extrema: "#F0A0A0" },
+  light: { leve: "#F3C4C4", media: "#ECB0B0", mediaForte: "#E59D9D", forte: "#DD8989", muitoForte: "#D67676", extrema: "#CF6262" },
 };
 
 // ── Ícone de alertas do ranking de CRMs (/analises) ─────────────────────────
@@ -226,8 +228,8 @@ export const CRM_SEVERIDADE_SEQUENCIA_CORES = Object.freeze({
 
 export const CRM_FARMACIA_SERIES = {
   light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"],
-  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"],
-  outras: { light: "#b4b2a9", dark: "#5c5b56" },
+  dark: ["#4c9bf5", "#f2703b", "#22c58b", "#f0a81a", "#ec6a98"],
+  outras: { light: "#b4b2a9", dark: "#6f7785" },
 };
 
 // Rampa sequencial do mapa de calor farmácia x mês: taxa diária do médico na

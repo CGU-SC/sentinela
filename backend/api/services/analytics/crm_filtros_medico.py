@@ -59,7 +59,6 @@ from data_cache import (
     get_df_perfil_estabelecimento,
     scan_crm_concentracao_unico_alertas_global,
     scan_crm_farmacia_medico_ano,
-    scan_crm_medico_brasil_mes,
     scan_crm_medico_dim,
     scan_crm_medico_estabelecimento_mes,
 )
@@ -89,7 +88,6 @@ class FiltrosMedico:
     """Filtros de medico normalizados (None/vazio/False = filtro desligado)."""
     situacao_cfm: Optional[str] = None
     ufs_crm: tuple[str, ...] = ()
-    antes_inscricao: bool = False
     taxa_dia_min: Optional[float] = None
     taxa_dia_max: Optional[float] = None
     prescricoes_min: Optional[int] = None
@@ -147,14 +145,14 @@ class FiltrosMedico:
     @property
     def ativo(self) -> bool:
         return (
-            self.situacao_cfm is not None or bool(self.ufs_crm) or self.antes_inscricao
+            self.situacao_cfm is not None or bool(self.ufs_crm)
             or self.usa_recorte or self.usa_atuacao or self.usa_municipios or self.usa_sequencia
         )
 
     @property
     def chave(self) -> tuple[object, ...]:
         return (
-            self.situacao_cfm, self.ufs_crm, self.antes_inscricao,
+            self.situacao_cfm, self.ufs_crm,
             self.taxa_dia_min, self.taxa_dia_max, self.prescricoes_min, self.prescricoes_max,
             self.exclusividade_min, self.exclusividade_max, self.farmacias_min, self.farmacias_max,
             self.municipios_min, self.municipios_max,
@@ -207,7 +205,6 @@ def montar_filtros_medico(
     *,
     situacao_cfm: Optional[str],
     uf_crm: Optional[list[str]],
-    antes_inscricao: bool,
     taxa_dia_min: Optional[float] = None,
     taxa_dia_max: Optional[float] = None,
     prescricoes_min: Optional[int] = None,
@@ -227,7 +224,6 @@ def montar_filtros_medico(
     Args:
         situacao_cfm: "localizado", "nao_localizado" ou None (todos).
         uf_crm: siglas das UFs do CRM (vazio/None = todas).
-        antes_inscricao: so medicos que prescreveram antes da 1a inscricao.
         taxa_dia_min / taxa_dia_max: faixa da taxa diaria no recorte (inclusiva).
         prescricoes_min / prescricoes_max: faixa do total de prescricoes no recorte.
         exclusividade_min / exclusividade_max: faixa (0 a 100%) da exclusividade
@@ -242,8 +238,7 @@ def montar_filtros_medico(
         FiltrosMedico com UFs ordenadas e sem repeticao.
 
     Raises:
-        HTTPException 422: situacao ou UF invalida, combinacao impossivel
-            (nao localizado nao tem data de inscricao) ou faixa invalida
+        HTTPException 422: situacao ou UF invalida ou faixa invalida
             (negativa, exclusividade acima de 100% ou minimo maior que maximo).
     """
     if situacao_cfm is not None and situacao_cfm not in SITUACOES_CFM:
@@ -252,11 +247,6 @@ def montar_filtros_medico(
     invalidas = [uf for uf in ufs if uf not in UFS_CRM]
     if invalidas:
         raise HTTPException(status_code=422, detail=f"UF do CRM invalida: {', '.join(invalidas)}.")
-    if antes_inscricao and situacao_cfm == "nao_localizado":
-        raise HTTPException(
-            status_code=422,
-            detail="Medicos nao localizados no CFM nao tem data de inscricao: combine antes_inscricao com localizado ou todos.",
-        )
     for nome, minimo, maximo in (
         ("taxa_dia", taxa_dia_min, taxa_dia_max),
         ("prescricoes", prescricoes_min, prescricoes_max),
@@ -277,7 +267,6 @@ def montar_filtros_medico(
     return FiltrosMedico(
         situacao_cfm=situacao_cfm,
         ufs_crm=ufs,
-        antes_inscricao=bool(antes_inscricao),
         taxa_dia_min=taxa_dia_min,
         taxa_dia_max=taxa_dia_max,
         prescricoes_min=prescricoes_min,
@@ -323,22 +312,6 @@ def _cadastro() -> pl.DataFrame:
     if faltando:
         raise HTTPException(status_code=503, detail=f"Dados dos medicos sem colunas: {', '.join(sorted(faltando))}.")
     return medicos.select([pl.col("id_medico").cast(pl.Utf8), pl.col("dt_primeira_inscricao_uf")])
-
-
-def _primeira_competencia(inicio: date, fim: date) -> pl.DataFrame:
-    """Primeiro mes com prescricao de cada medico no periodo (id_medico, primeira)."""
-    def calcular() -> pl.DataFrame:
-        try:
-            return (
-                scan_crm_medico_brasil_mes()
-                .filter(pl.col("competencia").is_between(_competencia(inicio), _competencia(fim)))
-                .group_by(pl.col("id_medico").cast(pl.Utf8))
-                .agg(pl.col("competencia").cast(pl.Int32).min().alias("primeira"))
-                .collect()
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=f"Cache de prescricoes nacionais por medico/mes indisponivel: {exc}") from exc
-    return _CACHE_BASES.obter(("primeira_competencia", inicio, fim), calcular)
 
 
 def _ids_por_faixa(filtros: FiltrosMedico, inicio: date, fim: date, recorte: Recorte) -> pl.DataFrame:
@@ -499,6 +472,94 @@ def _municipios_por_medico(inicio: date, fim: date) -> pl.DataFrame:
     return _CACHE_BASES.obter(("municipios", inicio, fim), calcular)
 
 
+def farmacias_por_medico(inicio: date, fim: date) -> pl.DataFrame:
+    """No de farmacias e de municipios onde cada medico atuou no periodo (Brasil).
+
+    Os mesmos numeros dos filtros "No de farmacias" e "No de municipios" (e do
+    mesmo cache por periodo), para a coluna "Farmacias" do ranking.
+
+    Returns:
+        id_medico (Utf8), qtd_farmacias (Int64) e qtd_municipios (Int64).
+    """
+    def calcular() -> pl.DataFrame:
+        farmacias = _atuacao_por_medico(inicio, fim).select(["id_medico_num", "qtd_farmacias"])
+        municipios = _municipios_por_medico(inicio, fim)
+        juntos = farmacias.join(municipios, on="id_medico_num", how="full", coalesce=True)
+        if juntos.filter(pl.col("qtd_farmacias").is_null() | pl.col("qtd_municipios").is_null()).height:
+            raise HTTPException(
+                status_code=503,
+                detail="Contagens de farmacias e de municipios por medico divergentes (modulos CRM de execucoes diferentes).",
+            )
+        return (
+            juntos.join(_dim().select(["id_medico_num", "id_medico"]), on="id_medico_num", how="inner")
+            .select([
+                "id_medico",
+                pl.col("qtd_farmacias").cast(pl.Int64),
+                pl.col("qtd_municipios").cast(pl.Int64),
+            ])
+        )
+
+    return _CACHE_BASES.obter(("farmacias_por_medico", inicio, fim), calcular)
+
+
+def farmacias_dos_medicos(id_medicos: list[str], inicio: date, fim: date) -> pl.DataFrame:
+    """No de farmacias e de municipios so dos medicos pedidos (uma pagina do ranking).
+
+    Mesma regra de farmacias_por_medico (tabela anual nos anos inteiros + mensal
+    nas pontas, Brasil), mas lendo so esses medicos: ~0,08 s sem cache, contra
+    2 a 9 s do calculo de todos os medicos, que so a ordenacao pela coluna exige.
+
+    Returns:
+        id_medico (Utf8), qtd_farmacias (Int64) e qtd_municipios (Int64).
+    """
+    from . import crm_analysis as base  # import tardio: crm_analysis importa este modulo
+
+    if not id_medicos:
+        return pl.DataFrame(schema={"id_medico": pl.Utf8, "qtd_farmacias": pl.Int64, "qtd_municipios": pl.Int64})
+    dim = _dim().filter(pl.col("id_medico").is_in(id_medicos)).select(["id_medico_num", "id_medico"])
+    anos, meses = base._dividir_periodo_ranking(inicio, fim)
+    try:
+        perfil = get_df_perfil_estabelecimento()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Perfil de estabelecimentos indisponivel: {exc}") from exc
+    municipio = perfil.select([pl.col("id_cnpj").cast(pl.Int64), pl.col("id_ibge7").cast(pl.Int64)])
+    partes = []
+    try:
+        if anos:
+            partes.append(
+                scan_crm_farmacia_medico_ano()
+                .filter(pl.col("id_medico_num").is_in(dim.get_column("id_medico_num").implode()) & pl.col("ano").is_in(anos))
+                .select(pl.col("id_medico_num").cast(pl.Int32), pl.col("id_cnpj").cast(pl.Int64))
+            )
+        if meses:
+            partes.append(
+                scan_crm_medico_estabelecimento_mes()
+                .filter(pl.col("id_medico").is_in(id_medicos) & pl.col("competencia").is_in(meses))
+                .select(pl.col("id_medico").cast(pl.Utf8), pl.col("id_cnpj").cast(pl.Int64))
+                .join(dim.lazy(), on="id_medico", how="inner")
+                .select("id_medico_num", "id_cnpj")
+            )
+        if not partes:
+            raise HTTPException(status_code=422, detail="Periodo sem meses com prescricoes nos modulos CRM.")
+        pares = pl.concat(partes).unique().collect()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Modulos CRM medico x farmacia indisponiveis: {exc}") from exc
+    com_municipio = pares.join(municipio, on="id_cnpj", how="left")
+    if com_municipio.get_column("id_ibge7").null_count():
+        raise HTTPException(status_code=503, detail="Farmacia dos modulos CRM sem municipio no perfil de estabelecimentos.")
+    return (
+        com_municipio.group_by("id_medico_num")
+        .agg([
+            pl.col("id_cnpj").n_unique().cast(pl.Int64).alias("qtd_farmacias"),
+            pl.col("id_ibge7").n_unique().cast(pl.Int64).alias("qtd_municipios"),
+        ])
+        .join(dim, on="id_medico_num", how="inner")
+        .select(["id_medico", "qtd_farmacias", "qtd_municipios"])
+    )
+
+
 def _sequencia_por_medico(inicio: date, fim: date, severidade_min: int) -> pl.DataFrame:
     """Dias com sequencia (unico CRM) de severidade >= severidade_min, por medico.
 
@@ -554,29 +615,12 @@ def medicos_filtrados(filtros: FiltrosMedico, inicio: date, fim: date, recorte: 
         dim = _dim()
         if filtros.ufs_crm:
             dim = dim.filter(pl.col("uf_crm").is_in(list(filtros.ufs_crm)))
-        if filtros.situacao_cfm is not None or filtros.antes_inscricao:
+        if filtros.situacao_cfm is not None:
             cadastro = _cadastro()
             if filtros.situacao_cfm == "nao_localizado":
                 dim = dim.join(cadastro.select("id_medico"), on="id_medico", how="anti")
             else:
                 dim = dim.join(cadastro.select("id_medico"), on="id_medico", how="semi")
-        if filtros.antes_inscricao:
-            inscricao = (
-                _cadastro()
-                .filter(pl.col("dt_primeira_inscricao_uf").is_not_null())
-                .select([
-                    "id_medico",
-                    (pl.col("dt_primeira_inscricao_uf").dt.year().cast(pl.Int32) * 100
-                     + pl.col("dt_primeira_inscricao_uf").dt.month().cast(pl.Int32)).alias("comp_inscricao"),
-                ])
-            )
-            antes = (
-                _primeira_competencia(inicio, fim)
-                .join(inscricao, on="id_medico", how="inner")
-                .filter(pl.col("primeira") < pl.col("comp_inscricao"))
-                .select("id_medico")
-            )
-            dim = dim.join(antes, on="id_medico", how="semi")
         if filtros.usa_recorte:
             dim = dim.join(_ids_por_faixa(filtros, inicio, fim, recorte), on="id_medico", how="semi")
         if filtros.usa_atuacao:
@@ -611,10 +655,10 @@ def medicos_filtrados(filtros: FiltrosMedico, inicio: date, fim: date, recorte: 
         codigos = dim.get_column("id_medico_num").to_numpy().astype(np.uint32)
         return BitMap(codigos)
 
-    # O periodo so importa para "antes da inscricao", faixas e atuacao nas farmacias.
+    # O periodo so importa para as faixas, a atuacao nas farmacias e as sequencias.
     periodo = (
         (inicio, fim)
-        if filtros.antes_inscricao or filtros.usa_recorte or filtros.usa_atuacao or filtros.usa_municipios
+        if filtros.usa_recorte or filtros.usa_atuacao or filtros.usa_municipios
         or filtros.usa_sequencia
         else None
     )

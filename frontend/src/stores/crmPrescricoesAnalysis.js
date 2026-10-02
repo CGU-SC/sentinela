@@ -11,6 +11,7 @@ const RANKING_SORT_FIELDS = new Set([
   'qtd_dias_com_prescricao', 'qtd_meses_ativos',
   'qtd_meses_alta_intensidade', 'percentual_meses_alta_intensidade',
   'nu_prescricoes_farmacias_filtradas', 'percentual_prescricoes_farmacias_filtradas',
+  'qtd_farmacias', 'qtd_municipios',
 ]);
 const MAX_CACHED_FILTERS = 8;
 const MAX_CACHED_PAGES_PER_FILTER = 6;
@@ -45,9 +46,16 @@ function responseError(err, message) {
   return message;
 }
 
+// Médicos fixados só recortam o ranking: o mapa é o mesmo com ou sem eles, e fica
+// em cache sob a chave dos parâmetros sem `ids_fixados` (fixar não refaz o mapa).
+function semFixados(params) {
+  return Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'ids_fixados'));
+}
+
 function mapRequestParams(params) {
-  if (params.map_level !== 'regiao') return params;
-  return Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'id_ibge7'));
+  const base = semFixados(params);
+  if (base.map_level !== 'regiao') return base;
+  return Object.fromEntries(Object.entries(base).filter(([key]) => key !== 'id_ibge7'));
 }
 
 function pageKey(page, pageSize, sortField, sortOrder, medicoQuery) {
@@ -180,18 +188,19 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       return pending;
     },
 
-    async loadMap(key, params, version, activationId) {
+    /** `mapKey`: chave do mapa (parâmetros sem os médicos fixados). */
+    async loadMap(mapKey, params, version, activationId) {
       try {
-        const data = await this.requestMap(key, params, version);
-        if (activationId === this.activationId && key === this.activeKey && version === this.cacheVersion) {
+        const data = await this.requestMap(mapKey, params, version);
+        if (activationId === this.activationId && version === this.cacheVersion) {
           this.mapResponse = data;
         }
       } catch (err) {
-        if (activationId === this.activationId && key === this.activeKey) {
+        if (activationId === this.activationId) {
           this.mapError = responseError(err, 'Não foi possível carregar os dados do mapa de prescrições. Tente novamente em instantes.');
         }
       } finally {
-        if (activationId === this.activationId && key === this.activeKey) this.isMapLoading = false;
+        if (activationId === this.activationId) this.isMapLoading = false;
       }
     },
 
@@ -234,6 +243,7 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
 
     async activate(params) {
       const key = JSON.stringify(params);
+      const mapKey = JSON.stringify(semFixados(params));
       const activationId = ++this.activationId;
       const rankingRequestId = ++this.rankingRequestId;
       const previousMap = this.mapResponse;
@@ -247,6 +257,7 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       this.activeKey = key;
       this.activeParams = { ...params };
       const cached = this.cacheEntries[key];
+      const cachedMap = this.cacheEntries[mapKey]?.map ?? null;
       let page = cached?.lastSearch === medicoQuery ? cached.lastPage : 1;
       let pageSize = cached?.lastPageSize ?? DEFAULT_RANKING_PAGE_SIZE;
       let sortField = cached?.lastSortField ?? previousSortField;
@@ -258,7 +269,7 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
         sortOrder = DEFAULT_RANKING_SORT_ORDER;
       }
       const cachedRanking = cached?.pages[pageKey(page, pageSize, sortField, sortOrder, medicoQuery)] ?? null;
-      this.mapResponse = cached?.map ?? previousMap;
+      this.mapResponse = cachedMap ?? previousMap;
       this.rankingResponse = cachedRanking ?? previousRanking;
       this.rankingResponseKey = cachedRanking ? key : previousRankingKey;
       if (cachedRanking) this.rankingResponseSearch = medicoQuery;
@@ -266,7 +277,7 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
       this.rankingPageSize = cachedRanking ? pageSize : previousPageSize;
       this.rankingSortField = cachedRanking ? sortField : previousSortField;
       this.rankingSortOrder = cachedRanking ? sortOrder : previousSortOrder;
-      this.isMapLoading = !cached?.map;
+      this.isMapLoading = !cachedMap;
       this.isRankingLoading = !cachedRanking;
       this.isRankingPageLoading = false;
       this.mapError = null;
@@ -292,9 +303,10 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
           this.isRankingLoading = true;
         }
         this.cacheVersion = status.cache_version;
+        const mapEntry = this.touchEntry(mapKey);
         const entry = this.touchEntry(key);
         const ranking = entry.pages[pageKey(page, pageSize, sortField, sortOrder, medicoQuery)];
-        if (entry.map) this.mapResponse = entry.map;
+        if (mapEntry.map) this.mapResponse = mapEntry.map;
         if (ranking) {
           this.rankingResponse = ranking;
           this.rankingResponseKey = key;
@@ -304,10 +316,10 @@ export const useCrmPrescricoesAnalysisStore = defineStore('crmPrescricoesAnalysi
           this.rankingSortField = sortField;
           this.rankingSortOrder = sortOrder;
         }
-        this.isMapLoading = !entry.map;
+        this.isMapLoading = !mapEntry.map;
         this.isRankingLoading = !ranking;
         await Promise.all([
-          entry.map ? Promise.resolve() : this.loadMap(key, params, status.cache_version, activationId),
+          mapEntry.map ? Promise.resolve() : this.loadMap(mapKey, params, status.cache_version, activationId),
           ranking ? Promise.resolve() : this.loadRanking(
             key, params, status.cache_version, activationId, rankingRequestId,
             page, pageSize, sortField, sortOrder, medicoQuery, false,

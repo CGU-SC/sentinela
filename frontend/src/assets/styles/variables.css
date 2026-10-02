@@ -17,6 +17,8 @@
   --tabs-border: #e2e8f0;
   --sidebar-bg: #212120;
   --sidebar-text: #A1A1AA;
+  /* Texto principal sobre a barra lateral, que é escura também no tema claro. */
+  --sidebar-text-strong: #e7e5e4;
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-input-bg: rgba(255, 255, 255, 0.06);
   --sidebar-heading-tint: color-mix(in srgb, var(--primary-color) 4%, color-mix(in srgb, #94a3b8 14%, transparent));

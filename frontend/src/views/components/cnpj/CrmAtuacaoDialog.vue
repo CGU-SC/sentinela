@@ -138,8 +138,16 @@ const titulo = computed(() => {
   return m.no_medico ? `${m.id_medico} · ${formatTitleCase(m.no_medico)}` : `${m.id_medico} · Não localizado na base do CFM`;
 });
 
+// Tom da faixa (chave do crmFaixaP95 → CRM_TAXA_P95_TONS); faixa sem chave = sem cor.
+function tomDaFaixa(faixa) {
+  if (!faixa?.chave) return null;
+  // 'media-forte' → mediaForte, 'muito-forte' → muitoForte
+  const tom = tonsP95.value[faixa.chave.replace(/-(\w)/g, (_, letra) => letra.toUpperCase())];
+  if (!tom) throw new Error(`Faixa de ×P95 sem tom: ${faixa.chave}`);
+  return tom;
+}
 function corDaBarra(d) {
-  return d.faixa ? tonsP95.value[d.faixa.chave] : coresDados.value.strong;
+  return tomDaFaixa(d.faixa) ?? coresDados.value.strong;
 }
 
 function formatTaxa(v) {
@@ -201,7 +209,7 @@ const chartOption = computed(() => {
           ['Autorizações do CRM no Brasil', formatNumberFull(d.qtdBrasil)],
         ];
         const faixaHtml = d.faixa
-          ? ` · <span style="color:${tonsP95.value[d.faixa.chave]}">taxa elevada (${d.faixa.rotulo})</span>`
+          ? ` · <span style="color:${tomDaFaixa(d.faixa) ?? c.tooltipText}">taxa elevada (${d.faixa.rotulo})</span>`
           : '';
         const alertasHtml = al
           ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid ${c.tooltipBorder};font-size:11px;">
@@ -347,8 +355,11 @@ function fechar() {
           <span class="legenda-tons">
             <i class="legenda-cor" :style="{ background: tonsP95.leve }" />
             <i class="legenda-cor" :style="{ background: tonsP95.media }" />
+            <i class="legenda-cor" :style="{ background: tonsP95.mediaForte }" />
             <i class="legenda-cor" :style="{ background: tonsP95.forte }" />
-            Taxa acima do P95 do mês (1–2×, 2–3×, &gt; 3×)
+            <i class="legenda-cor" :style="{ background: tonsP95.muitoForte }" />
+            <i class="legenda-cor" :style="{ background: tonsP95.extrema }" />
+            ×P95 do mês: um tom a cada 1×, de 1,5× a 6,5×, e o mais marcado acima de 6,5×
           </span>
           <span><i class="legenda-marcador" aria-hidden="true">▼</i> Mês com alerta de sequência ou distância</span>
           <span v-if="medico.dt_inscricao_crm"><i class="legenda-cor is-inscricao" /> 1ª inscrição: {{ formatarData(medico.dt_inscricao_crm) }}</span>

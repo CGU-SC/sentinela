@@ -16,7 +16,7 @@
  * O componente não guarda o valor: emite `select-range` e o pai decide.
  * Botão e painel: assets/styles/range-picker.css (mesmo visual do MonthRangePicker).
  */
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import OverlayPanel from 'primevue/overlaypanel';
 
 const props = defineProps({
@@ -50,6 +50,11 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   icone: { type: String, default: 'pi-percentage' },
   mostrarIcone: { type: Boolean, default: true },
+  /**
+   * Botão "Limpar" nos campos. Desligue quando o filtro não tem campo "limpo":
+   * valor único cujo desligado é um atalho fora da faixa (ex.: [0] = Desligado).
+   */
+  limpavel: { type: Boolean, default: true },
 });
 const emit = defineEmits(['select-range']);
 
@@ -117,6 +122,18 @@ const erro = computed(() => {
   if (a >= b) return 'O início deve ser menor que o fim.';
   return null;
 });
+// "Limpar": campos vazios (modo aberto = sem limite) ou nos limites do filtro.
+// Só muda os campos; o filtro muda no Aplicar, como no painel de UFs.
+const camposLimpos = computed(() => (props.aberto
+  ? lerCampo(inicio.value) === null && (props.unico || lerCampo(fim.value) === null)
+  : Number(inicio.value) === props.min && (props.unico || Number(fim.value) === props.max)));
+function limparCampos() {
+  pararRepeticao();
+  editando.value = true;
+  inicio.value = props.aberto ? '' : props.min;
+  if (!props.unico) fim.value = props.aberto ? '' : props.max;
+}
+
 const dica = computed(() => {
   if (erro.value) return erro.value;
   if (props.aberto) return 'Deixe um lado vazio para não limitar. Clique em Aplicar (ou Enter).';
@@ -133,6 +150,7 @@ function abrir(event) {
   painel.value.toggle(event);
 }
 function aplicarFaixa(faixa) {
+  pararRepeticao();
   painel.value.hide();
   editando.value = false;
   if (iguais(faixa, props.valor)) return;
@@ -145,19 +163,57 @@ function focarPersonalizado() {
   editando.value = true;
   nextTick(() => campoInicio.value?.focus());
 }
+/** Soma `delta` passos ao campo, dentro dos limites; devolve se o valor mudou. */
 function ajustar(campo, delta) {
   editando.value = true;
   const alvo = campo === 'inicio' ? inicio : fim;
+  const antes = alvo.value;
   if (props.aberto) {
     const atual = lerCampo(alvo.value);
     const base = Number.isFinite(atual) ? atual : props.min;
     alvo.value = textoCampo(Math.min(props.max, Math.max(props.min, base + delta * props.passo)));
-    return;
+  } else {
+    const atual = Number(alvo.value);
+    const base = Number.isFinite(atual) ? atual : (campo === 'inicio' ? props.min : props.max);
+    alvo.value = Math.max(props.min, Math.min(props.max, base + delta * props.passo));
   }
-  const atual = Number(alvo.value);
-  const base = Number.isFinite(atual) ? atual : (campo === 'inicio' ? props.min : props.max);
-  alvo.value = Math.max(props.min, Math.min(props.max, base + delta * props.passo));
+  return alvo.value !== antes;
 }
+
+// Segurar + ou −: um passo na hora; depois de REPETIR_ESPERA_MS repete a cada
+// REPETIR_INTERVALO_MS e, passadas REPETIR_ACELERA_APOS repetições, cada uma vale
+// REPETIR_MULTIPLICADOR passos (ajuda nos filtros de números grandes). Para ao
+// soltar, ao sair do botão ou no limite. Teclado (Enter/Espaço) segue no @click.
+const REPETIR_ESPERA_MS = 400;
+const REPETIR_INTERVALO_MS = 80;
+const REPETIR_ACELERA_APOS = 25;
+const REPETIR_MULTIPLICADOR = 10;
+let repetirEspera = null;
+let repetirIntervalo = null;
+function pararRepeticao() {
+  clearTimeout(repetirEspera);
+  clearInterval(repetirIntervalo);
+  repetirEspera = null;
+  repetirIntervalo = null;
+}
+function iniciarRepeticao(campo, delta, event) {
+  if (event.button !== 0) return;
+  pararRepeticao();
+  if (!ajustar(campo, delta)) return;
+  let repeticoes = 0;
+  repetirEspera = setTimeout(() => {
+    repetirIntervalo = setInterval(() => {
+      repeticoes += 1;
+      const passos = repeticoes > REPETIR_ACELERA_APOS ? REPETIR_MULTIPLICADOR : 1;
+      if (!ajustar(campo, delta * passos)) pararRepeticao();
+    }, REPETIR_INTERVALO_MS);
+  }, REPETIR_ESPERA_MS);
+}
+/** Clique vindo do teclado (detail 0): um passo; o do mouse já foi dado no pointerdown. */
+function ajustarPeloTeclado(campo, delta, event) {
+  if (event.detail === 0) ajustar(campo, delta);
+}
+onBeforeUnmount(pararRepeticao);
 function aplicarPersonalizado() {
   if (erro.value) return;
   if (props.aberto) {
@@ -181,7 +237,7 @@ function aplicarPersonalizado() {
     <i class="pi pi-chevron-down rp-gatilho-seta" aria-hidden="true" />
   </button>
 
-  <OverlayPanel ref="painel" class="rp-painel" :dismissable="true">
+  <OverlayPanel ref="painel" class="rp-painel" :dismissable="true" @hide="pararRepeticao">
     <div class="rp-corpo" role="dialog" aria-label="Escolher faixa">
       <ul class="rp-atalhos">
         <li v-for="a in atalhos" :key="a.value">
@@ -212,7 +268,7 @@ function aplicarPersonalizado() {
           <label class="nrp-campo">
             <span>{{ unico ? rotuloCampo : 'De' }}</span>
             <span class="nrp-entrada">
-              <button type="button" class="nrp-passo" aria-label="Diminuir o início" @click="ajustar('inicio', -1)">
+              <button type="button" class="nrp-passo" aria-label="Diminuir o início" @pointerdown="iniciarRepeticao('inicio', -1, $event)" @pointerup="pararRepeticao" @pointerleave="pararRepeticao" @pointercancel="pararRepeticao" @click="ajustarPeloTeclado('inicio', -1, $event)">
                 <i class="pi pi-minus" aria-hidden="true" />
               </button>
               <span v-if="prefixo" class="nrp-unidade">{{ prefixo }}</span>
@@ -231,7 +287,7 @@ function aplicarPersonalizado() {
                 @input="editando = true"
               />
               <span v-if="sufixo" class="nrp-unidade">{{ sufixo }}</span>
-              <button type="button" class="nrp-passo" aria-label="Aumentar o início" @click="ajustar('inicio', 1)">
+              <button type="button" class="nrp-passo" aria-label="Aumentar o início" @pointerdown="iniciarRepeticao('inicio', 1, $event)" @pointerup="pararRepeticao" @pointerleave="pararRepeticao" @pointercancel="pararRepeticao" @click="ajustarPeloTeclado('inicio', 1, $event)">
                 <i class="pi pi-plus" aria-hidden="true" />
               </button>
             </span>
@@ -239,7 +295,7 @@ function aplicarPersonalizado() {
           <label v-if="!unico" class="nrp-campo">
             <span>Até</span>
             <span class="nrp-entrada">
-              <button type="button" class="nrp-passo" aria-label="Diminuir o fim" @click="ajustar('fim', -1)">
+              <button type="button" class="nrp-passo" aria-label="Diminuir o fim" @pointerdown="iniciarRepeticao('fim', -1, $event)" @pointerup="pararRepeticao" @pointerleave="pararRepeticao" @pointercancel="pararRepeticao" @click="ajustarPeloTeclado('fim', -1, $event)">
                 <i class="pi pi-minus" aria-hidden="true" />
               </button>
               <span v-if="prefixo" class="nrp-unidade">{{ prefixo }}</span>
@@ -257,13 +313,16 @@ function aplicarPersonalizado() {
                 @input="editando = true"
               />
               <span v-if="sufixo" class="nrp-unidade">{{ sufixo }}</span>
-              <button type="button" class="nrp-passo" aria-label="Aumentar o fim" @click="ajustar('fim', 1)">
+              <button type="button" class="nrp-passo" aria-label="Aumentar o fim" @pointerdown="iniciarRepeticao('fim', 1, $event)" @pointerup="pararRepeticao" @pointerleave="pararRepeticao" @pointercancel="pararRepeticao" @click="ajustarPeloTeclado('fim', 1, $event)">
                 <i class="pi pi-plus" aria-hidden="true" />
               </button>
             </span>
           </label>
         </div>
-        <button type="submit" class="nrp-aplicar" :disabled="!!erro">Aplicar</button>
+        <div class="nrp-acoes">
+          <button v-if="limpavel" type="button" class="nrp-limpar" :disabled="camposLimpos" @click="limparCampos">Limpar</button>
+          <button type="submit" class="nrp-aplicar" :disabled="!!erro">Aplicar</button>
+        </div>
         <p class="rp-dica" :class="{ 'is-erro': !!erro }" aria-live="polite">{{ dica }}</p>
       </form>
     </div>
@@ -284,6 +343,12 @@ function aplicarPersonalizado() {
 .nrp-passo { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 1px solid var(--card-border); border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .nrp-passo .pi { font-size: .65rem; }
 .nrp-passo:hover, .nrp-passo:focus-visible { border-color: var(--primary-color); color: var(--primary-color); outline: none; }
+.nrp-acoes { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; }
+/* Mesmo visual do "Limpar" do painel de UFs (MultiOptionPicker .mop-limpar). */
+.nrp-limpar { padding: .15rem .4rem; border: 0; border-radius: 5px; background: transparent; color: var(--color-error); font: inherit; font-size: .7rem; font-weight: 500; cursor: pointer; }
+.nrp-limpar:hover:not(:disabled) { background: color-mix(in srgb, var(--color-error) 10%, transparent); }
+.nrp-limpar:disabled { color: var(--text-muted); opacity: .5; cursor: default; }
+.nrp-limpar:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent); outline-offset: 1px; }
 .nrp-aplicar { align-self: flex-end; min-height: 2rem; padding: 0 1rem; border: 0; border-radius: 6px; background: var(--primary-color); color: var(--card-bg); font: inherit; font-size: .76rem; font-weight: 600; cursor: pointer; }
 .nrp-aplicar:disabled { opacity: .45; cursor: default; }
 .nrp-aplicar:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent); outline-offset: 2px; }

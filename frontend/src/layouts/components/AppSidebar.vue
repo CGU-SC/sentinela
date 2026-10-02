@@ -1553,8 +1553,16 @@ const clearSearch = () => {
         class="filter-section"
         :class="{ 'filter-locked': allFiltersLocked }"
       >
-        <label class="filter-label">
-          CNPJ com CNAE incompatível
+        <!-- Sem título: o próprio texto da caixa nomeia o filtro; ajuda e borracha ficam na mesma linha. -->
+        <div class="filter-checkbox-wrapper checkbox-linha" :class="{ 'filter-active-box': isFilterActive('selectedCnaeIncompativel') }">
+          <label class="checkbox-label">
+            <Checkbox
+              v-model="filterStore.selectedCnaeIncompativel"
+              class="filter-checkbox"
+              binary
+            />
+            <span>CNPJ com CNAE incompatível</span>
+          </label>
           <i
             class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.cnaeIncompativel"
@@ -1567,16 +1575,6 @@ const clearSearch = () => {
           >
             <i class="pi pi-eraser" />
           </button>
-        </label>
-        <div class="filter-checkbox-wrapper" :class="{ 'filter-active-box': isFilterActive('selectedCnaeIncompativel') }">
-          <label class="checkbox-label">
-            <Checkbox
-              v-model="filterStore.selectedCnaeIncompativel"
-              class="filter-checkbox"
-              binary
-            />
-            <span>Apenas CNPJs com CNAE incompatível</span>
-          </label>
         </div>
       </div>
 
@@ -1586,8 +1584,16 @@ const clearSearch = () => {
         class="filter-section"
         :class="{ 'filter-locked': allFiltersLocked }"
       >
-        <label class="filter-label">
-          Sócio &lt; 21 anos ou &gt; 80 anos
+        <!-- Sem título: o próprio texto da caixa nomeia o filtro; ajuda e borracha ficam na mesma linha. -->
+        <div class="filter-checkbox-wrapper checkbox-linha" :class="{ 'filter-active-box': isFilterActive('selectedSocioIdadeAtipica') }">
+          <label class="checkbox-label">
+            <Checkbox
+              v-model="filterStore.selectedSocioIdadeAtipica"
+              class="filter-checkbox"
+              binary
+            />
+            <span>Sócio &lt; 21 anos ou &gt; 80 anos</span>
+          </label>
           <i
             class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.socioIdadeAtipica"
@@ -1600,16 +1606,6 @@ const clearSearch = () => {
           >
             <i class="pi pi-eraser" />
           </button>
-        </label>
-        <div class="filter-checkbox-wrapper" :class="{ 'filter-active-box': isFilterActive('selectedSocioIdadeAtipica') }">
-          <label class="checkbox-label">
-            <Checkbox
-              v-model="filterStore.selectedSocioIdadeAtipica"
-              class="filter-checkbox"
-              binary
-            />
-            <span>Apenas sócios &lt; 21 ou &gt; 80 anos</span>
-          </label>
         </div>
       </div>
 
@@ -1618,8 +1614,16 @@ const clearSearch = () => {
         class="filter-section"
         :class="{ 'filter-locked': allFiltersLocked }"
       >
-        <label class="filter-label">
-          Sócio ativo falecido
+        <!-- Sem título: o próprio texto da caixa nomeia o filtro; ajuda e borracha ficam na mesma linha. -->
+        <div class="filter-checkbox-wrapper checkbox-linha" :class="{ 'filter-active-box': isFilterActive('selectedSocioFalecido') }">
+          <label class="checkbox-label">
+            <Checkbox
+              v-model="filterStore.selectedSocioFalecido"
+              class="filter-checkbox"
+              binary
+            />
+            <span>Sócio ativo falecido</span>
+          </label>
           <i
             class="pi pi-info-circle filter-info-icon help-icon"
             v-tooltip.right="filterTooltips.socioFalecido"
@@ -1632,16 +1636,6 @@ const clearSearch = () => {
           >
             <i class="pi pi-eraser" />
           </button>
-        </label>
-        <div class="filter-checkbox-wrapper" :class="{ 'filter-active-box': isFilterActive('selectedSocioFalecido') }">
-          <label class="checkbox-label">
-            <Checkbox
-              v-model="filterStore.selectedSocioFalecido"
-              class="filter-checkbox"
-              binary
-            />
-            <span>Apenas CNPJs com sócio falecido</span>
-          </label>
         </div>
       </div>
 
@@ -1733,6 +1727,7 @@ const clearSearch = () => {
           :class="{ 'filter-active-box': isFilterActive('dispersaoUfSemFronteiraEnabled') }"
         >
           <NumberRangePicker
+            :limpavel="false"
             :mostrar-icone="false"
             unico
             :valor="dispersaoUfValor"
@@ -1831,6 +1826,7 @@ const clearSearch = () => {
           :class="{ 'filter-active-box': isFilterActive('volumeAtipicoEnabled') }"
         >
           <NumberRangePicker
+            :limpavel="false"
             :mostrar-icone="false"
             unico
             :valor="volumeAtipicoValor"
@@ -1873,9 +1869,12 @@ const clearSearch = () => {
 
 <style scoped>
 /* Autorizações em sequência: tipo, severidade e dias, empilhados. */
-.seq-filtro { display: flex; flex-direction: column; gap: 0.35rem; }
+/* Um filtro só com três campos: recuados sob o título e ligados por uma linha-guia
+   à esquerda (laranja quando o filtro tem valor), para não parecerem três filtros. */
+.slider-container.seq-filtro { display: flex; flex-direction: column; gap: 0.35rem; margin-left: 0.15rem; padding: 0.1rem 0 0.1rem 0.65rem; border-left: 2px solid var(--sidebar-border); transition: border-color 0.15s ease; }
+.slider-container.seq-filtro.filter-active-box { border-left-color: var(--primary-color); }
 .seq-filtro :deep(.rp-gatilho) { width: 100%; }
-.seq-filtro-rotulo { color: var(--text-muted); font-size: 0.7rem; font-weight: 500; }
+.seq-filtro-rotulo { color: var(--text-muted); font-size: 0.75rem; font-weight: 500; }
 .seq-filtro-rotulo + .rp-gatilho, .seq-filtro-rotulo:not(:first-child) { margin-top: 0.15rem; }
 
 /* SIDEBAR */
@@ -1901,6 +1900,17 @@ const clearSearch = () => {
 
 @media (prefers-reduced-motion: reduce) {
   .admin-sidebar { transition-duration: 0ms; }
+}
+
+/* A barra é escura nos dois temas. No tema claro, os tokens de texto da página são
+   feitos para fundo claro e ficariam ilegíveis aqui (títulos azul-escuros, valores
+   quase invisíveis): dentro da barra eles passam a valer para fundo escuro. Os
+   painéis dos seletores abrem fora da barra e seguem com os tokens da página. */
+:global(:root:not(.dark-mode) .admin-sidebar) {
+  --text-color: var(--sidebar-text-strong);
+  --text-color-85: color-mix(in srgb, var(--sidebar-text-strong) 85%, transparent);
+  --text-secondary: color-mix(in srgb, var(--sidebar-text-strong) 70%, transparent);
+  --text-muted: var(--sidebar-text);
 }
 
 /* BOTÃO FLUTUANTE DE LIMPAR TODOS OS FILTROS */
@@ -2307,7 +2317,7 @@ const clearSearch = () => {
   padding: 0 0.48rem 0 calc(0.48rem + 2px);
   /* Mesma cor do título "Filtros dos médicos" da barra da direita (AnalysisSidebar .group-title). */
   color: color-mix(in srgb, var(--primary-color) 15%, #78716c);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
@@ -2365,18 +2375,20 @@ const clearSearch = () => {
   font-size: 0.7rem;
 }
 
-/* Título do filtro: 12px, peso 500, caixa normal. O espaço até o campo é sempre
+/* Título do filtro: 13px, peso 500, caixa normal (grupo: 14px/600; valor do campo: 13px/400). O espaço até o campo é sempre
    0,4rem: os contêineres do campo (.slider-container, .filter-checkbox-wrapper)
    não somam recuo vertical próprio. */
 .filter-label {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1.2;
   margin-bottom: 0.4rem;
-  color: var(--text-secondary);
+  /* Texto principal do tema a 70%: abaixo do valor do campo (85%) e sem o tom
+     azulado de --text-secondary; o mesmo da barra de filtros dos médicos. */
+  color: color-mix(in srgb, var(--text-color) 70%, transparent);
 }
 
 .filter-clear-btn {
@@ -2650,6 +2662,14 @@ const clearSearch = () => {
 :global(.admin-sidebar .filter-input .p-dropdown-label.p-placeholder) {
   color: var(--text-muted) !important;
 }
+/* Filtro sem valor ("Todos", "Desligado", período inteiro...): o texto do campo fica
+   apagado; só os filtros com valor ficam com o texto claro (e a borda laranja). */
+:global(.admin-sidebar .filter-input.p-dropdown:not(.filter-active)) {
+  color: var(--text-muted) !important;
+}
+.slider-container:not(.filter-active-box) :deep(.rp-gatilho) {
+  color: var(--text-muted);
+}
 
 /* BOTÃO LIMPAR FILTROS */
 :deep(.clear-filters-btn.p-button) {
@@ -2892,6 +2912,13 @@ const clearSearch = () => {
   padding: 0;
 }
 
+/* Caixa sem título: texto, ajuda e borracha na mesma linha. */
+.filter-checkbox-wrapper.checkbox-linha {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -2930,7 +2957,8 @@ const clearSearch = () => {
     box-shadow 0.2s ease;
 }
 
-:global(.checkbox-label:hover .filter-checkbox.p-checkbox .p-checkbox-box) {
+/* Só a caixa desmarcada: marcada, o hover não pode apagar o fundo laranja. */
+:global(.checkbox-label:hover .filter-checkbox.p-checkbox:not(.p-highlight):not(.p-checkbox-checked) .p-checkbox-box) {
   border-color: color-mix(in srgb, var(--sidebar-text) 45%, var(--sidebar-border));
   background: var(--sidebar-input-bg);
 }

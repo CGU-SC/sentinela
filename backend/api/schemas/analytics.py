@@ -561,6 +561,10 @@ class CrmPrescricoesRankingItemSchema(BaseModel):
     qtd_meses_ativos: int
     qtd_meses_alta_intensidade: int
     percentual_meses_alta_intensidade: float
+    # Farmacias e municipios distintos onde o medico atuou no periodo (Brasil,
+    # nao so no recorte): os mesmos numeros dos filtros de atuacao.
+    qtd_farmacias: int
+    qtd_municipios: int
     # Somente com filtro de farmacia: prescricoes do medico nas farmacias
     # filtradas (mesmos meses e escopo) e a fatia do total dele.
     nu_prescricoes_farmacias_filtradas: Optional[int] = None

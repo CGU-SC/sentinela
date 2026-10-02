@@ -23,7 +23,7 @@ from data_cache import (
     scan_crm_medico_territorio_mes,
     get_dados_medico_df,
 )
-from .crm_filtros_medico import SEM_FILTRO_MEDICO, FiltrosMedico
+from .crm_filtros_medico import SEM_FILTRO_MEDICO, FiltrosMedico, farmacias_dos_medicos, farmacias_por_medico
 from ...schemas.analytics import (
     CrmPrescricoesAnaliseResponse,
     CrmPrescricoesMapaItemSchema,
@@ -42,7 +42,10 @@ RANKING_SORT_FIELDS = frozenset({
     "qtd_meses_alta_intensidade", "percentual_meses_alta_intensidade",
     "nu_prescricoes_farmacias_filtradas",
     "percentual_prescricoes_farmacias_filtradas",
+    "qtd_farmacias", "qtd_municipios",
 })
+# Coluna "Farmacias": nº de farmacias e de municipios do medico no periodo (Brasil).
+RANKING_ATUACAO_SORT_FIELDS = frozenset({"qtd_farmacias", "qtd_municipios"})
 RANKING_FILTERED_SORT_FIELDS = frozenset({
     "nu_prescricoes_farmacias_filtradas",
     "percentual_prescricoes_farmacias_filtradas",
@@ -814,6 +817,52 @@ def ids_busca_medico(query: Optional[str]) -> Optional[pl.Series]:
     return ids
 
 
+MEDICOS_FIXADOS_MAX = 100
+
+
+def ids_medicos_fixados(valor: Optional[str]) -> Optional[list[str]]:
+    """id_medico dos medicos fixados pelo usuario em /analises (None = sem recorte).
+
+    Recebe os ids separados por virgula (ex.: "26188/SC,1234/PR"). O recorte se
+    soma aos demais filtros: so aparecem os fixados que tambem passam por eles.
+
+    Raises:
+        HTTPException: 422 para lista vazia, repetida ou acima do limite.
+    """
+    if valor is None:
+        return None
+    ids = [item.strip() for item in valor.split(",")]
+    if not ids or any(not item for item in ids):
+        raise HTTPException(status_code=422, detail="ids_fixados deve trazer ao menos um id_medico, sem itens vazios.")
+    if len(ids) > MEDICOS_FIXADOS_MAX:
+        raise HTTPException(status_code=422, detail=f"No maximo {MEDICOS_FIXADOS_MAX} medicos fixados por consulta.")
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=422, detail="id_medico repetido em ids_fixados.")
+    return ids
+
+
+def _com_farmacias(ranking: pl.DataFrame, inicio: date, fim: date, *, todos: bool) -> pl.DataFrame:
+    """Junta o nº de farmacias e de municipios (Brasil, no periodo) a cada medico do ranking.
+
+    todos=True (ordenacao pela coluna): calculo de todos os medicos, em cache por
+    periodo. todos=False (pagina exibida): so os medicos da pagina, bem mais rapido.
+    Medico do ranking sem a contagem indica modulos CRM de execucoes diferentes:
+    responde 503 em vez de mostrar a coluna vazia.
+    """
+    contagens = (
+        farmacias_por_medico(inicio, fim)
+        if todos
+        else farmacias_dos_medicos(ranking.get_column("id_medico").to_list(), inicio, fim)
+    )
+    resultado = ranking.join(contagens, on="id_medico", how="left", maintain_order="left")
+    if resultado.get_column("qtd_farmacias").null_count():
+        raise HTTPException(
+            status_code=503,
+            detail="Medico do ranking sem farmacias no modulo medico x farmacia (modulos CRM de execucoes diferentes).",
+        )
+    return resultado
+
+
 def _montar_resposta_ranking(
     ranking_aggregated: pl.DataFrame,
     *,
@@ -830,6 +879,7 @@ def _montar_resposta_ranking(
     prescricoes_filtradas: Optional[Callable[[list[str]], pl.DataFrame]] = None,
     prescricoes_filtradas_completas: Optional[Callable[[], pl.DataFrame]] = None,
     filtro_medicos_ativo: bool = False,
+    ids_fixados: Optional[list[str]] = None,
 ) -> CrmPrescricoesAnaliseResponse:
     """Pagina o ranking agregado (1 linha por medico) e completa nome/CRM da pagina.
 
@@ -841,6 +891,9 @@ def _montar_resposta_ranking(
     ids_busca = ids_busca_medico(medico_query)
     if ids_busca is not None:
         ranking_aggregated = ranking_aggregated.filter(pl.col("id_medico").is_in(ids_busca))
+    if ids_fixados is not None:
+        # Medicos fixados: recorte a mais, depois dos filtros e da busca.
+        ranking_aggregated = ranking_aggregated.filter(pl.col("id_medico").is_in(ids_fixados))
     ranking_total = ranking_aggregated.height
     if ranking_total == 0:
         return CrmPrescricoesAnaliseResponse(
@@ -868,6 +921,9 @@ def _montar_resposta_ranking(
             (pl.col("nu_prescricoes_farmacias_filtradas") / pl.col("nu_prescricoes") * 100)
             .alias("percentual_prescricoes_farmacias_filtradas")
         )
+    elif sort_field in RANKING_ATUACAO_SORT_FIELDS:
+        # Ordenar pela coluna "Farmacias" exige o numero de todos os medicos do recorte.
+        ranking_aggregated = _com_farmacias(ranking_aggregated, inicio, fim, todos=True)
     elif sort_field == "no_medico":
         try:
             medico_df = get_dados_medico_df()
@@ -933,6 +989,8 @@ def _montar_resposta_ranking(
     ranking_scope = ranking_scope.join(medico_df, on="id_medico", how="left", maintain_order="left").with_columns(
         pl.col("localizado_cfm").is_not_null()
     )
+    if sort_field not in RANKING_ATUACAO_SORT_FIELDS:
+        ranking_scope = _com_farmacias(ranking_scope, inicio, fim, todos=False)
     if prescricoes_filtradas is not None and sort_field not in RANKING_FILTERED_SORT_FIELDS:
         filtradas = prescricoes_filtradas(ranking_scope.get_column("id_medico").to_list())
         ranking_scope = ranking_scope.join(filtradas, on="id_medico", how="left", maintain_order="left")
@@ -958,6 +1016,8 @@ def _montar_resposta_ranking(
             qtd_meses_ativos=int(row["qtd_meses_ativos"]),
             qtd_meses_alta_intensidade=int(row["qtd_meses_alta_intensidade"]),
             percentual_meses_alta_intensidade=float(row["percentual_meses_alta_intensidade"]),
+            qtd_farmacias=int(row["qtd_farmacias"]),
+            qtd_municipios=int(row["qtd_municipios"]),
             nu_prescricoes_farmacias_filtradas=(
                 int(row["nu_prescricoes_farmacias_filtradas"])
                 if farmacias_filtradas else None
@@ -1127,6 +1187,7 @@ def get_crm_prescricoes_analise(
     page: int = 1,
     page_size: int = 15,
     medico_query: Optional[str] = None,
+    ids_fixados: Optional[str] = None,
     sort_field: str = "taxa_prescricoes_dia",
     sort_order: str = "desc",
     include_map: bool = True,
@@ -1158,6 +1219,8 @@ def get_crm_prescricoes_analise(
 
     inicio, fim = _period_bounds(data_inicio, data_fim)
     filtro_farmacias_ativo, filtros_farmacia = montar_filtros_farmacia(filtros)
+    # Medicos fixados: recorte so do ranking (o mapa segue o universo dos filtros).
+    fixados = ids_medicos_fixados(ids_fixados)
 
     # Filtros de farmacia e/ou de medico: universo filtrado (crm_analysis_filtrado).
     universo_filtrado = filtro_farmacias_ativo or filtros_medico.ativo
@@ -1258,6 +1321,7 @@ def get_crm_prescricoes_analise(
             prescricoes_filtradas=prescricoes_filtradas,
             prescricoes_filtradas_completas=prescricoes_filtradas_completas,
             filtro_medicos_ativo=filtros_medico.ativo,
+            ids_fixados=fixados,
         )
 
     try:
@@ -1283,4 +1347,5 @@ def get_crm_prescricoes_analise(
         sort_field=sort_field,
         sort_order=sort_order,
         manager_map=manager_map,
+        ids_fixados=fixados,
     )

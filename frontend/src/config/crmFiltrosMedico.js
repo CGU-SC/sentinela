@@ -1,7 +1,7 @@
 /**
  * Filtros de médico da página de Análises (grupo "Cadastro CFM").
  * Os valores seguem o contrato de /crm-prescricoes-analise e /crm-prescricoes-mensal
- * (situacao_cfm, uf_crm, antes_inscricao).
+ * (situacao_cfm, uf_crm).
  */
 
 import { CRM_EXCLUSIVIDADE_THRESHOLDS } from '@/config/riskConfig';
@@ -92,7 +92,7 @@ export const CRM_FAIXAS = Object.freeze({
   exclusividade: Object.freeze({
     grupo: 'producao',
     param: 'exclusividade',
-    label: 'Exclusividade na farmácia principal',
+    label: 'Exclusividade em uma farmácia',
     casas: 2,
     passo: 5,
     max: 100,

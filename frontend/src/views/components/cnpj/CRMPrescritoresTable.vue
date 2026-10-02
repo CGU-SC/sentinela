@@ -3,9 +3,10 @@ import { computed, ref, watch } from "vue";
 import { useFormatting } from "@/composables/useFormatting";
 import { useFilterParameters } from "@/composables/useFilterParameters";
 import CrmHistoricoDialog from '@/views/components/analises/CrmHistoricoDialog.vue';
+import CrmBarrasMensais from '@/views/components/common/CrmBarrasMensais.vue';
 import { useThemeStore } from '@/stores/theme';
-import { DATA_NEUTRAL, CRM_TAXA_P95_TONS } from '@/config/colors';
-import { crmAlturaAtuacao, crmFaixaP95 } from '@/config/analysisTooltipConfig';
+import { DATA_NEUTRAL } from '@/config/colors';
+import { crmAlturaAtuacao, crmFaixaP95, crmMesTooltip } from '@/config/analysisTooltipConfig';
 import { CRM_EXCLUSIVIDADE_THRESHOLDS, CRM_DAILY_RATE_ALERT_THRESHOLD } from '@/config/riskConfig';
 import { API_ENDPOINTS } from '@/config/api';
 import { downloadBlobFromResponse } from '@/utils/download';
@@ -39,13 +40,9 @@ const themeStore = useThemeStore();
 const dataColorVars = computed(() => {
   const tema = themeStore.isDark ? 'dark' : 'light';
   const cores = DATA_NEUTRAL[tema];
-  const tons = CRM_TAXA_P95_TONS[tema];
   return {
     '--data-color': cores.strong,
     '--data-color-soft': cores.soft,
-    '--p95-leve': tons.leve,
-    '--p95-media': tons.media,
-    '--p95-forte': tons.forte,
   };
 });
 
@@ -154,7 +151,7 @@ const crmTableTooltips = Object.freeze({
     atuacao: createCrmTableTooltip(
       'Atuação na farmácia',
       'Primeiro e último mês em que o CRM teve prescrições neste estabelecimento, dentro do período filtrado, e a quantidade de meses com movimento.',
-      'O mini gráfico mostra a taxa diária do CRM nesta farmácia mês a mês (prescrições ÷ dias com prescrição), uma barra por mês, na mesma linha do tempo e na mesma escala para todos os médicos: a altura é o ×P95 nacional do mês, até 4× (acima disso, barra cheia com uma marca escura no topo). Tons de vermelho marcam meses acima do P95 (1× a 2×, 2× a 3×, acima de 3×).',
+      'O mini gráfico mostra a taxa diária do CRM nesta farmácia mês a mês (prescrições ÷ dias com prescrição), uma barra por mês, na mesma linha do tempo e na mesma escala para todos os médicos: a altura é o ×P95 nacional do mês, até 4× (acima disso, barra cheia com uma marca escura no topo). Tons de vermelho marcam o ×P95 do mês (um tom a cada 1×, de 1,5× a 6,5×, e o mais marcado acima de 6,5×); até 1,5× a barra fica neutra.',
       'pi-calendar'
     ),
     exclusive: createCrmTableTooltip(
@@ -225,7 +222,12 @@ const periodoMeses = computed(() => {
   const inicio = competenciaToIndex(periodo.inicio);
   const total = competenciaToIndex(periodo.fim) - inicio + 1;
   if (!(total > 0)) throw new Error('Período de competências inválido para a coluna de atuação.');
-  return { inicio, total };
+  // Meses de janeiro dentro do eixo (linhas divisórias de ano).
+  const divisores = [];
+  for (let i = 1; i < total; i += 1) {
+    if ((inicio + i) % 12 === 0) divisores.push(i);
+  }
+  return { inicio, total, divisores };
 });
 
 /**
@@ -243,16 +245,25 @@ function buildAtuacao(m) {
   const fim = Number(m.competencia_fim_atuacao);
   const meses = Number(m.qtd_meses_atuacao);
   // Altura: ×P95 nacional do mês da taxa diária nesta farmácia, na mesma escala
-  // para todos os médicos (teto em crmAlturaAtuacao); cor: faixa do ×P95
-  // (mesma regra da linha do tempo de /analises).
+  // para todos os médicos (teto em crmAlturaAtuacao); cor: faixa do ×P95;
+  // tooltip: os números do mês nesta farmácia (como na linha do tempo de /analises).
   const barras = m.serie_mensal_atuacao
     .map(p => {
       const altura = crmAlturaAtuacao(p.razao_p95);
+      const ponto = {
+        competencia: Number(p.competencia),
+        nu_prescricoes: p.qtd,
+        qtd_dias_com_prescricao: p.dias,
+        taxa_prescricoes_dia: p.taxa_prescricoes_dia,
+        razao_p95: p.razao_p95,
+        taxa_elevada: p.taxa_elevada,
+      };
       return {
-        x: competenciaToIndex(Number(p.competencia)) - eixo.inicio,
-        h: Math.max(1.5, altura.fracao * 16),
+        x: competenciaToIndex(ponto.competencia) - eixo.inicio,
+        altura: altura.fracao,
         cortada: altura.cortada,
         faixa: crmFaixaP95(p)?.chave ?? null,
+        tooltip: crmMesTooltip(ponto, p.p95_taxa_dia),
       };
     })
     .filter(b => b.x >= 0 && b.x < eixo.total);
@@ -260,6 +271,7 @@ function buildAtuacao(m) {
     periodo: inicio === fim ? formatCompetencia(inicio) : `${formatCompetencia(inicio)} – ${formatCompetencia(fim)}`,
     meses: `${meses} ${meses === 1 ? 'mês' : 'meses'}`,
     total: eixo.total,
+    divisores: eixo.divisores,
     barras,
   };
 }
@@ -573,34 +585,12 @@ const maxPDOverall = computed(() => {
                     <span class="atuacao-periodo">{{ atuacaoByMedico.get(m.id_medico).periodo }}</span>
                     <span class="atuacao-meses">{{ atuacaoByMedico.get(m.id_medico).meses }}</span>
                   </span>
-                  <svg
-                    class="atuacao-spark"
-                    :viewBox="`0 0 ${atuacaoByMedico.get(m.id_medico).total} 16`"
-                    preserveAspectRatio="none"
-                    role="img"
-                    :aria-label="`Taxa diária mensal de ${m.id_medico}: ${atuacaoByMedico.get(m.id_medico).periodo}, ${atuacaoByMedico.get(m.id_medico).meses}`"
-                  >
-                    <line class="atuacao-base" x1="0" y1="15.75" :x2="atuacaoByMedico.get(m.id_medico).total" y2="15.75" />
-                    <rect
-                      v-for="barra in atuacaoByMedico.get(m.id_medico).barras"
-                      :key="barra.x"
-                      class="atuacao-bar"
-                      :class="barra.faixa ? `is-p95-${barra.faixa}` : null"
-                      :x="barra.x + 0.1"
-                      :y="16 - barra.h"
-                      width="0.8"
-                      :height="barra.h"
-                    />
-                    <rect
-                      v-for="barra in atuacaoByMedico.get(m.id_medico).barras.filter(b => b.cortada)"
-                      :key="`corte-${barra.x}`"
-                      class="atuacao-corte"
-                      :x="barra.x + 0.1"
-                      y="0"
-                      width="0.8"
-                      height="1.4"
-                    />
-                  </svg>
+                  <CrmBarrasMensais
+                    :total="atuacaoByMedico.get(m.id_medico).total"
+                    :barras="atuacaoByMedico.get(m.id_medico).barras"
+                    :divisores="atuacaoByMedico.get(m.id_medico).divisores"
+                    :rotulo="`Taxa diária mensal de ${m.id_medico}: ${atuacaoByMedico.get(m.id_medico).periodo}, ${atuacaoByMedico.get(m.id_medico).meses}`"
+                  />
                 </div>
               </td>
               <td class="col-right">
@@ -916,14 +906,6 @@ input:checked + .toggle-slider:before { transform: translateX(14px); }
 }
 .atuacao-periodo { font-size: 0.76rem; font-weight: 500; color: var(--text-color-85); }
 .atuacao-meses { font-size: 0.7rem; color: var(--text-muted); }
-.atuacao-spark { display: block; width: 100%; height: 35px; overflow: visible; }
-.atuacao-base { stroke: var(--card-border); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
-.atuacao-bar { fill: var(--data-color); }
-.atuacao-bar.is-p95-leve { fill: var(--p95-leve); }
-.atuacao-bar.is-p95-media { fill: var(--p95-media); }
-.atuacao-bar.is-p95-forte { fill: var(--p95-forte); }
-/* Mês acima do teto de altura (4× o P95): barra cheia com marca no topo. */
-.atuacao-corte { fill: var(--text-color); opacity: 0.55; }
 .excl-valor {
   display: inline-block;
   padding: 0.12rem 0.5rem;

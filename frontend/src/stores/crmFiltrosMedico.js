@@ -54,7 +54,6 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
     situacaoCfm: null,
     /** UFs do CRM selecionadas (vazio = todas). */
     ufsCrm: [],
-    antesInscricao: false,
     /** Severidade mínima das sequências (único CRM): null | 1..4. */
     sequenciaSeveridadeMin: null,
     /** Faixas por tipo (chaves de CRM_FAIXAS): { min, max }. */
@@ -70,7 +69,6 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
       const params = {};
       if (state.situacaoCfm) params.situacao_cfm = state.situacaoCfm;
       if (state.ufsCrm.length) params.uf_crm = [...state.ufsCrm].sort();
-      if (state.antesInscricao) params.antes_inscricao = true;
       if (state.sequenciaSeveridadeMin !== null) params.sequencia_severidade_min = state.sequenciaSeveridadeMin;
       for (const [tipo, config] of Object.entries(CRM_FAIXAS)) {
         const { min, max } = state.faixas[tipo];
@@ -83,32 +81,21 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
     qtdAtivos: (state) => (
       (state.situacaoCfm ? 1 : 0)
       + (state.ufsCrm.length ? 1 : 0)
-      + (state.antesInscricao ? 1 : 0)
       + (state.sequenciaSeveridadeMin !== null ? 1 : 0)
       + Object.values(state.faixas).filter(faixaAtiva).length
     ),
-    /** Médicos não localizados não têm data de inscrição no CFM. */
-    antesInscricaoDisponivel: (state) => state.situacaoCfm !== 'nao_localizado',
   },
 
   actions: {
     setSituacaoCfm(value) {
       if (!SITUACOES.has(value)) throw new Error(`Situação no CFM inválida: ${value}`);
       this.situacaoCfm = value;
-      // Sem data de inscrição, o filtro "antes da 1ª inscrição" não se aplica.
-      if (value === 'nao_localizado') this.antesInscricao = false;
     },
     /** Aplica a lista de UFs do CRM de uma vez (vazia = todas). */
     setUfsCrm(ufs) {
       const invalidas = ufs.filter((uf) => !CRM_UFS.includes(uf));
       if (invalidas.length) throw new Error(`UF do CRM inválida: ${invalidas.join(', ')}`);
       this.ufsCrm = [...new Set(ufs)].sort();
-    },
-    setAntesInscricao(value) {
-      if (value && !this.antesInscricaoDisponivel) {
-        throw new Error('Filtro "antes da 1ª inscrição" indisponível para médicos não localizados.');
-      }
-      this.antesInscricao = Boolean(value);
     },
     setSequenciaSeveridadeMin(value) {
       if (!SEVERIDADES.has(value)) throw new Error(`Severidade de sequência inválida: ${value}`);
@@ -129,7 +116,6 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
     limpar() {
       this.situacaoCfm = null;
       this.ufsCrm = [];
-      this.antesInscricao = false;
       this.sequenciaSeveridadeMin = null;
       this.faixas = Object.fromEntries(Object.keys(CRM_FAIXAS).map((tipo) => [tipo, { ...FAIXA_VAZIA }]));
     },

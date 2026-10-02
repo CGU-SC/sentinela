@@ -85,7 +85,8 @@ function aplicar([min, max]) {
 
 <style scoped>
 .filtro { display: flex; flex-direction: column; gap: 0.4rem; }
-.filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); font-size: 0.7rem; font-weight: 500; }
+/* Título do filtro: texto principal do tema a 70% (o mesmo da sidebar esquerda). */
+.filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); font-size: 0.8125rem; font-weight: 500; }
 .filtro-info { color: var(--text-muted); font-size: 0.8rem; opacity: 0.75; cursor: help; }
 .filtro-info:hover, .filtro-info:focus-visible { opacity: 1; }
 /* Botão do seletor ocupa a largura do bloco, como na barra lateral esquerda. */

@@ -66,20 +66,25 @@ const {
 } = storeToRefs(mensalStore);
 
 // "Por mês": acompanha filtros (mesma chave do ranking), busca e versão do cache.
+// Com a aba fechada, é pré-carregada em segundo plano depois do ranking (para não
+// disputar com ele), como o Resumo: ao abrir a aba os dados já estão prontos.
 watch(
-  () => [rankingTab.value, activeKey.value, rankingSearch.value, analysisStore.cacheVersion],
-  ([tab]) => {
-    if (tab !== 'mes' || !analysisStore.activeParams || analysisStore.cacheVersion === null) return;
+  () => [rankingTab.value, activeKey.value, rankingSearch.value, analysisStore.cacheVersion, isRankingLoading.value],
+  ([tab, , , , rankingCarregando]) => {
+    if (!analysisStore.activeParams || analysisStore.cacheVersion === null) return;
+    if (tab !== 'mes' && rankingCarregando) return;
     mensalStore.activateMensal(analysisStore.activeParams, rankingSearch.value, analysisStore.cacheVersion);
   },
   { immediate: true },
 );
 // "Linha do tempo": série dos médicos da página exibida do ranking, com os
 // mesmos filtros da resposta (rankingResponseKey = JSON dos parâmetros).
+// Pré-carregada em segundo plano em qualquer aba (é barata: só a página
+// exibida), como o "Por mês": ao abrir a aba as barras já estão prontas.
 watch(
-  () => [rankingTab.value, rankingResponse.value, rankingResponseKey.value, analysisStore.cacheVersion],
-  ([tab, response, responseKey, version]) => {
-    if (tab !== 'linha' || !response?.ranking?.length || !responseKey || version === null) return;
+  () => [rankingResponse.value, rankingResponseKey.value, analysisStore.cacheVersion],
+  ([response, responseKey, version]) => {
+    if (!response?.ranking?.length || !responseKey || version === null) return;
     mensalStore.loadSerie(JSON.parse(responseKey), response.ranking.map((r) => r.id_medico), version);
   },
   { immediate: true },
@@ -158,6 +163,12 @@ const mapData = computed(() => mapResponse.value?.mapa ?? []);
 const ranking = computed(() => rankingResponse.value?.ranking ?? []);
 const rankingTotal = computed(() => rankingResponse.value?.qtd_medicos ?? 0);
 const rankingFirst = computed(() => (rankingPage.value - 1) * rankingPageSize.value);
+// "Só fixados" na resposta exibida: nº de médicos fixados pedidos (null = sem o recorte).
+const rankingFixados = computed(() => {
+  if (!rankingResponse.value || !rankingResponseKey.value) return null;
+  const ids = JSON.parse(rankingResponseKey.value).ids_fixados;
+  return ids ? ids.split(',').length : null;
+});
 const rankingInitialLoading = computed(() => isRankingLoading.value && ranking.value.length === 0);
 const rankingPageLoading = computed(() => isRankingPageLoading.value && ranking.value.length > 0);
 const rankingIsStale = computed(() => Boolean(
@@ -298,6 +309,7 @@ function onRankingSort(event) {
             :sort-field="rankingSortField"
             :sort-order="rankingSortOrder"
             :applied-query="rankingResponseSearch"
+            :fixados-pedidos="rankingFixados"
             :tab="rankingTab"
             :mensal="mensalProps"
             :serie="serieProps"

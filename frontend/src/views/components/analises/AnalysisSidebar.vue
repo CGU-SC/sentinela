@@ -2,9 +2,7 @@
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import Button from 'primevue/button';
-import InputSwitch from 'primevue/inputswitch';
 import {
-  CRM_ANTES_INSCRICAO_INDISPONIVEL_TOOLTIP,
   analysisTooltip,
 } from '@/config/analysisTooltipConfig';
 import { filterActionTooltip } from '@/config/filterTooltipConfig';
@@ -24,7 +22,7 @@ const props = defineProps({
 const emit = defineEmits(['search']);
 
 const filtrosStore = useCrmFiltrosMedicoStore();
-const { situacaoCfm, ufsCrm, antesInscricao, sequenciaSeveridadeMin, qtdAtivos: qtdFiltrosCadastro, antesInscricaoDisponivel } = storeToRefs(filtrosStore);
+const { situacaoCfm, ufsCrm, sequenciaSeveridadeMin, qtdAtivos: qtdFiltrosCadastro } = storeToRefs(filtrosStore);
 
 // A busca conta como filtro do painel e também é apagada pelo "Limpar Filtros".
 const temBusca = computed(() => props.searchQuery.trim() !== '');
@@ -36,13 +34,19 @@ function limparTudo() {
 
 const FAIXAS_PRODUCAO = crmFaixasDoGrupo('producao');
 
-/** Texto do botão "UF do CRM": Todas, a região do atalho, as siglas (até 3) ou a contagem. */
+/**
+ * Texto do botão "UF do CRM": Todas, a região do atalho, as siglas (até 3),
+ * "Todas exceto …" quando faltam até 3 UFs, ou a contagem.
+ */
 const ufRotulo = computed(() => {
   const ufs = ufsCrm.value;
   if (!ufs.length) return 'Todas';
   const regiao = CRM_UF_ATALHOS.find((a) => a.selecao.length === ufs.length && a.selecao.every((uf) => ufs.includes(uf)));
   if (regiao) return regiao.label;
-  return ufs.length <= 3 ? [...ufs].sort().join(', ') : `${ufs.length} UFs`;
+  if (ufs.length <= 3) return [...ufs].sort().join(', ');
+  const fora = CRM_UFS.filter((uf) => !ufs.includes(uf));
+  if (fora.length <= 3) return `Todas exceto ${fora.join(', ')}`;
+  return `${ufs.length} UFs`;
 });
 const FAIXAS_SEQUENCIA = crmFaixasDoGrupo('sequencia');
 const sequenciaTooltip = analysisTooltip('crmFiltroSequenciaSeveridade');
@@ -52,7 +56,6 @@ const buscaTooltip = analysisTooltip('crmFiltroBusca');
 const painelTooltip = analysisTooltip('crmFiltrosMedico');
 const situacaoTooltip = analysisTooltip('crmFiltroSituacaoCfm');
 const ufTooltip = analysisTooltip('crmFiltroUfCrm');
-const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
 </script>
 
 <template>
@@ -161,21 +164,6 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
                 @select="filtrosStore.setUfsCrm($event)"
               />
             </div>
-          </div>
-
-          <div class="filtro filtro--switch" :class="{ 'is-ativo': antesInscricao }">
-            <div class="filtro-rotulo">
-              <label for="filtro-antes-inscricao">Prescreveu antes da 1ª inscrição</label>
-              <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="antesTooltip" tabindex="0" aria-label="Sobre prescrições antes da inscrição" />
-            </div>
-            <span v-tooltip.left="antesInscricaoDisponivel ? null : CRM_ANTES_INSCRICAO_INDISPONIVEL_TOOLTIP">
-              <InputSwitch
-                input-id="filtro-antes-inscricao"
-                :model-value="antesInscricao"
-                :disabled="!antesInscricaoDisponivel"
-                @update:model-value="filtrosStore.setAntesInscricao($event)"
-              />
-            </span>
           </div>
         </div>
 
@@ -334,22 +322,12 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
    16px do subtítulo ao primeiro filtro e 24px entre grupos. */
 .filtro-bloco { display: flex; flex-direction: column; gap: 1.25rem; margin: 0 0.75rem 1.5rem; }
 .filtros-cabecalho + .filtro-bloco { margin-top: 0.5rem; }
-.filtro-bloco-titulo { display: flex; align-items: center; gap: 0.5rem; margin-bottom: -0.25rem; color: color-mix(in srgb, var(--primary-color) 15%, #78716c); font-size: 0.8125rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.filtro-bloco-titulo { display: flex; align-items: center; gap: 0.5rem; margin-bottom: -0.25rem; color: color-mix(in srgb, var(--primary-color) 15%, #78716c); font-size: 0.875rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
 .filtro-bloco-titulo::after { content: ""; flex: 1; height: 1px; background: var(--card-border); }
 .filtro-bloco-titulo .pi { font-size: 0.78rem; }
 .filtro { display: flex; flex-direction: column; gap: 0.4rem; }
-.filtro--switch { flex-direction: row; align-items: center; justify-content: space-between; gap: 0.5rem; }
-/* Interruptor compacto nas cores do tema (o padrão do PrimeVue é 48×28, trilho cinza-claro
-   e azul quando ligado). Desligado: trilho na cor da borda e bolinha apagada; ligado: cor primária. */
-.filtro--switch :deep(.p-inputswitch) { flex-shrink: 0; width: 36px; height: 20px; }
-.filtro--switch :deep(.p-inputswitch .p-inputswitch-slider) { border: 1px solid var(--card-border); border-radius: 999px; background: color-mix(in srgb, var(--text-color) 8%, var(--card-bg)); transition: background 0.15s ease, border-color 0.15s ease; }
-.filtro--switch :deep(.p-inputswitch .p-inputswitch-slider::before) { top: 50%; left: 2px; width: 14px; height: 14px; margin-top: -7px; background: var(--text-muted); box-shadow: none; }
-.filtro--switch :deep(.p-inputswitch:not(.p-disabled):hover .p-inputswitch-slider) { border-color: color-mix(in srgb, var(--sidebar-text) 28%, var(--sidebar-border)); background: color-mix(in srgb, var(--text-color) 8%, var(--card-bg)); }
-.filtro--switch :deep(.p-inputswitch:has(input:checked) .p-inputswitch-slider),
-.filtro--switch :deep(.p-inputswitch:has(input:checked):not(.p-disabled):hover .p-inputswitch-slider) { border-color: var(--primary-color); background: var(--primary-color); }
-.filtro--switch :deep(.p-inputswitch:has(input:checked) .p-inputswitch-slider::before) { transform: translateX(16px); background: var(--card-bg); }
-.filtro--switch :deep(.p-inputswitch.p-focus .p-inputswitch-slider) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 30%, transparent); }
-.filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); font-size: 0.7rem; font-weight: 500; }
+/* Título do filtro: texto principal do tema a 70% (o mesmo da sidebar esquerda). */
+.filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); font-size: 0.8125rem; font-weight: 500; }
 .filtro-rotulo label { cursor: pointer; }
 /* Botão do seletor ocupa a largura do bloco, como os filtros de faixa. */
 .filtro-picker :deep(.rp-gatilho) { width: 100%; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }
@@ -360,6 +338,8 @@ const antesTooltip = analysisTooltip('crmFiltroAntesInscricao');
 
 /* Filtro ligado (também nos filtros de faixa, por :deep): rótulo e campo na cor
    primária, como no modal Histórico do CRM, e borracha para voltar ao padrão. */
+/* Filtro sem valor ("Todos", "Todas"...): texto do campo apagado; com valor, claro. */
+.filtro:not(.is-ativo) :deep(.rp-gatilho) { color: var(--text-muted); }
 .filtro.is-ativo :deep(.filtro-rotulo > span),
 .filtro.is-ativo :deep(.filtro-rotulo > label) { color: var(--primary-color); }
 .filtro.is-ativo :deep(.rp-gatilho),
