@@ -6,7 +6,7 @@ import OverlayPanel from 'primevue/overlaypanel';
 import { useFormatting } from '@/composables/useFormatting';
 import { useFrozenData } from '@/composables/useFrozenData';
 import {
-  analysisTooltip, crmAlturaAtuacao, CRM_LINHA_TEMPO_TETO_P95, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP, crmMedicoNomeTooltip } from '@/config/analysisTooltipConfig';
+  analysisTooltip, crmAlturaAtuacao, CRM_LINHA_TEMPO_TETO_P95, crmMesTooltip, crmFaixaP95, CRM_NAO_LOCALIZADO_ICONE, crmMedicoNomeTooltip } from '@/config/analysisTooltipConfig';
 import { DATA_NEUTRAL, CRM_ALERTA_BADGE_TONS } from '@/config/colors';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
 import { CRM_RANKING_PAGE_SIZE_OPTIONS, CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
@@ -204,7 +204,6 @@ function formatPercent(value) {
 
 // "800 sc" ou "CRM-SC 800" destacam "800/SC" na linha do CRM.
 const destaque = computed(() => destaqueBuscaMedico(props.appliedQuery));
-const naoLocalizadoTooltip = CRM_NAO_LOCALIZADO_TOOLTIP;
 const naoLocalizadoIcone = CRM_NAO_LOCALIZADO_ICONE;
 
 function doctorLabel(row) {
@@ -492,7 +491,7 @@ const subtitulo = computed(() => {
           <template #body="{ data }">
             <div class="doctor-cell">
               <div class="doctor-ident">
-                <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
+                <span v-if="!data.localizado_cfm" class="doctor-nao-localizado">
                   <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
                 </span>
                 <span

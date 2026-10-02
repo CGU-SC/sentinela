@@ -29,8 +29,25 @@ export const CRM_UF_ATALHOS = Object.freeze([
 ]);
 
 /**
- * Severidade mínima das autorizações em sequência (único CRM): id_severidade
- * dos alertas (1 alta, 2 grave, 3 crítica, 4 extrema). null = sem filtro.
+ * Tipo das autorizações em sequência que contam para o médico:
+ * - unico: sequências do próprio CRM (padrão);
+ * - multiplo: janelas de vários CRMs na farmácia em que o médico tem pelo menos
+ *   CRM_SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES autorizações;
+ * - qualquer: dias de um tipo ou de outro.
+ * Só tem efeito junto com a severidade mínima ou com os dias com sequência.
+ */
+export const CRM_SEQUENCIA_TIPO_PADRAO = 'unico';
+export const CRM_SEQUENCIA_TIPOS = Object.freeze([
+  Object.freeze({ value: 'unico', label: 'Único CRM' }),
+  Object.freeze({ value: 'multiplo', label: 'Múltiplos CRMs' }),
+  Object.freeze({ value: 'qualquer', label: 'Qualquer (único ou múltiplos)' }),
+]);
+/** Mesmo valor do backend (SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES em crm_filtros_medico.py). */
+export const CRM_SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES = 5;
+
+/**
+ * Severidade mínima das autorizações em sequência: id_severidade dos alertas
+ * (1 alta, 2 grave, 3 crítica, 4 extrema). null = sem filtro.
  */
 export const CRM_SEQUENCIA_SEVERIDADES = Object.freeze([
   Object.freeze({ value: null, label: 'Qualquer' }),
@@ -55,8 +72,9 @@ function atalhoMinimo(valor, rotulo) {
  *   PRODUÇÃO do ranking); na aba Por mês valem para cada mês.
  * - atuacao: exclusividade na farmácia principal, nº de farmácias e nº de
  *   municípios onde atuou, nacionais, no período.
- * - sequencia: dias com autorizações em sequência (único CRM) no período,
- *   contados na severidade mínima escolhida (CRM_SEQUENCIA_SEVERIDADES).
+ * - sequencia: dias com autorizações em sequência no período, do tipo
+ *   escolhido (CRM_SEQUENCIA_TIPOS) e contados na severidade mínima escolhida
+ *   (CRM_SEQUENCIA_SEVERIDADES).
  */
 export const CRM_FAIXAS = Object.freeze({
   taxaDia: Object.freeze({
@@ -151,7 +169,7 @@ export const CRM_FAIXAS = Object.freeze({
     max: Infinity,
     sufixo: '',
     todas: 'Todos',
-    tooltip: 'crmFiltroSequenciaDias',
+    tooltip: 'crmFiltroSequencia',
     atalhos: Object.freeze([
       Object.freeze({ value: 'todos', label: 'Todos', faixa: Object.freeze([null, null]) }),
       Object.freeze({ value: 'com', label: '≥ 1 (com sequência)', faixa: Object.freeze([1, null]) }),

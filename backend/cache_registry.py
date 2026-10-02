@@ -259,6 +259,21 @@ def _crm_concentracao_unico_alertas_global_schema() -> dict:
     }
 
 
+def _crm_concentracao_multiplo_medico_global_schema() -> dict:
+    """Ponte medico x janela de multiplos CRMs (derivada do Raio-X; ver crm_multiplo_medico.py)."""
+    return {
+        "id_medico": pl.Utf8,
+        "id_cnpj": pl.Int32,
+        "competencia": pl.Int32,
+        "dt_alerta": pl.Utf8,
+        "hr_janela": pl.Int32,
+        "dt_ini_concentracao": pl.Datetime,
+        "nu_autorizacoes_crm": pl.Int32,
+        "id_severidade": pl.Int32,
+        "_crm_multiplo_medico_cache_version": pl.Int32,
+    }
+
+
 def _crm_concentracao_multiplo_alertas_global_schema() -> dict:
     return {
         "id_cnpj": pl.Int32,
@@ -552,6 +567,12 @@ GLOBAL_CACHE_DEFINITIONS = (
         CRM_CONCENTRACAO_MULTIPLO_ALERTAS_GLOBAL_PARQUET,
         "global",
         _crm_concentracao_multiplo_alertas_global_schema(),
+    ),
+    CacheDefinition(
+        "crm_concentracao_multiplo_medico_global",
+        cache_files.CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET,
+        "global",
+        _crm_concentracao_multiplo_medico_global_schema(),
     ),
     CacheDefinition("crm_timeline_dia_global", CRM_TIMELINE_DIA_GLOBAL_PARQUET, "global", _crm_timeline_dia_global_schema()),
     CacheDefinition("crm_timeline_hora_global", CRM_TIMELINE_HORA_GLOBAL_PARQUET, "global", _crm_timeline_hora_global_schema()),

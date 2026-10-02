@@ -16,6 +16,12 @@ import NumberRangePicker from '@/views/components/common/NumberRangePicker.vue';
 const props = defineProps({
   /** Chave de CRM_FAIXAS. */
   tipo: { type: String, required: true },
+  /**
+   * Campo de um filtro composto (ex.: "Dias com sequência" dentro de Autorizações
+   * em sequência): só o sub-rótulo e o seletor; título, ajuda, borracha e o
+   * destaque de ativo ficam com o filtro que o contém.
+   */
+  campo: { type: Boolean, default: false },
 });
 
 const config = CRM_FAIXAS[props.tipo];
@@ -51,8 +57,9 @@ function aplicar([min, max]) {
 </script>
 
 <template>
-  <div class="filtro filtro-faixa" :class="{ 'is-ativo': ativo }">
-    <div class="filtro-rotulo">
+  <div class="filtro-faixa" :class="campo ? 'is-campo' : ['filtro', { 'is-ativo': ativo }]">
+    <span v-if="campo" class="seq-filtro-rotulo">{{ config.label }}</span>
+    <div v-else class="filtro-rotulo">
       <span>{{ config.label }}</span>
       <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="tooltip" tabindex="0" :aria-label="`Sobre ${config.label.toLowerCase()}`" />
       <button
@@ -91,5 +98,7 @@ function aplicar([min, max]) {
 .filtro-info:hover, .filtro-info:focus-visible { opacity: 1; }
 /* Botão do seletor ocupa a largura do bloco, como na barra lateral esquerda. */
 /* Mesma altura e recuo dos campos da sidebar esquerda (32px; 0,6rem). */
+/* Campo de filtro composto: rótulo e seletor entram direto na coluna do filtro que o contém. */
+.filtro-faixa.is-campo { display: contents; }
 .filtro-faixa :deep(.rp-gatilho) { width: 100%; height: 32px; min-height: 32px; padding: 0 0.6rem; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }
 </style>

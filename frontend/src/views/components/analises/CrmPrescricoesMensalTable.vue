@@ -9,7 +9,7 @@ import Column from 'primevue/column';
 import { useFormatting } from '@/composables/useFormatting';
 import { CRM_DAILY_RATE_HIGHLIGHT_THRESHOLD } from '@/config/riskConfig';
 import { CRM_RANKING_PAGE_SIZE_OPTIONS, CRM_RANKING_DEFAULT_PAGE_SIZE } from '@/config/constants';
-import { analysisTooltip, CRM_NAO_LOCALIZADO_ICONE, CRM_NAO_LOCALIZADO_TOOLTIP } from '@/config/analysisTooltipConfig';
+import { analysisTooltip, CRM_NAO_LOCALIZADO_ICONE } from '@/config/analysisTooltipConfig';
 import HighlightedText from '@/views/components/common/HighlightedText.vue';
 import { destaqueBuscaMedico } from '@/utils/crmBusca';
 import CrmAlertasBadge from './CrmAlertasBadge.vue';
@@ -46,7 +46,6 @@ function formatComp(comp) {
 }
 // "800 sc" ou "CRM-SC 800" destacam "800/SC" na linha do CRM.
 const destaque = computed(() => destaqueBuscaMedico(props.appliedQuery));
-const naoLocalizadoTooltip = CRM_NAO_LOCALIZADO_TOOLTIP;
 const naoLocalizadoIcone = CRM_NAO_LOCALIZADO_ICONE;
 function doctorLabel(row) {
   if (!row.localizado_cfm) return 'Não localizado no CFM';
@@ -113,7 +112,7 @@ function onPage(event) {
       <template #body="{ data }">
         <div class="doctor-cell">
           <div class="doctor-ident">
-            <span v-if="!data.localizado_cfm" class="doctor-nao-localizado" v-tooltip.bottom="naoLocalizadoTooltip">
+            <span v-if="!data.localizado_cfm" class="doctor-nao-localizado">
               <i :class="['pi', naoLocalizadoIcone]" aria-hidden="true" />Não localizado no CFM
             </span>
             <span v-else class="doctor-name"><HighlightedText :text="doctorLabel(data)" :query="destaque.nome" /></span>

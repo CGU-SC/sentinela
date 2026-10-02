@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useFarmaciaListsStore } from "@/stores/farmaciaLists";
 import { useFilterStore } from "@/stores/filters";
 import { useGeoStore } from "@/stores/geo";
@@ -13,29 +13,31 @@ import { API_ENDPOINTS } from "@/config/api";
 import { requestResumo } from "@/stores/analytics";
 import { getApiErrorMessage } from "@/utils/apiErrors";
 import { convertDocxToPdf, downloadBlobFromResponse } from "@/utils/download";
+import { filterActionTooltip } from "@/config/filterTooltipConfig";
+import ExportMenuButton from "@/views/components/common/ExportMenuButton.vue";
 import ObservationDialog from "@/views/components/cnpj/ObservationDialog.vue";
 import EvidenciasPanel from "@/views/components/evidencias/EvidenciasPanel.vue";
 import NotaTecnicaRegionalDialog from "@/views/components/nota-tecnica/NotaTecnicaRegionalDialog.vue";
 import { useToast } from "primevue/usetoast";
-import Dropdown from "primevue/dropdown";
 import { useEvidenciasStore } from "@/stores/evidencias";
-import {
-  TIPO_EVIDENCIA_OPCOES,
-  dataHoraCurta,
-  quandoEvidencia,
-  resumoEvidencia,
-  tipoEvidencia,
-} from "@/utils/evidencias";
+import { dataHoraCurta } from "@/utils/evidencias";
+import { usePeriodoAnalise } from "@/composables/usePeriodoAnalise";
+import MonthRangePicker from "@/views/components/common/MonthRangePicker.vue";
+import OptionPicker from "@/views/components/common/OptionPicker.vue";
+import { analysisTooltip } from "@/config/analysisTooltipConfig";
+import { AUDIT_THRESHOLDS } from "@/config/riskConfig";
+import { CRM_ALERTA_BADGE_TONS } from "@/config/colors";
+import { useMetodologiaConfigStore } from "@/stores/metodologiaConfig";
+import { useThemeStore } from "@/stores/theme";
 
 const router = useRouter();
-const route = useRoute();
 const evidenciasStore = useEvidenciasStore();
 const farmaciaLists = useFarmaciaListsStore();
 const filterStore = useFilterStore();
 const geoStore = useGeoStore();
 const notaTecnicaConfig = useNotaTecnicaConfigStore();
 const toast = useToast();
-const { formatBRL, formatCurrencyFull, formatNumberFull, formatarData, formatTitleCase } = useFormatting();
+const { formatCurrencyFull, formatNumberFull, formatarData, formatTitleCase } = useFormatting();
 const { getApiParams } = useFilterParameters();
 const { exportCnpjPdf } = usePdfExport();
 const watchlistAnalytics = ref([]);
@@ -81,6 +83,17 @@ const periodKey = computed(() =>
     ? filterStore.periodo.map((date) => date?.getTime?.() ?? String(date ?? "")).join("|")
     : "",
 );
+// Chip de período: o mesmo seletor do filtro "Período de análise" da sidebar.
+const {
+  PERIODO_MIN,
+  PERIODO_MAX,
+  periodoAtalhos,
+  periodoSelecionado,
+  periodoAtalhoAtivo,
+  aplicarPeriodo,
+  aplicarAtalhoPeriodo,
+} = usePeriodoAnalise();
+
 const periodoAnaliseLabel = computed(() => {
   const [inicio, fim] = Array.isArray(filterStore.periodo) ? filterStore.periodo : [];
   if (!inicio || !fim) return "Período não definido";
@@ -152,12 +165,30 @@ const analyticsMap = computed(() => {
   return map;
 });
 
-const RISCO_COLOR = {
-  'CRÍTICO':  '#ef4444',
-  'ALTO':     '#f97316',
-  'MÉDIO':    '#f59e0b',
-  'BAIXO':    '#10b981',
-};
+// Classificação de risco da matriz (matriz_risco_dinamica): CRÍTICO, ATENÇÃO ou NORMAL.
+// "Sem dados" agrupa as farmácias sem movimentação no período.
+const CLASSES_RISCO = Object.freeze([
+  { value: 'CRÍTICO', label: 'Crítico', cor: 'var(--risk-critical)' },
+  { value: 'ATENÇÃO', label: 'Atenção', cor: 'var(--risk-medium)' },
+  { value: 'NORMAL', label: 'Normal', cor: 'var(--risk-indicator-normal)' },
+  { value: 'SEM_DADOS', label: 'Sem dados', cor: 'var(--text-muted)' },
+]);
+const CLASSE_POR_VALOR = new Map(CLASSES_RISCO.map((c) => [c.value, c]));
+function classeDaFarmacia(item) {
+  if (item.classificacao) {
+    if (!CLASSE_POR_VALOR.has(item.classificacao)) {
+      throw new Error(`Classificação de risco desconhecida: ${item.classificacao}`);
+    }
+    return item.classificacao;
+  }
+  return 'SEM_DADOS';
+}
+function corDaClasse(classificacao) {
+  return CLASSE_POR_VALOR.get(classificacao)?.cor ?? 'var(--text-muted)';
+}
+function faixaPerc(valor) {
+  return valor >= 50 ? 'is-alto' : valor >= 20 ? 'is-medio' : 'is-baixo';
+}
 
 // Lista enriquecida — une store + analytics + geo
 const listaEnriquecida = computed(() =>
@@ -177,7 +208,340 @@ const listaEnriquecida = computed(() =>
   })
 );
 
+// ── Ordenação da tabela ──────────────────────────────────────────────────────
+// Colunas ordenáveis: `valor` devolve o que comparar (texto ou número; null = sem
+// dado, sempre no fim); `inicial` é o sentido do primeiro clique (números e datas
+// começam do maior para o menor). Sem coluna escolhida (3º clique) vale a ordem da lista.
+const COLUNAS_ORDENAVEIS = Object.freeze({
+  estabelecimento: { valor: (item) => (item.razaoSocial === '—' ? null : item.razaoSocial), inicial: 'asc' },
+  localizacao: { valor: (item) => (item.municipio === '—' ? null : `${item.municipio} ${item.uf}`), inicial: 'asc' },
+  risco: { valor: (item) => item.scoreRisco, inicial: 'desc' },
+  percentual: { valor: (item) => item.percValSemComp, inicial: 'desc' },
+  valSemComp: { valor: (item) => item.valSemComp, inicial: 'desc' },
+  totalMov: { valor: (item) => item.totalMov, inicial: 'desc' },
+  evidencias: { valor: (item) => evidenciasStore.contar(item.cnpj), inicial: 'desc' },
+  adicionadoEm: { valor: (item) => (item.adicionadoEm ? new Date(item.adicionadoEm).getTime() : null), inicial: 'desc' },
+});
+// Padrão: maior valor sem comprovação primeiro, para os piores casos abrirem a lista.
+const ordenacao = ref({ coluna: 'valSemComp', sentido: 'desc' });
+const comparadorTexto = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
+
+/** 1º clique: sentido inicial da coluna; 2º: inverte; 3º: volta à ordem da lista. */
+function ordenarPor(coluna) {
+  const config = COLUNAS_ORDENAVEIS[coluna];
+  if (!config) throw new Error(`Coluna não ordenável: ${coluna}`);
+  const atual = ordenacao.value;
+  if (atual.coluna !== coluna) {
+    ordenacao.value = { coluna, sentido: config.inicial };
+  } else if (atual.sentido === config.inicial) {
+    ordenacao.value = { coluna, sentido: config.inicial === 'asc' ? 'desc' : 'asc' };
+  } else {
+    ordenacao.value = { coluna: null, sentido: null };
+  }
+}
+
+function ariaOrdenacao(coluna) {
+  if (ordenacao.value.coluna !== coluna) return 'none';
+  return ordenacao.value.sentido === 'asc' ? 'ascending' : 'descending';
+}
+
+function iconeOrdenacao(coluna) {
+  if (ordenacao.value.coluna !== coluna) return 'pi-sort-alt';
+  return ordenacao.value.sentido === 'asc' ? 'pi-sort-amount-up-alt' : 'pi-sort-amount-down';
+}
+
+const listaOrdenada = computed(() => {
+  const { coluna, sentido } = ordenacao.value;
+  if (!coluna) return listaEnriquecida.value;
+  const { valor } = COLUNAS_ORDENAVEIS[coluna];
+  const fator = sentido === 'asc' ? 1 : -1;
+  // Valor calculado uma vez por linha; a ordem da lista desempata (ordenação estável).
+  return listaEnriquecida.value
+    .map((item, indice) => ({ item, indice, chave: valor(item) }))
+    .sort((a, b) => {
+      if (a.chave == null || b.chave == null) {
+        if (a.chave == null && b.chave == null) return a.indice - b.indice;
+        return a.chave == null ? 1 : -1; // sem dado sempre no fim
+      }
+      const comparacao = typeof a.chave === 'string'
+        ? comparadorTexto.compare(a.chave, b.chave)
+        : a.chave - b.chave;
+      return comparacao !== 0 ? comparacao * fator : a.indice - b.indice;
+    })
+    .map((entrada) => entrada.item);
+});
+
 const totalBadge = computed(() => farmaciaLists.interesse.length);
+
+// Destaque de alto valor sem comprovação: mesmo limite (configuração metodológica)
+// e mesma cor da coluna "Sem comprovar" de /estabelecimentos.
+const metodologiaConfig = useMetodologiaConfigStore();
+const themeStore = useThemeStore();
+const auditHighValue = computed(() =>
+  metodologiaConfig.loaded ? metodologiaConfig.auditHighValue : AUDIT_THRESHOLDS.HIGH_VALUE,
+);
+const alertaCorVars = computed(() => ({
+  "--alerta-cor": CRM_ALERTA_BADGE_TONS[themeStore.isDark ? "dark" : "light"].cor,
+}));
+onMounted(() => {
+  metodologiaConfig.ensureLoaded().catch((error) => {
+    console.warn("[WatchlistView] Não foi possível carregar a configuração metodológica.", error);
+  });
+});
+const listaPronta = computed(() => farmaciaLists.loadState === "ready" && totalBadge.value > 0);
+const tituloTooltip = analysisTooltip("listaInteresse");
+
+// ── Busca, filtros e agrupamento (sobre os dados já carregados) ─────────────
+const busca = ref("");
+const campoBusca = ref(null);
+const filtroClasses = ref([]);
+const filtroUf = ref(null);
+const soComEvidencias = ref(false);
+const soComObservacao = ref(false);
+const agruparPor = ref(null);
+const densidade = ref("confortavel");
+
+const AGRUPAMENTOS = Object.freeze([
+  { value: null, label: "Sem agrupamento" },
+  { value: "uf", label: "UF" },
+  { value: "classificacao", label: "Classificação de risco" },
+]);
+
+const normalizarTexto = (texto) => String(texto ?? "")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+const temFiltro = computed(() => Boolean(
+  busca.value.trim() || filtroClasses.value.length || filtroUf.value
+  || soComEvidencias.value || soComObservacao.value,
+));
+
+function limparFiltros() {
+  busca.value = "";
+  filtroClasses.value = [];
+  filtroUf.value = null;
+  soComEvidencias.value = false;
+  soComObservacao.value = false;
+}
+
+function alternarClasse(valor) {
+  filtroClasses.value = filtroClasses.value.includes(valor)
+    ? filtroClasses.value.filter((v) => v !== valor)
+    : [...filtroClasses.value, valor];
+}
+
+const opcoesUf = computed(() => {
+  const ufs = [...new Set(listaEnriquecida.value.map((item) => item.uf).filter((uf) => uf && uf !== "—"))].sort();
+  return [{ value: null, label: "Todas as UFs" }, ...ufs.map((uf) => ({ value: uf, label: uf }))];
+});
+
+// Contagem por classificação sobre a lista inteira (os chips mostram o todo, não o recorte).
+const composicaoRisco = computed(() => {
+  const qtd = new Map(CLASSES_RISCO.map((c) => [c.value, 0]));
+  if (!watchlistLoading.value) {
+    for (const item of listaEnriquecida.value) qtd.set(classeDaFarmacia(item), qtd.get(classeDaFarmacia(item)) + 1);
+  }
+  return CLASSES_RISCO.map((c) => ({ ...c, qtd: qtd.get(c.value) }));
+});
+
+const listaFiltrada = computed(() => {
+  const termo = normalizarTexto(busca.value.trim());
+  const digitos = busca.value.replace(/\D/g, "");
+  return listaOrdenada.value.filter((item) => {
+    if (filtroClasses.value.length && !filtroClasses.value.includes(classeDaFarmacia(item))) return false;
+    if (filtroUf.value && item.uf !== filtroUf.value) return false;
+    if (soComEvidencias.value && !evidenciasStore.contar(item.cnpj)) return false;
+    if (soComObservacao.value && !item.observacao) return false;
+    if (!termo) return true;
+    if (digitos.length >= 3 && item.cnpj.includes(digitos)) return true;
+    return normalizarTexto(`${item.razaoSocial} ${item.municipio} ${item.uf} ${item.observacao ?? ""}`).includes(termo);
+  });
+});
+
+// Linhas da tabela: farmácias e, com agrupamento, uma linha de grupo (com subtotal) antes de cada grupo.
+const linhasTabela = computed(() => {
+  const linhas = [];
+  const farmacia = (item, posicao) => ({ tipo: "farmacia", chave: item.cnpj, item, posicao });
+  if (!agruparPor.value) {
+    listaFiltrada.value.forEach((item, i) => linhas.push(farmacia(item, i + 1)));
+    return linhas;
+  }
+  const chaveDoGrupo = agruparPor.value === "uf"
+    ? (item) => (item.uf && item.uf !== "—" ? item.uf : "Sem UF")
+    : (item) => classeDaFarmacia(item);
+  const grupos = new Map();
+  for (const item of listaFiltrada.value) {
+    const chave = chaveDoGrupo(item);
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(item);
+  }
+  const ordem = agruparPor.value === "uf"
+    ? [...grupos.keys()].sort((a, b) => (a === "Sem UF") - (b === "Sem UF") || a.localeCompare(b, "pt-BR"))
+    : CLASSES_RISCO.map((c) => c.value).filter((v) => grupos.has(v));
+  let posicao = 0;
+  for (const chave of ordem) {
+    const itens = grupos.get(chave);
+    const comDados = itens.filter((item) => item.valSemComp != null);
+    linhas.push({
+      tipo: "grupo",
+      chave: `grupo:${chave}`,
+      rotulo: agruparPor.value === "uf" ? chave : CLASSE_POR_VALOR.get(chave).label,
+      qtd: itens.length,
+      valSemComp: comDados.length ? comDados.reduce((soma, item) => soma + Number(item.valSemComp), 0) : null,
+    });
+    for (const item of itens) linhas.push(farmacia(item, ++posicao));
+  }
+  return linhas;
+});
+
+// Visão de trabalho de cada auditor (ordenação, filtros, agrupamento e densidade),
+// lembrada neste navegador. A busca não é lembrada: cada visita começa sem texto.
+const VISAO_STORAGE = "sentinela_listas_visao";
+function restaurarVisao() {
+  let salva = null;
+  try { salva = JSON.parse(localStorage.getItem(VISAO_STORAGE) ?? "null"); } catch { return; }
+  if (!salva || typeof salva !== "object") return;
+  if (salva.ordenacao?.coluna === null || COLUNAS_ORDENAVEIS[salva.ordenacao?.coluna]) {
+    if (salva.ordenacao.coluna === null || ["asc", "desc"].includes(salva.ordenacao.sentido)) {
+      ordenacao.value = { coluna: salva.ordenacao.coluna, sentido: salva.ordenacao.coluna === null ? null : salva.ordenacao.sentido };
+    }
+  }
+  if (Array.isArray(salva.filtroClasses)) filtroClasses.value = salva.filtroClasses.filter((v) => CLASSE_POR_VALOR.has(v));
+  if (typeof salva.filtroUf === "string") filtroUf.value = salva.filtroUf;
+  soComEvidencias.value = salva.soComEvidencias === true;
+  soComObservacao.value = salva.soComObservacao === true;
+  if (AGRUPAMENTOS.some((a) => a.value === salva.agruparPor)) agruparPor.value = salva.agruparPor;
+  if (["confortavel", "compacta"].includes(salva.densidade)) densidade.value = salva.densidade;
+}
+restaurarVisao();
+watch([ordenacao, filtroClasses, filtroUf, soComEvidencias, soComObservacao, agruparPor, densidade], () => {
+  const visao = {
+    ordenacao: ordenacao.value,
+    filtroClasses: filtroClasses.value,
+    filtroUf: filtroUf.value,
+    soComEvidencias: soComEvidencias.value,
+    soComObservacao: soComObservacao.value,
+    agruparPor: agruparPor.value,
+    densidade: densidade.value,
+  };
+  try { localStorage.setItem(VISAO_STORAGE, JSON.stringify(visao)); } catch { /* preferência só do navegador */ }
+}, { deep: true });
+
+// UF salva que não existe mais na lista: o filtro é solto em vez de esconder tudo.
+watch(opcoesUf, (opcoes) => {
+  if (filtroUf.value && !watchlistLoading.value && listaEnriquecida.value.some((i) => i.uf !== "—")
+    && !opcoes.some((o) => o.value === filtroUf.value)) filtroUf.value = null;
+});
+
+// Atalho "/" foca a busca (fora de campos de texto).
+function atalhoBusca(evento) {
+  if (evento.key !== "/" || evento.ctrlKey || evento.metaKey || evento.altKey) return;
+  const alvo = evento.target;
+  if (alvo instanceof HTMLElement && (alvo.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(alvo.tagName))) return;
+  if (!campoBusca.value) return;
+  evento.preventDefault();
+  campoBusca.value.focus();
+}
+onMounted(() => window.addEventListener("keydown", atalhoBusca));
+onBeforeUnmount(() => window.removeEventListener("keydown", atalhoBusca));
+
+// ── Exportação da lista (Excel / CSV) ────────────────────────────────────────
+// O arquivo é montado no backend a partir da lista salva e do período de análise:
+// mesmos números da tabela, ordenados pelo valor sem comprovação.
+const exportLoading = ref(false);
+const EXPORT_FORMATS = Object.freeze({
+  xlsx: { label: "Excel", extension: "xlsx", icon: "pi-file-excel" },
+  csv: { label: "CSV", extension: "csv", icon: "pi-file" },
+});
+const exportTooltip = filterActionTooltip(
+  "Exportar farmácias monitoradas",
+  "Baixa a lista com os números do período de análise, ordenada pelo valor sem comprovação. O Excel traz a planilha formatada, com totais e a aba de critérios; o CSV traz só os dados.",
+  "pi-download",
+);
+const exportacao = computed(() => {
+  const { inicio, fim } = getApiParams();
+  const pronta = farmaciaLists.loadState === "ready";
+  const motivo = !pronta
+    ? "Lista indisponível."
+    : !totalBadge.value
+      ? "Nenhuma farmácia na lista."
+      : !inicio || !fim
+        ? "Período de análise não definido."
+        : `Lista de ${totalBadge.value} ${totalBadge.value === 1 ? "farmácia" : "farmácias"} no período de análise.`;
+  return {
+    itens: [{
+      label: `Farmácias monitoradas (${formatNumberFull(totalBadge.value)})`,
+      items: [
+        { label: "Excel (.xlsx) · planilha formatada", icon: "pi pi-file-excel", command: () => exportarLista("xlsx") },
+        { label: "CSV (.csv) · texto simples", icon: "pi pi-file", command: () => exportarLista("csv") },
+      ],
+    }],
+    carregando: exportLoading.value,
+    desabilitado: !pronta || !totalBadge.value || !inicio || !fim,
+    motivo,
+    tooltip: exportTooltip,
+  };
+});
+
+async function exportarLista(formato) {
+  if (exportLoading.value) return;
+  const format = EXPORT_FORMATS[formato];
+  if (!format) throw new Error(`Formato de exportação desconhecido: ${formato}`);
+  const { inicio, fim } = getApiParams();
+  if (!inicio || !fim) throw new Error("Exportação da lista sem período de análise.");
+  exportLoading.value = true;
+  try {
+    const response = await fetch(API_ENDPOINTS.analyticsListaInteresseExport, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ formato, data_inicio: inicio, data_fim: fim }),
+    });
+    if (!response.ok) {
+      throw new Error(
+        await getApiErrorMessage(response, `Falha HTTP ${response.status} ao gerar o ${format.label} da lista.`),
+      );
+    }
+    const downloadResult = await downloadBlobFromResponse(response, `farmacias_monitoradas.${format.extension}`);
+    if (downloadResult?.desktop) {
+      toast.add({
+        group: "download",
+        severity: "success",
+        summary: `${format.label} da lista salvo`,
+        detail: `Arquivo salvo em notas_tecnicas\\${downloadResult.filename}.`,
+        data: { path: downloadResult.path, icon: format.icon },
+      });
+    } else {
+      toast.add({ severity: "success", summary: `${format.label} da lista baixado`, detail: downloadResult?.filename, life: 4000 });
+    }
+  } catch (error) {
+    toast.add({ severity: "error", summary: "Falha na exportação", detail: error.message || `Não foi possível salvar o ${format.label}.`, life: 7000 });
+  } finally {
+    exportLoading.value = false;
+  }
+}
+
+/**
+ * Totalizador da lista no período de análise. Soma só as farmácias com dados no
+ * período: as demais ficam fora e a faixa avisa quantas entraram, para o total
+ * nunca parecer completo quando não é. Sem indicadores (carregando ou erro) os
+ * valores ficam nulos e a faixa mostra "—", nunca zero.
+ */
+const totaisLista = computed(() => {
+  const total = listaFiltrada.value.length;
+  if (watchlistLoading.value || watchlistError.value) {
+    return { total, comDados: null, totalMov: null, valSemComp: null, perc: null };
+  }
+  let comDados = 0;
+  let totalMov = 0;
+  let valSemComp = 0;
+  for (const item of listaFiltrada.value) {
+    if (item.totalMov == null || item.valSemComp == null) continue;
+    comDados += 1;
+    totalMov += Number(item.totalMov);
+    valSemComp += Number(item.valSemComp);
+  }
+  if (!comDados) return { total, comDados, totalMov: null, valSemComp: null, perc: null };
+  return { total, comDados, totalMov, valSemComp, perc: totalMov > 0 ? (valSemComp / totalMov) * 100 : null };
+});
 const regionalLabel = computed(() => {
   if (farmaciaLists.loadState === 'error') return 'Regional da NT indisponível';
   if (!notaTecnicaConfig.loaded) return notaTecnicaConfig.loading
@@ -392,28 +756,7 @@ function setRegionalDialogVisible(visible) {
   if (!visible) pendingNoteItem.value = null;
 }
 
-// ── Abas: Farmácias monitoradas | Evidências ─────────────────────────────
-const ABAS = ["farmacias", "evidencias"];
-const abaDaRota = () => (ABAS.includes(route.query.aba) ? route.query.aba : "farmacias");
-const aba = ref(abaDaRota());
-const filtroEvidCnpj = ref(typeof route.query.cnpj === "string" ? route.query.cnpj : null);
-const filtroEvidTipo = ref(null);
-const removendoEvidId = ref(null);
-const ocupadoEvidId = ref(null);
-
-watch(() => [route.query.aba, route.query.cnpj], () => {
-  aba.value = abaDaRota();
-  if (typeof route.query.cnpj === "string") filtroEvidCnpj.value = route.query.cnpj;
-});
-
-function setAba(valor) {
-  if (aba.value === valor) return;
-  aba.value = valor;
-  removendoEvidId.value = null;
-  const { aba: _aba, cnpj: _cnpj, ...query } = route.query;
-  router.replace({ query: valor === "farmacias" ? query : { ...query, aba: valor } });
-}
-
+// ── Evidências: o painel da farmácia abre pela coluna "Evidências" da tabela ──
 const painelEvidCnpj = ref(null);
 
 onMounted(() => {
@@ -432,55 +775,9 @@ function nomeFarmacia(cnpj) {
   return nome && nome !== "—" ? nome : formatCnpj(cnpj);
 }
 
-const totalEvidencias = computed(() => evidenciasStore.itens.length);
-
-const farmaciasComEvidencia = computed(() => {
-  const cnpjs = [...new Set(evidenciasStore.itens.map((ev) => ev.cnpj))];
-  return cnpjs
-    .map((cnpj) => ({ value: cnpj, label: `${nomeFarmacia(cnpj)} (${evidenciasStore.contar(cnpj)})` }))
-    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-});
-
-const opcoesFiltroFarmacia = computed(() => [
-  { value: null, label: `Todas as farmácias (${farmaciasComEvidencia.value.length})` },
-  ...farmaciasComEvidencia.value,
-]);
-
-// Farmácia (A–Z) e, dentro dela, ordem cronológica — a ordem de leitura de um relatório.
-const evidenciasFiltradas = computed(() => {
-  const cnpjs = filtroEvidCnpj.value
-    ? [filtroEvidCnpj.value]
-    : farmaciasComEvidencia.value.map((f) => f.value);
-  return cnpjs.flatMap((cnpj) => evidenciasStore
-    .listarDoCnpj(cnpj)
-    .filter((ev) => !filtroEvidTipo.value || ev.tipo === filtroEvidTipo.value));
-});
-
-function limparFiltrosEvidencia() {
-  filtroEvidCnpj.value = null;
-  filtroEvidTipo.value = null;
-}
-
-function abrirEvidencia(ev) {
-  evidenciasStore.irPara(ev, router);
-}
-
 function abrirEvidenciasDaFarmacia(cnpj) {
   painelEvidCnpj.value = cnpj;
   evidenciasStore.painelAberto = true;
-}
-
-async function removerEvidencia(ev) {
-  ocupadoEvidId.value = ev.id;
-  try {
-    await evidenciasStore.remover(ev.id);
-    removendoEvidId.value = null;
-    toast.add({ severity: "info", summary: "Evidência removida", detail: quandoEvidencia(ev), life: 2500 });
-  } catch (error) {
-    toast.add({ severity: "error", summary: "Evidência não removida", detail: error.message, life: 7000 });
-  } finally {
-    ocupadoEvidId.value = null;
-  }
 }
 
 function editarObservacao(item) {
@@ -490,27 +787,55 @@ function editarObservacao(item) {
 
 function formatPerc(v) {
   if (v == null) return '—';
-  return `${v.toFixed(1)}%`;
+  return `${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
 function formatScore(v) {
   if (v == null) return '—';
-  return v.toFixed(3);
+  return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 </script>
 
 <template>
   <div class="lists-view">
-    <div class="lists-header">
-      <div class="lists-title">
-        <i class="pi pi-bookmark" />
-        <h2>Farmácias Monitoradas</h2>
-        <span class="total-badge" v-if="totalBadge > 0">{{ totalBadge }}</span>
+    <!-- Barra de comando: título, período e exportação numa linha só -->
+    <header class="lists-barra">
+      <div class="lists-titulo">
+        <i class="pi pi-bookmark" aria-hidden="true" />
+        <h2>Farmácias monitoradas</h2>
+        <span v-if="totalBadge > 0" class="lists-contagem">{{ formatNumberFull(totalBadge) }}</span>
+        <i
+          class="pi pi-info-circle help-icon"
+          role="img"
+          tabindex="0"
+          aria-label="Sobre as farmácias monitoradas"
+          v-tooltip.bottom="tituloTooltip"
+        />
       </div>
-      <p class="lists-subtitle">
-        CNPJs adicionados à Lista de Interesse para acompanhamento manual. Os indicadores refletem o escopo de filtros atual.
-      </p>
-    </div>
+      <div class="lists-barra-acoes">
+        <span v-if="watchlistLoading" class="lists-estado" role="status">
+          <i class="pi pi-spin pi-spinner" aria-hidden="true" /> Atualizando indicadores…
+        </span>
+        <span v-else-if="watchlistError" class="lists-estado lists-estado--erro" role="alert">
+          <i class="pi pi-exclamation-circle" aria-hidden="true" /> {{ watchlistError }}
+          <button type="button" class="lists-link" @click="fetchWatchlistAnalytics">Tentar de novo</button>
+        </span>
+        <span class="period-chip-picker" v-tooltip.bottom="'Período de análise · clique para alterar'">
+          <MonthRangePicker
+            :rotulo="`Período: ${periodoAnaliseLabel}`"
+            :inicio="periodoSelecionado.inicio"
+            :fim="periodoSelecionado.fim"
+            :min="PERIODO_MIN"
+            :max="PERIODO_MAX"
+            :atalhos="periodoAtalhos"
+            :atalho-ativo="periodoAtalhoAtivo"
+            @select-range="aplicarPeriodo"
+            @select-atalho="aplicarAtalhoPeriodo"
+          />
+        </span>
+        <ExportMenuButton :exportacao="exportacao" menu-id="lista-interesse-export-menu" />
+      </div>
+    </header>
 
     <div v-if="farmaciaLists.ultimaRemocao.length || farmaciaLists.ultimaRemocaoError" class="lists-undo" role="status">
       <i class="pi pi-undo" aria-hidden="true" />
@@ -566,342 +891,386 @@ function formatScore(v) {
       </div>
     </section>
 
-    <div class="lists-tabs" role="tablist" aria-label="Listas">
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="aba === 'farmacias'"
-        :class="['lists-tab', { 'is-active': aba === 'farmacias' }]"
-        @click="setAba('farmacias')"
-      >
-        <i class="pi pi-bookmark" aria-hidden="true" />
-        Farmácias monitoradas
-        <span class="lists-tab-count">{{ totalBadge }}</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="aba === 'evidencias'"
-        :class="['lists-tab', { 'is-active': aba === 'evidencias' }]"
-        @click="setAba('evidencias')"
-      >
-        <i class="pi pi-flag" aria-hidden="true" />
-        Evidências
-        <span class="lists-tab-count">{{ evidenciasStore.loadState === 'ready' ? totalEvidencias : '—' }}</span>
-      </button>
-    </div>
+    <div class="lists-card" :class="{ 'is-compacta': densidade === 'compacta' }" :style="alertaCorVars">
+      <template v-if="listaPronta">
+        <!-- Totais do recorte exibido + composição por classificação de risco (clicável) -->
+        <div class="lists-totais" role="group" aria-label="Totais das farmácias exibidas no período de análise">
+          <div class="lists-total">
+            <span class="lists-total-rotulo">Farmácias</span>
+            <span class="lists-total-valor">
+              {{ formatNumberFull(totaisLista.total) }}<span v-if="temFiltro" class="lists-total-de"> de {{ formatNumberFull(totalBadge) }}</span>
+            </span>
+          </div>
+          <div class="lists-total">
+            <span class="lists-total-rotulo">Total movimentado</span>
+            <span v-if="watchlistLoading" class="sk sk-total" aria-hidden="true" />
+            <span v-else class="lists-total-valor">{{ totaisLista.totalMov != null ? formatCurrencyFull(totaisLista.totalMov) : '—' }}</span>
+          </div>
+          <div class="lists-total">
+            <span class="lists-total-rotulo">Valor sem comprovação</span>
+            <span v-if="watchlistLoading" class="sk sk-total" aria-hidden="true" />
+            <span v-else class="lists-total-valor lists-total-valor--alerta">{{ totaisLista.valSemComp != null ? formatCurrencyFull(totaisLista.valSemComp) : '—' }}</span>
+          </div>
+          <div class="lists-total">
+            <span class="lists-total-rotulo">% sem comprovação</span>
+            <span v-if="watchlistLoading" class="sk sk-total sk-total--curto" aria-hidden="true" />
+            <span v-else class="lists-total-valor">{{ totaisLista.perc != null ? formatPerc(totaisLista.perc) : '—' }}</span>
+          </div>
 
-    <div v-if="aba === 'farmacias'" class="lists-card">
-      <div class="card-header">
-        <div class="card-header-left">
-          <i class="pi pi-table" />
-          <span>Estabelecimentos monitorados</span>
-        </div>
-        <div class="card-header-right">
-          <button
-            class="regional-nt-chip"
-            type="button"
-            @click="regionalDialogVisible = true"
-            :disabled="farmaciaLists.loadState !== 'ready' || !notaTecnicaConfig.loaded"
-            v-tooltip.top="farmaciaLists.loadState === 'error' ? 'Regional indisponível enquanto as preferências não puderem ser lidas' : 'Regional emissora das Notas Técnicas'"
+          <div class="lists-risco" role="group" aria-label="Filtrar por classificação de risco">
+            <span class="lists-total-rotulo">Classificação de risco</span>
+            <div class="risco-barra" aria-hidden="true">
+              <span
+                v-for="classe in composicaoRisco.filter((c) => c.qtd > 0)"
+                :key="classe.value"
+                class="risco-segmento"
+                :class="{ 'is-apagado': filtroClasses.length && !filtroClasses.includes(classe.value) }"
+                :style="{ flexGrow: classe.qtd, background: classe.cor }"
+              />
+            </div>
+            <div class="risco-chips">
+              <button
+                v-for="classe in composicaoRisco"
+                :key="classe.value"
+                type="button"
+                class="risco-chip"
+                :class="{ 'is-ativo': filtroClasses.includes(classe.value) }"
+                :aria-pressed="filtroClasses.includes(classe.value)"
+                :disabled="classe.qtd === 0"
+                @click="alternarClasse(classe.value)"
+              >
+                <span class="risco-ponto" :style="{ background: classe.cor }" aria-hidden="true" />
+                {{ classe.label }}
+                <span class="risco-qtd">{{ classe.qtd }}</span>
+              </button>
+            </div>
+          </div>
+
+          <span
+            v-if="totaisLista.comDados !== null && totaisLista.comDados < totaisLista.total"
+            class="lists-totais-aviso"
+            role="status"
           >
-            <i class="pi pi-building" />
-            <span>{{ regionalLabel }}</span>
-          </button>
-          <span class="period-chip" v-tooltip.top="'Período de análise atual'">
-            <i class="pi pi-calendar" />
-            <span>Período: {{ periodoAnaliseLabel }}</span>
+            <i class="pi pi-info-circle" aria-hidden="true" />
+            {{ totaisLista.comDados }} de {{ totaisLista.total }} com dados no período; as demais não entram nas somas.
           </span>
-          <span v-if="watchlistLoading" class="card-count">Atualizando indicadores...</span>
-          <span v-else-if="watchlistError" class="card-count card-error">{{ watchlistError }}</span>
-          <span v-else-if="totalBadge > 0" class="card-count">{{ totalBadge }} registros</span>
         </div>
-      </div>
+
+        <!-- Busca, filtros rápidos e agrupamento: tudo sobre os dados já carregados -->
+        <div class="lists-ferramentas">
+          <label class="lists-busca" :class="{ 'tem-valor': busca }">
+            <i class="pi pi-search" aria-hidden="true" />
+            <input
+              ref="campoBusca"
+              v-model="busca"
+              type="search"
+              placeholder="Buscar nome, CNPJ, município ou observação"
+              aria-label="Buscar na lista"
+              @keydown.esc="busca = ''"
+            />
+            <kbd v-if="!busca" class="lists-busca-atalho" aria-hidden="true">/</kbd>
+            <button v-else type="button" class="lists-busca-limpar" aria-label="Limpar busca" @click="busca = ''">
+              <i class="pi pi-times" aria-hidden="true" />
+            </button>
+          </label>
+
+          <div class="lists-filtro" :class="{ 'is-ativo': filtroUf !== null }">
+            <OptionPicker
+              :valor="filtroUf"
+              :opcoes="opcoesUf"
+              rotulo-acessivel="Filtrar por UF"
+              @select="filtroUf = $event"
+            />
+          </div>
+          <button
+            type="button"
+            class="lists-chave"
+            :class="{ 'is-ativo': soComEvidencias }"
+            :aria-pressed="soComEvidencias"
+            @click="soComEvidencias = !soComEvidencias"
+          >
+            <i class="pi pi-flag" aria-hidden="true" /> Com evidências
+          </button>
+          <button
+            type="button"
+            class="lists-chave"
+            :class="{ 'is-ativo': soComObservacao }"
+            :aria-pressed="soComObservacao"
+            @click="soComObservacao = !soComObservacao"
+          >
+            <i class="pi pi-comment" aria-hidden="true" /> Com observação
+          </button>
+          <button v-if="temFiltro" type="button" class="lists-link" @click="limparFiltros">
+            Limpar filtros
+          </button>
+
+          <div class="lists-ferramentas-fim">
+            <span class="lists-rotulo-campo" id="rotulo-agrupar">Agrupar por</span>
+            <div class="lists-filtro" :class="{ 'is-ativo': agruparPor !== null }">
+              <OptionPicker
+                :valor="agruparPor"
+                :opcoes="AGRUPAMENTOS"
+                rotulo-acessivel="Agrupar a tabela por"
+                @select="agruparPor = $event"
+              />
+            </div>
+            <button
+              type="button"
+              class="lists-icone-btn"
+              :aria-pressed="densidade === 'compacta'"
+              :aria-label="densidade === 'compacta' ? 'Usar linhas confortáveis' : 'Usar linhas compactas'"
+              v-tooltip.top="densidade === 'compacta' ? 'Linhas confortáveis' : 'Linhas compactas'"
+              @click="densidade = densidade === 'compacta' ? 'confortavel' : 'compacta'"
+            >
+              <i :class="['pi', densidade === 'compacta' ? 'pi-bars' : 'pi-align-justify']" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </template>
 
       <div class="lists-content">
-        <div v-if="farmaciaLists.loadState === 'loading'" class="empty-state" role="status">
-          <i class="pi pi-spin pi-spinner empty-icon" aria-hidden="true" />
-          <p>Carregando Farmácias Monitoradas...</p>
+        <!-- Carregando a lista: linhas-esqueleto no lugar da tabela -->
+        <div v-if="farmaciaLists.loadState === 'loading'" class="lists-esqueleto" role="status" aria-label="Carregando as farmácias monitoradas">
+          <div v-for="n in 6" :key="n" class="lists-esqueleto-linha">
+            <span class="sk sk-nome" /><span class="sk sk-num" /><span class="sk sk-num" /><span class="sk sk-num" /><span class="sk sk-obs" />
+          </div>
         </div>
         <div v-else-if="farmaciaLists.loadState === 'error'" class="empty-state" role="status">
           <i class="pi pi-exclamation-triangle empty-icon" aria-hidden="true" />
-          <p>Lista indisponível. Use as opções de recuperação acima.</p>
+          <p>Lista indisponível</p>
+          <span>Use as opções de recuperação acima para abrir ou restaurar a lista.</span>
         </div>
         <div v-else-if="farmaciaLists.interesse.length === 0" class="empty-state">
-          <i class="pi pi-star empty-icon" />
-          <p>Nenhuma farmácia na Lista de Interesse.</p>
-          <span>Acesse o detalhe de um estabelecimento e clique no ícone de estrela.</span>
+          <i class="pi pi-bookmark empty-icon" aria-hidden="true" />
+          <p>Nenhuma farmácia monitorada ainda</p>
+          <span>Abra o detalhe de um estabelecimento e clique no ícone de estrela para acompanhá-lo aqui.</span>
+          <button type="button" class="lists-botao" @click="router.push('/estabelecimentos')">
+            Ir para Estabelecimentos
+            <i class="pi pi-arrow-right" aria-hidden="true" />
+          </button>
         </div>
-
-      <table v-else class="lists-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Estabelecimento</th>
-            <th>Observação</th>
-            <th>Localização</th>
-            <th class="col-right">Risco</th>
-            <th class="col-right">% Não Comp.</th>
-            <th class="col-right">Valor s/ Comp.</th>
-            <th class="col-right">Total Mov.</th>
-            <th>Evidências</th>
-            <th>Adicionado em</th>
-            <th class="col-actions">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(item, i) in listaEnriquecida"
-            :key="item.cnpj"
-            class="clickable-row"
-            tabindex="0"
-            @click="abrirEstabelecimento(item.cnpj)"
-            @keydown.enter="abrirEstabelecimento(item.cnpj)"
-            @keydown.space.prevent="abrirEstabelecimento(item.cnpj)"
-          >
-            <td class="col-num">{{ i + 1 }}</td>
-            <td class="col-establishment">
-              <div class="establishment-block">
-                <span class="establishment-name" v-tooltip.top="item.razaoSocial">
-                  {{ item.razaoSocial }}
-                </span>
-                <span class="cnpj-row">
-                  <span class="cnpj-text">{{ formatCnpj(item.cnpj) }}</span>
-                  <button
-                    class="copy-btn"
-                    @click.stop="copyCnpj(item.cnpj)"
-                    v-tooltip.top="copiedCnpj === item.cnpj ? 'CNPJ copiado' : 'Copiar CNPJ'"
-                    aria-label="Copiar CNPJ"
-                  >
-                    <i :class="copiedCnpj === item.cnpj ? 'pi pi-check' : 'pi pi-copy'" />
-                  </button>
-                </span>
-              </div>
-            </td>
-            <td class="col-obs">
-              <div class="obs-cell">
-                <div v-if="item.observacao" class="obs-content" v-tooltip.top="item.observacao">
-                  <i class="pi pi-comment mr-1 opacity-60" />
-                  <span class="obs-text">{{ item.observacao }}</span>
-                </div>
-                <span v-else class="col-vazio">—</span>
-                <button
-                  class="obs-edit-btn"
-                  @click.stop="editarObservacao(item)"
-                  v-tooltip.top="item.observacao ? 'Editar Observação' : 'Adicionar Observação'"
-                  aria-label="Editar observação"
-                >
-                  <i :class="item.observacao ? 'pi pi-comment' : 'pi pi-pencil'" />
-                </button>
-              </div>
-            </td>
-            <td class="col-loc">
-              <div class="loc-block">
-                <span v-if="item.municipio !== '—'" class="municipio-text" v-tooltip.top="item.municipio">
-                  {{ item.municipio }}
-                </span>
-                <span v-else class="col-vazio">—</span>
-                <span v-if="item.uf !== '—'" class="uf-tag">{{ item.uf }}</span>
-              </div>
-            </td>
-            <td class="col-right col-score">
-              <span v-if="item.scoreRisco != null"
-                class="score-badge"
-                :style="{ color: RISCO_COLOR[item.classificacao] || 'var(--text-muted)' }">
-                <span class="score-value">{{ formatScore(item.scoreRisco) }}</span>
-                <span v-if="item.classificacao" class="score-class">{{ item.classificacao }}</span>
-              </span>
-              <span v-else class="col-vazio">—</span>
-            </td>
-            <td class="col-right col-perc">
-              <span v-if="item.percValSemComp != null"
-                :class="['perc-badge', item.percValSemComp >= 50 ? 'perc-alto' : item.percValSemComp >= 20 ? 'perc-medio' : 'perc-baixo']">
-                {{ formatPerc(item.percValSemComp) }}
-              </span>
-              <span v-else class="col-vazio">—</span>
-            </td>
-            <td class="col-right col-money col-sem-comp">
-              {{ item.valSemComp != null ? formatBRL(item.valSemComp) : '—' }}
-            </td>
-            <td class="col-right col-money col-total-mov">
-              {{ item.totalMov != null ? formatBRL(item.totalMov) : '—' }}
-            </td>
-            <td class="col-evid">
-              <button
-                v-if="evidenciasStore.contar(item.cnpj) > 0"
-                type="button"
-                class="evid-count-btn"
-                :aria-label="`Abrir as ${evidenciasStore.contar(item.cnpj)} evidências de ${item.razaoSocial}`"
-                @click.stop="abrirEvidenciasDaFarmacia(item.cnpj)"
-              >
-                <i class="pi pi-flag-fill" aria-hidden="true" />
-                <span class="evid-count-num">{{ evidenciasStore.contar(item.cnpj) }}</span>
-                <span class="evid-count-date">{{ dataHoraCurta(evidenciasStore.ultimaEm(item.cnpj)) }}</span>
-              </button>
-              <span v-else-if="evidenciasStore.loadState === 'error'" class="col-vazio">?</span>
-              <span v-else class="col-vazio">—</span>
-            </td>
-            <td class="col-date">{{ formatDate(item.adicionadoEm) }}</td>
-            <td class="col-actions">
-              <div class="action-btns">
-                <button
-                  class="action-btn open"
-                  @click.stop="abrirEstabelecimento(item.cnpj)"
-                  v-tooltip.top="'Abrir detalhamento'"
-                >
-                  <i class="pi pi-arrow-up-right" />
-                </button>
-                <button
-                  class="action-btn report"
-                  @click.stop="gerarRelatorio(item)"
-                  :disabled="!!exportingReportCnpj"
-                  v-tooltip.top="'Gerar relatório PDF'"
-                >
-                  <i :class="exportingReportCnpj === item.cnpj ? 'pi pi-spin pi-spinner' : 'pi pi-file-pdf'" />
-                </button>
-                <button
-                  class="action-btn note"
-                  @click.stop="gerarNotaTecnica(item)"
-                  :disabled="!!generatingNoteCnpj"
-                  v-tooltip.top="'Gerar nota técnica'"
-                >
-                  <i :class="generatingNoteCnpj === item.cnpj ? 'pi pi-spin pi-spinner' : 'pi pi-book'" />
-                </button>
-                <button
-                  class="action-btn remove"
-                  @click.stop="remover(item.cnpj)"
-                  :disabled="!farmaciaLists.canEdit"
-                  v-tooltip.top="'Remover da lista'"
-                >
-                  <i class="pi pi-trash" />
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      </div><!-- /lists-content -->
-    </div><!-- /lists-card -->
-
-    <div v-else class="lists-card">
-      <div class="card-header">
-        <div class="card-header-left">
-          <i class="pi pi-flag" />
-          <span>Evidências marcadas</span>
-        </div>
-        <div class="card-header-right evid-toolbar">
-          <Dropdown
-            v-model="filtroEvidCnpj"
-            :options="opcoesFiltroFarmacia"
-            option-label="label"
-            option-value="value"
-            class="evid-filtro-farmacia"
-            aria-label="Filtrar por farmácia"
-            :disabled="evidenciasStore.loadState !== 'ready' || totalEvidencias === 0"
-          />
-          <div class="evid-tipos" role="radiogroup" aria-label="Filtrar por tipo">
-            <button
-              v-for="opcao in TIPO_EVIDENCIA_OPCOES"
-              :key="String(opcao.value)"
-              type="button"
-              role="radio"
-              :aria-checked="filtroEvidTipo === opcao.value"
-              :class="['evid-tipo-btn', { 'is-active': filtroEvidTipo === opcao.value }]"
-              :disabled="evidenciasStore.loadState !== 'ready' || totalEvidencias === 0"
-              @click="filtroEvidTipo = opcao.value"
-            >{{ opcao.label }}</button>
-          </div>
-          <span v-if="evidenciasStore.loadState === 'ready'" class="card-count">
-            {{ evidenciasFiltradas.length }} de {{ totalEvidencias }}
-          </span>
-        </div>
-      </div>
-
-      <div class="lists-content">
-        <div v-if="evidenciasStore.loadState === 'loading' || evidenciasStore.loadState === 'idle'" class="empty-state" role="status">
-          <i class="pi pi-spin pi-spinner empty-icon" aria-hidden="true" />
-          <p>Carregando evidências...</p>
-        </div>
-        <div v-else-if="evidenciasStore.loadState === 'error'" class="empty-state evid-error" role="alert">
-          <i class="pi pi-exclamation-triangle empty-icon" aria-hidden="true" />
-          <p>{{ evidenciasStore.error }}</p>
-          <button type="button" class="evid-retry-btn" @click="evidenciasStore.carregar()">Tentar novamente</button>
-        </div>
-        <div v-else-if="totalEvidencias === 0" class="empty-state">
-          <i class="pi pi-flag empty-icon" aria-hidden="true" />
-          <p>Nenhuma evidência marcada.</p>
-          <span>Na Cronologia de uma farmácia, marque dias, horas ou autorizações com a bandeira.</span>
-        </div>
-        <div v-else-if="evidenciasFiltradas.length === 0" class="empty-state">
+        <div v-else-if="listaFiltrada.length === 0" class="empty-state">
           <i class="pi pi-filter-slash empty-icon" aria-hidden="true" />
-          <p>Nenhuma evidência com estes filtros.</p>
-          <button type="button" class="evid-retry-btn" @click="limparFiltrosEvidencia">Limpar filtros</button>
+          <p>Nenhuma farmácia com estes filtros</p>
+          <span>{{ totalBadge }} {{ totalBadge === 1 ? 'farmácia está' : 'farmácias estão' }} na lista, mas nenhuma passa pela busca e pelos filtros atuais.</span>
+          <button type="button" class="lists-botao" @click="limparFiltros">Limpar filtros</button>
         </div>
 
-        <table v-else class="lists-table evid-table">
+        <table v-else class="lists-table">
           <thead>
             <tr>
-              <th>Estabelecimento</th>
-              <th>Tipo</th>
-              <th>Data / hora</th>
-              <th>Resumo</th>
-              <th>Nota do auditor</th>
-              <th>Marcada em</th>
-              <th class="col-actions">Ações</th>
+              <th class="col-num">#</th>
+              <th class="col-estab" :aria-sort="ariaOrdenacao('estabelecimento')">
+                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'estabelecimento' }" @click="ordenarPor('estabelecimento')">
+                  <span>Estabelecimento</span>
+                  <i :class="['pi', iconeOrdenacao('estabelecimento')]" aria-hidden="true" />
+                </button>
+              </th>
+              <th class="col-risco" :aria-sort="ariaOrdenacao('risco')">
+                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'risco' }" @click="ordenarPor('risco')">
+                  <span>Risco</span>
+                  <i :class="['pi', iconeOrdenacao('risco')]" aria-hidden="true" />
+                </button>
+              </th>
+              <th class="col-perc col-right" :aria-sort="ariaOrdenacao('percentual')">
+                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'percentual' }" @click="ordenarPor('percentual')">
+                  <span>% sem comp.</span>
+                  <i :class="['pi', iconeOrdenacao('percentual')]" aria-hidden="true" />
+                </button>
+              </th>
+              <th class="col-valor col-right" :aria-sort="ariaOrdenacao('valSemComp')">
+                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'valSemComp' }" @click="ordenarPor('valSemComp')">
+                  <span>Valor sem comp.</span>
+                  <i :class="['pi', iconeOrdenacao('valSemComp')]" aria-hidden="true" />
+                </button>
+              </th>
+              <th class="col-valor col-right" :aria-sort="ariaOrdenacao('totalMov')">
+                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'totalMov' }" @click="ordenarPor('totalMov')">
+                  <span>Total mov.</span>
+                  <i :class="['pi', iconeOrdenacao('totalMov')]" aria-hidden="true" />
+                </button>
+              </th>
+              <th class="col-evid" :aria-sort="ariaOrdenacao('evidencias')">
+                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'evidencias' }" @click="ordenarPor('evidencias')">
+                  <span>Evidências</span>
+                  <i :class="['pi', iconeOrdenacao('evidencias')]" aria-hidden="true" />
+                </button>
+              </th>
+              <th class="col-obs">Observação</th>
+              <th class="col-actions"><span class="sr-only">Ações</span></th>
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="ev in evidenciasFiltradas"
-              :key="ev.id"
-              class="clickable-row"
-              :class="{ 'is-busy': ocupadoEvidId === ev.id }"
-              tabindex="0"
-              @click="abrirEvidencia(ev)"
-              @keydown.enter="abrirEvidencia(ev)"
-            >
-              <td class="col-establishment">
-                <div class="establishment-block">
-                  <span class="establishment-name">{{ nomeFarmacia(ev.cnpj) }}</span>
-                  <span class="cnpj-text">{{ formatCnpj(ev.cnpj) }}</span>
-                </div>
-              </td>
-              <td>
-                <span class="evid-tipo-tag">
-                  <i :class="['pi', tipoEvidencia(ev.tipo).icon]" aria-hidden="true" />
-                  {{ tipoEvidencia(ev.tipo).label }}
-                </span>
-              </td>
-              <td class="evid-quando">{{ quandoEvidencia(ev) }}</td>
-              <td class="evid-resumo">{{ resumoEvidencia(ev) }}</td>
-              <td>
-                <span v-if="ev.nota" class="evid-nota" v-tooltip.top="ev.nota.length > 120 ? ev.nota : null">{{ ev.nota }}</span>
-                <span v-else class="col-vazio">—</span>
-              </td>
-              <td class="col-date">{{ dataHoraCurta(ev.criado_em) }}</td>
-              <td class="col-actions">
-                <div v-if="removendoEvidId === ev.id" class="evid-confirma" @click.stop>
-                  <button type="button" class="action-btn remove is-confirm" :disabled="ocupadoEvidId === ev.id" aria-label="Confirmar remoção" @click.stop="removerEvidencia(ev)">
-                    <i class="pi pi-check" />
+            <template v-for="linha in linhasTabela" :key="linha.chave">
+              <tr v-if="linha.tipo === 'grupo'" class="grupo-linha">
+                <td :colspan="9">
+                  <span class="grupo-nome">{{ linha.rotulo }}</span>
+                  <span class="grupo-dado">{{ linha.qtd }} {{ linha.qtd === 1 ? 'farmácia' : 'farmácias' }}</span>
+                  <span v-if="linha.valSemComp !== null && !watchlistLoading" class="grupo-dado">
+                    {{ formatCurrencyFull(linha.valSemComp) }} sem comprovação
+                  </span>
+                </td>
+              </tr>
+              <tr
+                v-else
+                class="clickable-row"
+                :class="{ 'is-sem-dados': !watchlistLoading && !watchlistError && linha.item.totalMov == null }"
+                tabindex="0"
+                @click="abrirEstabelecimento(linha.item.cnpj)"
+                @keydown.enter.self="abrirEstabelecimento(linha.item.cnpj)"
+                @keydown.space.self.prevent="abrirEstabelecimento(linha.item.cnpj)"
+              >
+                <td class="col-num">{{ linha.posicao }}</td>
+                <td class="col-estab">
+                  <div class="estab">
+                    <span class="estab-nome" v-tooltip.top="linha.item.razaoSocial">{{ linha.item.razaoSocial }}</span>
+                    <span class="estab-meta">
+                      <span class="estab-cnpj">{{ formatCnpj(linha.item.cnpj) }}</span>
+                      <button
+                        type="button"
+                        class="copy-btn"
+                        @click.stop="copyCnpj(linha.item.cnpj)"
+                        v-tooltip.top="copiedCnpj === linha.item.cnpj ? 'CNPJ copiado' : 'Copiar CNPJ'"
+                        aria-label="Copiar CNPJ"
+                      >
+                        <i :class="copiedCnpj === linha.item.cnpj ? 'pi pi-check' : 'pi pi-copy'" aria-hidden="true" />
+                      </button>
+                    </span>
+                    <span class="estab-meta estab-meta--sec">
+                      <span v-if="linha.item.municipio !== '—'" class="estab-local">{{ linha.item.municipio }}/{{ linha.item.uf }}</span>
+                      <span v-if="linha.item.municipio !== '—'" class="estab-sep" aria-hidden="true">·</span>
+                      <span class="estab-desde">na lista desde {{ formatDate(linha.item.adicionadoEm) }}</span>
+                    </span>
+                  </div>
+                </td>
+                <td class="col-risco">
+                  <span v-if="watchlistLoading" class="sk sk-num" aria-hidden="true" />
+                  <span v-else-if="linha.item.scoreRisco != null" class="risco" :style="{ '--risco-cor': corDaClasse(linha.item.classificacao) }">
+                    <span class="risco-score">{{ formatScore(linha.item.scoreRisco) }}</span>
+                    <span v-if="linha.item.classificacao" class="risco-classe">{{ linha.item.classificacao }}</span>
+                  </span>
+                  <span v-else-if="!watchlistError && linha.item.totalMov == null" class="tag-sem-dados">Sem dados no período</span>
+                  <span v-else class="col-vazio">—</span>
+                </td>
+                <td class="col-perc col-right">
+                  <span v-if="watchlistLoading" class="sk sk-num" aria-hidden="true" />
+                  <span v-else-if="linha.item.percValSemComp != null" class="perc" :class="faixaPerc(linha.item.percValSemComp)">
+                    <span class="perc-valor">{{ formatPerc(linha.item.percValSemComp) }}</span>
+                    <span class="perc-trilha" aria-hidden="true">
+                      <span class="perc-barra" :style="{ width: `${Math.min(100, Math.max(0, linha.item.percValSemComp))}%` }" />
+                    </span>
+                  </span>
+                  <span v-else class="col-vazio">—</span>
+                </td>
+                <td class="col-valor col-right col-destaque">
+                  <span v-if="watchlistLoading" class="sk sk-num" aria-hidden="true" />
+                  <span
+                    v-else-if="linha.item.valSemComp != null"
+                    :class="{ 'high-value-audit': linha.item.valSemComp >= auditHighValue }"
+                  >{{ formatCurrencyFull(linha.item.valSemComp) }}</span>
+                  <template v-else>—</template>
+                </td>
+                <td class="col-valor col-right">
+                  <span v-if="watchlistLoading" class="sk sk-num" aria-hidden="true" />
+                  <template v-else>{{ linha.item.totalMov != null ? formatCurrencyFull(linha.item.totalMov) : '—' }}</template>
+                </td>
+                <td class="col-evid">
+                  <button
+                    v-if="evidenciasStore.contar(linha.item.cnpj) > 0"
+                    type="button"
+                    class="evid-count-btn"
+                    :aria-label="`Abrir as ${evidenciasStore.contar(linha.item.cnpj)} evidências de ${linha.item.razaoSocial}`"
+                    v-tooltip.top="`Última marcação em ${dataHoraCurta(evidenciasStore.ultimaEm(linha.item.cnpj))}`"
+                    @click.stop="abrirEvidenciasDaFarmacia(linha.item.cnpj)"
+                  >
+                    <i class="pi pi-flag-fill" aria-hidden="true" />
+                    <span class="evid-count-num">{{ evidenciasStore.contar(linha.item.cnpj) }}</span>
                   </button>
-                  <button type="button" class="action-btn" aria-label="Cancelar remoção" @click.stop="removendoEvidId = null">
-                    <i class="pi pi-times" />
+                  <span v-else-if="evidenciasStore.loadState === 'error'" class="col-vazio" v-tooltip.top="'Cesta de evidências indisponível'">?</span>
+                  <span v-else class="col-vazio">—</span>
+                </td>
+                <td class="col-obs">
+                  <button
+                    type="button"
+                    class="obs-btn"
+                    :class="{ 'is-vazia': !linha.item.observacao }"
+                    :aria-label="linha.item.observacao ? `Editar a observação de ${linha.item.razaoSocial}` : `Adicionar observação a ${linha.item.razaoSocial}`"
+                    v-tooltip.top="linha.item.observacao || 'Adicionar observação'"
+                    @click.stop="editarObservacao(linha.item)"
+                  >
+                    <span v-if="linha.item.observacao" class="obs-texto">{{ linha.item.observacao }}</span>
+                    <span v-else class="obs-adicionar"><i class="pi pi-plus" aria-hidden="true" /> Adicionar observação</span>
                   </button>
-                </div>
-                <div v-else class="action-btns">
-                  <button type="button" class="action-btn open" aria-label="Abrir na Cronologia" @click.stop="abrirEvidencia(ev)">
-                    <i class="pi pi-arrow-up-right" />
-                  </button>
-                  <button type="button" class="action-btn remove" aria-label="Remover evidência" @click.stop="removendoEvidId = ev.id">
-                    <i class="pi pi-trash" />
-                  </button>
-                </div>
-              </td>
-            </tr>
+                </td>
+                <td class="col-actions">
+                  <div class="action-btns">
+                    <button
+                      type="button"
+                      class="action-btn open"
+                      aria-label="Abrir detalhamento"
+                      @click.stop="abrirEstabelecimento(linha.item.cnpj)"
+                      v-tooltip.top="'Abrir detalhamento'"
+                    >
+                      <i class="pi pi-arrow-up-right" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="action-btn report"
+                      :class="{ 'is-busy': exportingReportCnpj === linha.item.cnpj }"
+                      aria-label="Gerar relatório PDF"
+                      @click.stop="gerarRelatorio(linha.item)"
+                      :disabled="!!exportingReportCnpj"
+                      v-tooltip.top="'Gerar relatório PDF'"
+                    >
+                      <i :class="exportingReportCnpj === linha.item.cnpj ? 'pi pi-spin pi-spinner' : 'pi pi-file-pdf'" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="action-btn note"
+                      :class="{ 'is-busy': generatingNoteCnpj === linha.item.cnpj }"
+                      aria-label="Gerar Nota Técnica"
+                      @click.stop="gerarNotaTecnica(linha.item)"
+                      :disabled="!!generatingNoteCnpj"
+                      v-tooltip.top="`Gerar Nota Técnica · ${regionalLabel}`"
+                    >
+                      <i :class="generatingNoteCnpj === linha.item.cnpj ? 'pi pi-spin pi-spinner' : 'pi pi-book'" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="action-btn remove"
+                      aria-label="Remover da lista"
+                      @click.stop="remover(linha.item.cnpj)"
+                      :disabled="!farmaciaLists.canEdit"
+                      v-tooltip.top="'Remover da lista'"
+                    >
+                      <i class="pi pi-trash" aria-hidden="true" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
-      </div>
-    </div>
+      </div><!-- /lists-content -->
+
+      <footer v-if="listaPronta" class="lists-rodape">
+        <span>
+          <template v-if="temFiltro">Exibindo {{ formatNumberFull(listaFiltrada.length) }} de {{ formatNumberFull(totalBadge) }} farmácias</template>
+          <template v-else>{{ formatNumberFull(totalBadge) }} {{ totalBadge === 1 ? 'farmácia' : 'farmácias' }}</template>
+        </span>
+        <!-- Regional emissora: configuração das Notas Técnicas, fora da área de filtros -->
+        <button
+          type="button"
+          class="lists-link"
+          :disabled="!notaTecnicaConfig.loaded"
+          v-tooltip.top="'Regional emissora usada ao gerar as Notas Técnicas. Clique para alterar.'"
+          @click="regionalDialogVisible = true"
+        >
+          <i class="pi pi-building" aria-hidden="true" /> Regional das Notas Técnicas: {{ regionalLabel }}
+        </button>
+      </footer>
+    </div><!-- /lists-card -->
+
     <EvidenciasPanel
       v-if="painelEvidCnpj"
       :cnpj="painelEvidCnpj"
@@ -925,58 +1294,106 @@ function formatScore(v) {
 
 <style scoped>
 .lists-view {
-  padding: 2rem;
+  padding: 1.5rem 2rem 2rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
   max-width: 98%;
   margin: 0 auto;
 }
 
-.lists-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  border-bottom: 1px solid var(--tabs-border);
-  padding-bottom: 1.5rem;
-}
-
-.lists-title {
+/* ── Barra de comando ─────────────────────────────────────────────────── */
+.lists-barra {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
 }
-
-.lists-title i {
-  font-size: 1.2rem;
+.lists-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.lists-titulo > .pi-bookmark {
   color: var(--primary-color);
+  font-size: 1.1rem;
 }
-
-.lists-title h2 {
-  font-size: 1.2rem;
-  font-weight: 400;
+.lists-titulo h2 {
   margin: 0;
-  color: var(--text-color-85);
+  color: var(--text-color);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
-
-.total-badge {
-  font-size: 0.72rem;
-  font-weight: 400;
-  padding: 0.1rem 0.5rem;
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+.lists-contagem {
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-color) 14%, transparent);
   color: var(--primary-color);
-  border: 1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+  font-size: 0.78rem;
+  font-weight: 600;
 }
-
-.lists-subtitle {
-  font-size: 0.8rem;
-  color: var(--text-color-85);
-  opacity: 0.5;
-  margin: 0;
+.lists-barra-acoes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
 }
+.lists-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+.lists-estado--erro { color: var(--risk-critical); }
 
-/* Desfazer a última remoção: discreto, sem tom de alerta. */
+/* Texto-ação: desfazer filtros, tentar de novo, regional das Notas Técnicas. */
+.lists-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.3rem;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--primary-color);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.lists-link:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+.lists-link:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 1px; }
+.lists-link:disabled { cursor: not-allowed; opacity: 0.6; }
+.lists-link .pi { font-size: 0.72rem; }
+
+/* Chip de período: é o gatilho do seletor de meses (mesmo componente da sidebar). */
+.period-chip-picker { display: inline-flex; }
+.period-chip-picker :deep(.rp-gatilho) {
+  gap: 0.45rem;
+  min-height: 0;
+  height: 2.125rem;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  color: var(--primary-color);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.period-chip-picker :deep(.rp-gatilho:hover),
+.period-chip-picker :deep(.rp-gatilho:focus-visible) {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+}
+.period-chip-picker :deep(.rp-gatilho-icone) { color: var(--primary-color); font-size: 0.78rem; }
+.period-chip-picker :deep(.rp-gatilho-seta) { margin-left: 0.1rem; color: var(--primary-color); font-size: 0.58rem; }
+
+/* ── Avisos (desfazer remoção, recuperação) ───────────────────────────── */
 .lists-undo {
   display: flex;
   align-items: center;
@@ -1017,7 +1434,6 @@ function formatScore(v) {
   background: color-mix(in srgb, var(--risk-high) 8%, var(--card-bg));
   color: var(--text-color-85);
 }
-
 .preferences-recovery-copy { display: flex; align-items: flex-start; gap: 0.7rem; min-width: 0; }
 .preferences-recovery-copy > i { color: var(--risk-high); margin-top: 0.1rem; }
 .preferences-recovery-copy p { margin: 0 0 0.2rem; font-size: 0.85rem; }
@@ -1036,239 +1452,374 @@ function formatScore(v) {
 .preferences-recovery-actions button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 .preferences-recovery-actions button:disabled { cursor: not-allowed; opacity: 0.5; }
 
-.empty-state {
+/* ── Card da mesa de trabalho ─────────────────────────────────────────── */
+.lists-card {
+  --linha-padding: 0.7rem;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 6rem 2rem;
-  gap: 0.75rem;
-  color: var(--text-color-85);
-  opacity: 0.4;
-}
-
-.empty-icon { font-size: 2.5rem; }
-.empty-state p { font-size: 0.95rem; font-weight: 400; margin: 0; }
-.empty-state span { font-size: 0.8rem; }
-
-/* Card container */
-.lists-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
+.lists-card.is-compacta { --linha-padding: 0.38rem; }
 
-.card-header {
+/* Totais do recorte + composição de risco */
+.lists-totais {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  align-items: flex-start;
   flex-wrap: wrap;
-  padding: 0.85rem 1.25rem;
+  gap: 1rem 2.5rem;
+  padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--card-border);
-  background: rgba(255, 255, 255, 0.02);
 }
-
-.card-header-left {
+.lists-total {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 0.78rem;
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-color-85);
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
 }
-
-.card-header-left i {
-  color: var(--primary-color);
-  font-size: 1rem;
-}
-
-.card-header-right {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-  margin-left: auto;
-}
-
-.period-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.38rem;
-  padding: 0.24rem 0.58rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 22%, transparent);
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
-  color: var(--primary-color);
-  font-size: 0.7rem;
+.lists-total-rotulo {
+  color: var(--text-muted);
+  font-size: 0.68rem;
   font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
-
-.period-chip i {
+.lists-total-valor {
+  color: var(--text-color);
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.lists-total-de {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.lists-total-valor--alerta { color: var(--risk-critical); }
+.lists-totais-aviso {
+  display: inline-flex;
+  align-items: center;
+  flex-basis: 100%;
+  gap: 0.35rem;
+  color: var(--text-muted);
   font-size: 0.72rem;
 }
 
-.regional-nt-chip {
+.lists-risco {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 18rem;
+  margin-left: auto;
+}
+.risco-barra {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-color) 8%, transparent);
+}
+.risco-segmento { flex-basis: 0; min-width: 4px; transition: opacity 0.18s ease; }
+.risco-segmento.is-apagado { opacity: 0.25; }
+.risco-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.risco-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.38rem;
-  padding: 0.24rem 0.58rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 26%, transparent);
-  background: color-mix(in srgb, var(--primary-color) 6%, transparent);
-  color: var(--text-color-85);
-  font-size: 0.7rem;
+  gap: 0.35rem;
+  height: 1.6rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.72rem;
   font-weight: 500;
-  white-space: nowrap;
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
-
-.regional-nt-chip:hover {
+.risco-chip:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text-color) 35%, var(--card-border)); color: var(--text-color); }
+.risco-chip:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 1px; }
+.risco-chip.is-ativo {
   border-color: var(--primary-color);
   background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--text-color);
 }
+.risco-chip:disabled { cursor: default; opacity: 0.45; }
+.risco-ponto { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.risco-qtd { color: var(--text-muted); }
 
-.regional-nt-chip:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
+/* Busca, filtros e agrupamento */
+.lists-ferramentas {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--text-color) 2%, transparent);
 }
-
-.card-count {
-  font-size: 0.7rem;
-  font-weight: 500;
+.lists-ferramentas-fim {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.lists-rotulo-campo { color: var(--text-muted); font-size: 0.74rem; font-weight: 500; white-space: nowrap; }
+.lists-busca {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 1 22rem;
+  min-width: 14rem;
+  height: 2rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg);
   color: var(--text-muted);
+  cursor: text;
+  transition: border-color 0.15s ease;
 }
-
-.card-error {
-  color: var(--risk-critical);
-}
-
-.lists-content {
-  overflow-x: auto;
-}
-
-.lists-table {
-  width: 100%;
-  min-width: 1120px;
-  border-collapse: collapse;
-  table-layout: fixed;
+.lists-busca:hover { border-color: color-mix(in srgb, var(--text-color) 28%, var(--card-border)); }
+.lists-busca:focus-within,
+.lists-busca.tem-valor { border-color: var(--primary-color); }
+.lists-busca > .pi { font-size: 0.8rem; }
+.lists-busca input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
   background: transparent;
+  color: var(--text-color-85);
+  font: inherit;
+  font-size: 0.8125rem;
 }
-
-.lists-table th {
-  padding: 0.7rem 0.9rem;
+.lists-busca input::placeholder { color: var(--text-muted); }
+.lists-busca input::-webkit-search-cancel-button { display: none; }
+.lists-busca-atalho {
+  padding: 0 0.35rem;
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font: inherit;
   font-size: 0.68rem;
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-color-85);
-  opacity: 0.8;
-  background: color-mix(in srgb, var(--card-bg) 85%, var(--card-border));
-  border-bottom: 1px solid var(--card-border);
-  text-align: left;
-  white-space: nowrap;
+  line-height: 1.25rem;
 }
-
-.lists-table th.col-right { text-align: right; }
-
-.lists-table:not(.evid-table) th:nth-child(1) { width: 42px; }
-.lists-table:not(.evid-table) th:nth-child(2) { width: 19%; }
-.lists-table:not(.evid-table) th:nth-child(3) { width: 14%; }
-.lists-table:not(.evid-table) th:nth-child(4) { width: 11%; }
-.lists-table:not(.evid-table) th:nth-child(5) { width: 8%; }
-.lists-table:not(.evid-table) th:nth-child(6) { width: 8%; }
-.lists-table:not(.evid-table) th:nth-child(7) { width: 10%; }
-.lists-table:not(.evid-table) th:nth-child(8) { width: 9%; }
-.lists-table:not(.evid-table) th:nth-child(9) { width: 9%; }
-.lists-table:not(.evid-table) th:nth-child(10) { width: 8%; }
-.lists-table:not(.evid-table) th:nth-child(11) { width: 136px; }
-
-.evid-table th:nth-child(1) { width: 20%; }
-.evid-table th:nth-child(2) { width: 9%; }
-.evid-table th:nth-child(3) { width: 12%; }
-.evid-table th:nth-child(4) { width: 25%; }
-.evid-table th:nth-child(5) { width: 20%; }
-.evid-table th:nth-child(6) { width: 8%; }
-.evid-table th:nth-child(7) { width: 96px; }
-
-.lists-table td {
-  padding: 0.7rem 0.9rem;
-  font-size: 0.8rem;
-  color: var(--text-color-85);
-  border-bottom: 1px solid var(--card-border);
-  vertical-align: middle;
-}
-
-.lists-table tbody tr:last-child td { border-bottom: none; }
-.lists-table tbody tr:hover {
-  background: color-mix(in srgb, var(--primary-color) 4%, transparent);
-}
-
-.clickable-row {
+.lists-busca-limpar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
 }
+.lists-busca-limpar:hover { color: var(--text-color); background: color-mix(in srgb, var(--text-color) 10%, transparent); }
+.lists-busca-limpar .pi { font-size: 0.65rem; }
 
+.lists-filtro :deep(.rp-gatilho) {
+  height: 2rem;
+  min-height: 2rem;
+  padding: 0 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+.lists-filtro.is-ativo :deep(.rp-gatilho) {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  color: var(--text-color-85);
+}
+.lists-chave {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.lists-chave:hover { border-color: color-mix(in srgb, var(--text-color) 28%, var(--card-border)); color: var(--text-color-85); }
+.lists-chave:focus-visible,
+.lists-icone-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 1px; }
+.lists-chave.is-ativo {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  color: var(--text-color-85);
+}
+.lists-chave .pi { font-size: 0.74rem; }
+.lists-chave.is-ativo .pi { color: var(--primary-color); }
+.lists-icone-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.lists-icone-btn:hover { border-color: color-mix(in srgb, var(--text-color) 28%, var(--card-border)); color: var(--text-color-85); }
+.lists-icone-btn .pi { font-size: 0.8rem; }
+
+/* ── Tabela ───────────────────────────────────────────────────────────── */
+/* Rola dentro do card: totais, busca e cabeçalho das colunas ficam sempre à vista. */
+.lists-content {
+  max-height: max(20rem, calc(100vh - 23rem));
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-color) 22%, transparent) transparent;
+}
+.lists-table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+.lists-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--card-bg) 88%, var(--card-border));
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.lists-table th.col-right { text-align: right; }
+.lists-table th.col-num { width: 44px; }
+.lists-table th.col-risco { width: 9%; }
+.lists-table th.col-perc { width: 10%; }
+.lists-table th.col-valor { width: 12%; }
+.lists-table th.col-evid { width: 7%; }
+.lists-table th.col-obs { width: 17%; }
+.lists-table th.col-actions { width: 150px; }
+
+.lists-table td {
+  padding: var(--linha-padding) 0.9rem;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text-color-85);
+  font-size: 0.8125rem;
+  vertical-align: middle;
+}
+.lists-table tbody tr:last-child td { border-bottom: 0; }
+/* Mesma cor de hover das tabelas de /estabelecimentos (.enterprise-table). */
+.lists-table tbody tr.clickable-row:hover { background: var(--table-hover); }
+.clickable-row { cursor: pointer; }
 .clickable-row:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
   outline-offset: -2px;
-  background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+  background: var(--table-hover);
 }
+.col-right { text-align: right; }
+.col-vazio { color: var(--text-muted); opacity: 0.6; }
+td.col-num { color: var(--text-muted); font-size: 0.74rem; }
+td.col-valor { color: var(--text-secondary); font-weight: 400; white-space: nowrap; }
+td.col-destaque { color: var(--text-color); font-weight: 600; }
+tr.is-sem-dados .estab-nome { color: var(--text-secondary); }
 
-.col-num   { width: 36px; opacity: 0.4; font-weight: 400; }
-.col-establishment,
-.col-obs,
-.col-loc {
-  min-width: 0;
-}
-
-.establishment-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.22rem;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.establishment-name {
-  display: block;
+/* Cabeçalho ordenável: o botão ocupa a célula e herda a tipografia do cabeçalho. */
+.th-ordenar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   max-width: 100%;
-  font-size: 0.8rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.th-ordenar .pi { font-size: 0.7rem; opacity: 0.45; }
+.th-ordenar:hover,
+.th-ordenar:focus-visible { color: var(--text-color); }
+.th-ordenar:hover .pi,
+.th-ordenar:focus-visible .pi { opacity: 0.85; }
+.th-ordenar:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.th-ordenar.is-ativo { color: var(--primary-color); }
+.th-ordenar.is-ativo .pi { opacity: 1; }
+
+/* Linha de grupo (agrupar por UF ou por classificação) */
+.grupo-linha td {
+  padding: 0.45rem 0.9rem;
+  background: color-mix(in srgb, var(--text-color) 4%, var(--card-bg));
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+.grupo-nome { margin-right: 0.75rem; color: var(--text-color); font-weight: 600; }
+.grupo-dado + .grupo-dado::before { content: "·"; margin: 0 0.5rem; color: var(--text-muted); }
+
+/* Estabelecimento: nome e, abaixo, CNPJ, município e data de inclusão */
+.estab { display: flex; flex-direction: column; gap: 0.12rem; min-width: 0; }
+.estab-nome {
+  overflow: hidden;
+  color: var(--text-color);
   font-weight: 500;
   line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
-.cnpj-row {
+.estab-meta {
   display: flex;
   align-items: center;
   gap: 0.3rem;
   min-width: 0;
-}
-
-.cnpj-text {
-  font-size: 0.68rem;
+  overflow: hidden;
   color: var(--text-muted);
+  font-size: 0.72rem;
   white-space: nowrap;
-  letter-spacing: 0.01em;
 }
-
+.estab-meta--sec { gap: 0.35rem; }
+.estab-local { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; }
+.estab-desde { flex-shrink: 0; }
+.estab-sep { opacity: 0.6; }
+.is-compacta .estab-desde,
+.is-compacta .estab-local + .estab-sep { display: none; }
 .copy-btn {
-  width: 20px;
-  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
   padding: 0;
-  border: none;
+  border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
@@ -1276,374 +1827,275 @@ function formatScore(v) {
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-
 .clickable-row:hover .copy-btn,
-.copy-btn:focus-visible {
-  opacity: 1;
-}
-
+.copy-btn:focus-visible { opacity: 1; }
 .copy-btn:hover,
 .copy-btn:focus-visible {
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
   outline: none;
-}
-
-.copy-btn i {
-  font-size: 0.68rem;
-}
-
-.obs-cell {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.obs-content {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  flex: 1;
-  font-size: 0.75rem;
-  color: var(--text-color-85);
-  opacity: 0.8;
-  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-  padding: 0.25rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 10%, transparent);
-}
-.obs-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.obs-edit-btn {
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 20%, transparent);
-  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0.72;
-  transition: all 0.15s ease;
-}
-
-.obs-edit-btn:hover {
-  opacity: 1;
-  color: var(--primary-color);
-  border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
   background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-}
-
-.obs-edit-btn i {
-  font-size: 0.76rem;
-}
-
-.col-date  { opacity: 0.46; font-size: 0.72rem; white-space: nowrap; }
-.col-right { text-align: right; }
-.col-vazio { opacity: 0.3; }
-.col-money { font-size: 0.78rem; white-space: nowrap; opacity: 0.75; }
-.col-sem-comp { color: var(--risk-critical); opacity: 0.65; }
-.col-total-mov { opacity: 0.45; font-size: 0.74rem; }
-
-.loc-block {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.22rem;
-  min-width: 0;
-}
-
-.municipio-text {
-  display: block;
-  max-width: 100%;
-  font-size: 0.78rem;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0.75;
-}
-
-.uf-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.05rem 0.34rem;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
   color: var(--primary-color);
+}
+.copy-btn i { font-size: 0.66rem; }
+
+/* Risco: score e classificação na cor da classe */
+.risco { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--risco-cor); }
+.risco-score { font-weight: 600; }
+.risco-classe {
+  padding: 0.08rem 0.35rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--risco-cor) 12%, transparent);
   font-size: 0.64rem;
   font-weight: 600;
+  letter-spacing: 0.03em;
 }
-
-/* Badge % Não Comprovação */
-.perc-badge {
-  display: inline-block;
-  padding: 0.15rem 0.45rem;
+.tag-sem-dados {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--card-border);
   border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 400;
-}
-.perc-alto  { background: color-mix(in srgb, #ef4444 12%, transparent); color: #ef4444; }
-.perc-medio { background: color-mix(in srgb, #f59e0b 12%, transparent); color: #f59e0b; }
-.perc-baixo { background: color-mix(in srgb, #10b981 12%, transparent); color: #10b981; }
-
-/* Score de Risco */
-.score-badge {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.18rem;
-  font-size: 0.78rem;
-  font-weight: 400;
-}
-.score-value {
-  font-weight: 600;
-  line-height: 1;
-}
-.score-class {
-  font-size: 0.65rem;
-  font-weight: 500;
-  opacity: 0.75;
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  padding: 0.1rem 0.3rem;
-  border-radius: 3px;
-}
-
-.col-actions { width: 136px; text-align: center; }
-
-.action-btns {
-  display: flex;
-  gap: 0.4rem;
-  justify-content: center;
-}
-
-.action-btn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  border: 1px solid var(--tabs-border);
-  background: color-mix(in srgb, var(--text-color-85) 3%, transparent);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-size: 0.72rem;
-  color: var(--text-color-85);
-  opacity: 0.6;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-.action-btn:disabled {
-  cursor: wait;
-  opacity: 0.45;
-}
-.action-btn:hover { opacity: 1; }
-.action-btn.open:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
-}
-.action-btn.report {
-  color: var(--primary-color);
-  border-color: color-mix(in srgb, var(--primary-color) 30%, transparent);
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
-}
-.action-btn.report:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary-color) 25%, transparent);
-}
-.action-btn.note {
-  --btn-note-color: #a855f7;
-  color: var(--btn-note-color);
-  border-color: color-mix(in srgb, var(--btn-note-color) 30%, transparent);
-  background: color-mix(in srgb, var(--btn-note-color) 8%, transparent);
-}
-.action-btn.note:hover {
-  --btn-note-color: #a855f7;
-  border-color: var(--btn-note-color);
-  color: var(--btn-note-color);
-  background: color-mix(in srgb, var(--btn-note-color) 15%, transparent);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--btn-note-color) 25%, transparent);
-}
-/* ── Abas ─────────────────────────────────────────────────────────────── */
-.lists-tabs {
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: -0.75rem;
-}
-
-.lists-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  height: 38px;
-  padding: 0 1rem;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
   color: var(--text-muted);
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
+  font-size: 0.68rem;
+  white-space: nowrap;
 }
 
-.lists-tab:hover { color: var(--text-color-85); }
+/* % sem comprovação: número e barra proporcional */
+.perc { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; --perc-cor: var(--text-secondary); }
+.perc.is-alto { --perc-cor: var(--risk-critical); }
+.perc.is-medio { --perc-cor: var(--risk-medium); }
+.perc-valor { color: var(--perc-cor); font-weight: 600; }
+.perc-trilha {
+  width: 4.5rem;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-color) 10%, transparent);
+}
+.perc-barra { display: block; height: 100%; border-radius: 2px; background: var(--perc-cor); }
+.is-compacta .perc-trilha { display: none; }
 
-.lists-tab.is-active {
-  color: var(--text-color-85);
-  border-color: var(--card-border);
-  background: var(--card-bg);
+/* Alto valor sem comprovação (mesmo destaque da tabela de /estabelecimentos) */
+.high-value-audit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.1rem 0.5rem;
+  border-left: 3px solid var(--alerta-cor);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--alerta-cor) 10%, transparent);
+  color: var(--alerta-cor);
+  font-weight: 600;
+  line-height: 1.2;
 }
 
-.lists-tab i { font-size: 0.85rem; }
-.lists-tab.is-active i { color: var(--evidence-color); }
-
-.lists-tab-count {
-  padding: 0.05rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 500;
-  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
-}
-
-/* ── Coluna Evidências (farmácias) ───────────────────────────────────── */
+/* Evidências */
 .evid-count-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.2rem 0.5rem;
+  height: 1.6rem;
+  padding: 0 0.5rem;
   border: 1px solid color-mix(in srgb, var(--evidence-color) 35%, transparent);
   border-radius: 6px;
   background: color-mix(in srgb, var(--evidence-color) 8%, transparent);
   color: var(--evidence-color);
   font-family: inherit;
   cursor: pointer;
-  white-space: nowrap;
 }
-
 .evid-count-btn:hover,
-.evid-count-btn:focus-visible {
-  border-color: var(--evidence-color);
-  outline: none;
-}
+.evid-count-btn:focus-visible { border-color: var(--evidence-color); outline: none; }
+.evid-count-btn i { font-size: 0.66rem; }
+.evid-count-num { font-size: 0.78rem; font-weight: 600; }
 
-.evid-count-btn i { font-size: 0.68rem; }
-.evid-count-num { font-size: 0.8rem; font-weight: 600; }
-.evid-count-date { font-size: 0.68rem; color: var(--text-muted); }
-
-/* ── Aba Evidências ──────────────────────────────────────────────────── */
-.evid-toolbar { gap: 0.75rem; }
-
-.evid-filtro-farmacia { width: 280px; font-size: 0.78rem; }
-:deep(.evid-filtro-farmacia .p-dropdown-label) { font-size: 0.78rem; padding: 0.35rem 0.6rem; }
-
-.evid-tipos {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
-}
-
-.evid-tipo-btn {
-  height: 28px;
-  padding: 0 0.7rem;
-  border: none;
+/* Observação: o texto é o próprio botão de edição */
+.obs-btn {
+  display: block;
+  width: 100%;
+  padding: 0.2rem 0.4rem;
+  margin: -0.2rem -0.4rem;
+  border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: 0.74rem;
-  font-weight: 500;
-  cursor: pointer;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: left;
+  cursor: text;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-
-.evid-tipo-btn:disabled { cursor: not-allowed; opacity: 0.5; }
-
-.evid-tipo-btn.is-active {
-  color: var(--evidence-color);
-  background: color-mix(in srgb, var(--evidence-color) 12%, transparent);
+.obs-btn:hover,
+.obs-btn:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 6%, transparent);
 }
-
-.evid-table td { vertical-align: top; }
-.evid-table tr.is-busy { opacity: 0.55; }
-
-.evid-table .cnpj-text { display: block; margin-top: 0.15rem; }
-
-.evid-tipo-tag {
+.obs-texto {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.is-compacta .obs-texto { -webkit-line-clamp: 1; line-clamp: 1; }
+.obs-adicionar {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.1rem 0.45rem;
-  border-radius: 5px;
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--text-color-85);
-  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
-  white-space: nowrap;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
+.obs-adicionar .pi { font-size: 0.62rem; }
+.clickable-row:hover .obs-adicionar,
+.clickable-row:focus-within .obs-adicionar { opacity: 1; }
 
-.evid-tipo-tag i { font-size: 0.68rem; color: var(--text-muted); }
-
-.evid-quando { white-space: nowrap; font-weight: 500; }
-
-.evid-resumo {
-  font-size: 0.76rem;
-  line-height: 1.45;
-}
-
-.evid-nota {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  font-size: 0.76rem;
-  line-height: 1.45;
-  white-space: pre-wrap;
-}
-
-.evid-confirma {
-  display: flex;
+/* Ações da linha */
+.col-actions { text-align: center; }
+.action-btns { display: flex; justify-content: flex-end; gap: 0.3rem; }
+.action-btn {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-}
-
-.action-btn.remove.is-confirm {
-  color: var(--risk-critical);
-  border-color: var(--risk-critical);
-  opacity: 1;
-}
-
-.evid-retry-btn {
-  margin-top: 0.5rem;
-  height: 30px;
-  padding: 0 0.9rem;
-  border: 1px solid var(--card-border);
-  border-radius: 7px;
-  background: var(--card-bg);
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--tabs-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-color-85) 3%, transparent);
   color: var(--text-color-85);
-  font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
-
-.evid-error { opacity: 1; }
-.evid-error .empty-icon { color: var(--risk-critical); }
-
+.action-btn:disabled { cursor: wait; opacity: 0.45; }
+/* Neutras em repouso: só o ícone, em cinza. A cor e a borda de cada ação aparecem com
+   o mouse (ou o foco do teclado) na linha; a ação em andamento fica sempre destacada. */
+.lists-table tbody tr:not(:hover):not(:focus-within) .action-btn:not(.is-busy) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.action-btn.is-busy { opacity: 1; }
+.action-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 1px; }
+.action-btn.open:hover {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  color: var(--primary-color);
+}
+.action-btn.report {
+  border-color: color-mix(in srgb, var(--primary-color) 30%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  color: var(--primary-color);
+}
+.action-btn.report:hover {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+}
+.action-btn.note {
+  --btn-note-color: #a855f7;
+  border-color: color-mix(in srgb, var(--btn-note-color) 30%, transparent);
+  background: color-mix(in srgb, var(--btn-note-color) 8%, transparent);
+  color: var(--btn-note-color);
+}
+.action-btn.note:hover {
+  border-color: var(--btn-note-color);
+  background: color-mix(in srgb, var(--btn-note-color) 16%, transparent);
+}
 .action-btn.remove:hover {
   border-color: var(--risk-critical);
-  color: var(--risk-critical);
   background: color-mix(in srgb, var(--risk-critical) 8%, transparent);
+  color: var(--risk-critical);
+}
+
+/* ── Rodapé do card ───────────────────────────────────────────────────── */
+.lists-rodape {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 1.25rem;
+  border-top: 1px solid var(--card-border);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+/* ── Estados ──────────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 4.5rem 2rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+.empty-icon { margin-bottom: 0.4rem; font-size: 2rem; opacity: 0.7; }
+.empty-state p { margin: 0; color: var(--text-color-85); font-size: 0.95rem; font-weight: 500; }
+.empty-state span { max-width: 34rem; font-size: 0.8rem; line-height: 1.45; }
+.lists-botao {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 2.125rem;
+  margin-top: 0.6rem;
+  padding: 0 0.9rem;
+  border: 1px solid var(--primary-color);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  color: var(--primary-color);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.lists-botao:hover { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+.lists-botao:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.lists-botao .pi { font-size: 0.7rem; }
+
+/* Esqueleto: enquanto a lista ou os indicadores carregam */
+.sk {
+  display: inline-block;
+  height: 0.7rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--text-color) 7%, transparent),
+    color-mix(in srgb, var(--text-color) 14%, transparent),
+    color-mix(in srgb, var(--text-color) 7%, transparent));
+  background-size: 200% 100%;
+  animation: sk-brilho 1.3s linear infinite;
+}
+.sk-num { width: 4.5rem; }
+.sk-nome { width: 16rem; }
+.sk-obs { width: 11rem; }
+.sk-total { width: 9rem; height: 1.15rem; }
+.sk-total--curto { width: 4rem; }
+.lists-esqueleto { display: flex; flex-direction: column; }
+.lists-esqueleto-linha {
+  display: flex;
+  align-items: center;
+  gap: 3rem;
+  padding: 1.05rem 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+}
+.lists-esqueleto-linha:last-child { border-bottom: 0; }
+.lists-esqueleto-linha .sk-nome { margin-right: auto; }
+@keyframes sk-brilho { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sk { animation: none; }
+}
+
+/* Rótulo só para leitores de tela (cabeçalho da coluna de ações). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

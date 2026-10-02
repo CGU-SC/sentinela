@@ -5,6 +5,7 @@ from datetime import date, datetime
 from database import get_db, engine
 from ..schemas.analytics import (
     CrmPerfilExportRequest,
+    ListaInteresseExportRequest,
     AnalyticsResponse, FatorRiscoResponseSchema,
     RedeEstabelecimentoSchema, EvolucaoFinanceiraResponse, IndicadoresResponse,
     ProducaoSemestralResponse,
@@ -35,6 +36,7 @@ from ..schemas.analytics import (
 from ..services.analytics import AnalyticsService
 from ..services.analytics.filtros_farmacia import FiltrosFarmacia
 from ..services.analytics.crm_filtros_medico import FiltrosMedico, montar_filtros_medico
+from ..services.watchlist_export import export_watchlist_csv, export_watchlist_xlsx
 from fastapi.responses import Response, StreamingResponse
 from loguru import logger
 from request_logging import FrontendPerformanceEvent, log_frontend_performance
@@ -64,10 +66,13 @@ def _crm_filtros_medico(
     municipios_min: Optional[int] = Query(None, description="Minimo de municipios onde o medico atuou no periodo (inclusivo)."),
     municipios_max: Optional[int] = Query(None, description="Maximo de municipios onde o medico atuou no periodo (inclusivo)."),
     sequencia_severidade_min: Optional[int] = Query(
-        None, description="Severidade minima das sequencias de autorizacoes (unico CRM): 1 alta, 2 grave, 3 critica, 4 extrema.",
+        None, description="Severidade minima das sequencias de autorizacoes: 1 alta, 2 grave, 3 critica, 4 extrema.",
     ),
     sequencia_dias_min: Optional[int] = Query(None, description="Minimo de dias com sequencia no periodo (inclusivo)."),
     sequencia_dias_max: Optional[int] = Query(None, description="Maximo de dias com sequencia no periodo (inclusivo)."),
+    sequencia_tipo: Optional[Literal["unico", "multiplo", "qualquer"]] = Query(
+        None, description="Origem dos dias de sequencia: unico CRM (padrao), multiplos CRMs ou qualquer.",
+    ),
 ) -> FiltrosMedico:
     """Filtros de medico (Cadastro CFM, Producao e Atuacao nas farmacias) de /analises, validados."""
     return montar_filtros_medico(
@@ -86,6 +91,7 @@ def _crm_filtros_medico(
         sequencia_severidade_min=sequencia_severidade_min,
         sequencia_dias_min=sequencia_dias_min,
         sequencia_dias_max=sequencia_dias_max,
+        sequencia_tipo=sequencia_tipo,
     )
 
 
@@ -841,6 +847,30 @@ def export_crm_prescritores(cnpj: str, body: CrmPerfilExportRequest):
     filename, chunks = AnalyticsService.export_crm_perfil_csv(
         cnpj, body.data_inicio, body.data_fim, body.ids, body.filtro
     )
+    return StreamingResponse(
+        chunks,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post("/lista-interesse/exportar")
+def export_lista_interesse(body: ListaInteresseExportRequest, db: Session = Depends(get_db)):
+    """Baixa as Farmácias Monitoradas (tela /listas), no período de análise, em CSV ou Excel."""
+    if body.formato == "xlsx":
+        filename, content = export_watchlist_xlsx(db, body.data_inicio, body.data_fim)
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
+        )
+    filename, chunks = export_watchlist_csv(db, body.data_inicio, body.data_fim)
     return StreamingResponse(
         chunks,
         media_type="text/csv; charset=utf-8",

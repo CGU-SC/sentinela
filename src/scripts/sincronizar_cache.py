@@ -64,6 +64,7 @@ from data_cache import (
     _sync_geografico_global,
     _sync_crm_concentracao_unico_alertas_global,
     _sync_crm_concentracao_multiplo_alertas_global,
+    _sync_crm_concentracao_multiplo_medico_global,
     _sync_crm_timeline_dia_global,
     _sync_crm_timeline_hora_global,
     _sync_crm_timeline_eventos_global,
@@ -387,6 +388,8 @@ MODULOS = sorted([
     {"id": 34, "name": "CRM Geo Global", "func": _sync_geografico_global, "peso": "pesado", "ordem": 34},
     {"id": 35, "name": "CRM ConcUnico Global", "func": _sync_crm_concentracao_unico_alertas_global, "peso": "pesado", "ordem": 35},
     {"id": 36, "name": "CRM ConcMulti Global", "func": _sync_crm_concentracao_multiplo_alertas_global, "peso": "pesado", "ordem": 36},
+    # Monta localmente a partir de 16 (Raio-X) e 36 (sem consultar o banco).
+    {"id": 55, "name": "CRM ConcMulti por Medico (local, depois de 16/36)", "func": _sync_crm_concentracao_multiplo_medico_global, "peso": "pesado", "ordem": 36.1},
     {"id": 37, "name": "CRM Dia Global", "func": _sync_crm_timeline_dia_global, "peso": "pesado", "ordem": 37},
     {"id": 38, "name": "CRM Hora Global", "func": _sync_crm_timeline_hora_global, "peso": "pesado", "ordem": 38},
     {"id": 39, "name": "CRM Eventos Global", "func": _sync_crm_timeline_eventos_global, "peso": "pesado", "ordem": 39},

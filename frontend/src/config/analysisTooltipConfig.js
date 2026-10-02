@@ -1,3 +1,5 @@
+import { CRM_SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES } from '@/config/crmFiltrosMedico';
+
 /**
  * Tooltips informativos da página de Análises (mapa e ranking de CRMs).
  *
@@ -117,29 +119,26 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
       },
     ],
   },
-  crmFiltroSequenciaSeveridade: {
-    title: 'Autorizações em sequência · severidade',
-    body: 'Dias em que o médico teve muitas prescrições em poucos minutos numa farmácia (único CRM), o mesmo ponto de atenção do histórico do CRM. A severidade escolhida define quais dias contam: "Grave ou pior" conta os dias graves, críticos e extremos.',
+  crmFiltroSequencia: {
+    title: 'Autorizações em sequência',
+    body: 'Filtra os médicos pelos dias com muitas autorizações em poucos minutos numa farmácia, no período. O tipo escolhe quais sequências contam; a severidade e os dias definem o quanto.',
     icon: 'pi-bolt',
     sections: [
       {
-        label: 'Com os dias',
-        text: 'Sozinha, a severidade traz os médicos com pelo menos 1 dia nesse nível. Junto com "Dias com sequência", os dias são contados nesse nível (ex.: grave ou pior + ≥ 10 = 10 ou mais dias graves, críticos ou extremos).',
+        label: 'Tipo',
+        text: `Único CRM (padrão): dias em que o próprio médico concentrou as autorizações, o mesmo ponto de atenção do histórico do CRM. Múltiplos CRMs: dias em que a farmácia teve uma sequência com vários médicos e este médico tinha pelo menos ${CRM_SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES} autorizações dentro dela (na maioria das janelas o médico aparece com 1 só; o mínimo evita marcar quem estava ali de passagem). Qualquer: dias de um tipo ou do outro. O tipo só tem efeito junto com a severidade ou com os dias.`,
+      },
+      {
+        label: 'Severidade mínima',
+        text: 'Define quais dias contam: "Grave ou pior" conta os dias graves, críticos e extremos. Sozinha, traz os médicos com pelo menos 1 dia nesse nível.',
+      },
+      {
+        label: 'Dias com sequência',
+        text: 'Quantidade de dias com sequência no período, na severidade escolhida (sem ela, qualquer uma). Em único CRM, cerca de 5% dos médicos têm algum dia; entre eles, metade tem até 3 dias e 10% passam de 44 dias. Médicos sem nenhuma sequência contam como 0 dias.',
       },
       {
         label: 'Abrangência',
         text: 'Todas as farmácias do médico no Brasil, no período, independentemente do recorte e dos filtros de farmácia. Escolhe os médicos em todas as abas.',
-      },
-    ],
-  },
-  crmFiltroSequenciaDias: {
-    title: 'Dias com sequência',
-    body: 'Quantidade de dias, no período, com autorizações em sequência do médico (único CRM), na severidade mínima escolhida acima (sem ela, qualquer severidade).',
-    icon: 'pi-calendar',
-    sections: [
-      {
-        label: 'Leitura',
-        text: 'Cerca de 5% dos médicos têm algum dia de sequência; entre eles, metade tem até 3 dias e 10% passam de 44 dias. Médicos sem nenhuma sequência contam como 0 dias.',
       },
     ],
   },
@@ -159,6 +158,21 @@ const ANALYSIS_TOOLTIP_COPY = Object.freeze({
       {
         label: 'Média de referência',
         text: 'Soma dos médicos com taxa elevada ÷ soma dos médicos ativos dos municípios da região ou, no mapa nacional, das 27 UFs. Um médico conta em cada território onde prescreveu.',
+      },
+    ],
+  },
+  listaInteresse: {
+    title: 'Farmácias monitoradas',
+    body: 'Estabelecimentos adicionados à lista de interesse para acompanhamento. Os números de cada farmácia são do período de análise escolhido; os demais filtros da barra lateral não se aplicam a esta tela.',
+    icon: 'pi-bookmark',
+    sections: [
+      {
+        label: 'Sua visão',
+        text: 'Ordenação, filtros, agrupamento e densidade das linhas ficam salvos neste navegador. Os totais do topo somam só as farmácias exibidas.',
+      },
+      {
+        label: 'Atalho',
+        text: 'Tecle / para ir direto à busca.',
       },
     ],
   },
@@ -500,13 +514,8 @@ export const CRM_ALERTA_ICONES = Object.freeze({
   concentracao: 'pi-building',
 });
 
-/** Controle "antes da 1ª inscrição" desabilitado com "Não localizado" marcado. */
-
 /** Ícone do selo "Não localizado no CFM" da coluna MÉDICO / CRM do ranking. */
 export const CRM_NAO_LOCALIZADO_ICONE = 'pi-id-card';
-
-/** Selo da coluna MÉDICO / CRM do ranking quando o CRM não consta no cadastro do CFM. */
-export const CRM_NAO_LOCALIZADO_TOOLTIP = 'CRM não consta no cadastro do CFM. Sem a data de 1ª inscrição, não é possível conferir prescrições anteriores à inscrição.';
 
 /**
  * Tooltip do ícone de alertas do ranking de CRMs: todos os pontos de atenção

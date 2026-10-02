@@ -4,10 +4,13 @@ Mesmos alertas do painel do CRM na aba Autorizacoes do estabelecimento, mas em
 todas as farmacias do medico, uma linha por janela de sequencia:
 
 * unico: crm_concentracao_unico_alertas_global (sequencias do proprio CRM);
-* multiplos: crm_concentracao_multiplo_alertas_global cruzada com as
-  autorizacoes do medico no Raio-X (crm_raiox_tx_global). A tabela de alertas
-  nao identifica o medico: ele entra na janela quando tem ao menos uma
-  autorizacao dentro dela (mesma regra de crm._build_alertas_crm_multiplos_por_medico);
+* multiplos: janelas de crm_concentracao_multiplo_alertas_global em que o
+  medico tem ao menos uma autorizacao. A tabela de alertas nao identifica o
+  medico; quem liga os dois e a ponte medico x janela
+  (crm_concentracao_multiplo_medico_global), montada na sincronizacao a partir
+  do Raio-X com a mesma regra de crm._build_alertas_crm_multiplos_por_medico
+  (ver crm_multiplo_medico.py). As autorizacoes de uma janela, quando o
+  usuario a abre, continuam vindo do Raio-X (crm_raiox_tx_global);
 * distancia: geografico_global (pares de farmacias distantes no mesmo mes).
 
 Periodo por competencia (como o historico e a aba do estabelecimento). Com
@@ -25,9 +28,11 @@ import polars as pl
 from fastapi import HTTPException
 
 from data_cache import (
+    conferir_crm_concentracao_multiplo_medico_global,
     get_dados_medico_df,
     get_df_perfil_estabelecimento,
     scan_crm_concentracao_multiplo_alertas_global,
+    scan_crm_concentracao_multiplo_medico_global,
     scan_crm_concentracao_unico_alertas_global,
     scan_crm_raiox_tx_global,
     scan_geografico_global,
@@ -160,42 +165,39 @@ def _unico(id_medico: str, comp_ini: int, comp_fim: int, id_cnpj: Optional[int])
 
 
 def _multiplos(id_medico: str, comp_ini: int, comp_fim: int, id_cnpj: Optional[int]) -> pl.DataFrame:
-    competencia_tx = (
-        pl.col("dt_janela").cast(pl.Utf8).str.slice(0, 4).cast(pl.Int32) * 100
-        + pl.col("dt_janela").cast(pl.Utf8).str.slice(5, 2).cast(pl.Int32)
-    )
-    filtro_tx = (pl.col("id_medico") == id_medico) & competencia_tx.is_between(comp_ini, comp_fim)
-    if id_cnpj is not None:
-        filtro_tx &= pl.col("id_cnpj") == id_cnpj
-    tx = (
-        scan_crm_raiox_tx_global()
-        .filter(filtro_tx)
-        .select([
-            pl.col("id_cnpj").cast(pl.Int32),
-            pl.col("dt_janela").cast(pl.Utf8).str.slice(0, 10).alias("dt"),
-            pl.col("data_hora").cast(pl.Utf8).str.strptime(pl.Datetime, strict=False).alias("data_hora"),
-            pl.col("num_autorizacao").cast(pl.Utf8),
-        ])
-        .collect()
-    )
+    """Janelas de multiplos CRMs com ao menos uma autorizacao do medico.
+
+    A ponte medico x janela diz em quais janelas o medico esta e com quantas
+    autorizacoes; os demais numeros vem da tabela de alertas, pela chave da
+    janela (id_cnpj, inicio). Janela da ponte sem alerta correspondente indica
+    modulos de execucoes diferentes: responde 503.
+    """
     vazio = pl.DataFrame(schema={
         "id_cnpj": pl.Int32, "dt": pl.Utf8, "hr_janela": pl.Int32, "dt_ini_hora": pl.Datetime,
         "dt_fim_hora": pl.Datetime, "nu_autorizacoes_crm": pl.Int64, "nu_autorizacoes_total": pl.Int64,
         "nu_crms": pl.Int64, "nu_minutos": pl.Int64, "taxa_hora": pl.Float64, "id_severidade": pl.Int32,
     })
-    if tx.is_empty():
+    filtro = (pl.col("id_medico") == id_medico) & pl.col("competencia").is_between(comp_ini, comp_fim)
+    if id_cnpj is not None:
+        filtro &= pl.col("id_cnpj") == id_cnpj
+    # Ponte montada com outro Raio-X/alertas: erro em vez de janelas antigas.
+    conferir_crm_concentracao_multiplo_medico_global()
+    ponte = (
+        scan_crm_concentracao_multiplo_medico_global()
+        .filter(filtro)
+        .select([
+            pl.col("id_cnpj").cast(pl.Int32),
+            pl.col("dt_ini_concentracao").cast(pl.Datetime).alias("dt_ini_hora"),
+            pl.col("nu_autorizacoes_crm").cast(pl.Int64),
+        ])
+        .collect()
+    )
+    if ponte.is_empty():
         return vazio
-    if tx.get_column("data_hora").null_count():
-        raise HTTPException(status_code=503, detail="Autorizacoes do Raio-X sem data/hora valida.")
-    farmacias = tx.get_column("id_cnpj").unique().to_list()
-    dias = tx.get_column("dt").unique().to_list()
+    farmacias = ponte.get_column("id_cnpj").unique().to_list()
     alertas = (
         scan_crm_concentracao_multiplo_alertas_global()
-        .filter(
-            pl.col("id_cnpj").is_in(farmacias)
-            & pl.col("competencia").is_between(comp_ini, comp_fim)
-            & pl.col("dt_alerta").cast(pl.Utf8).str.slice(0, 10).is_in(dias)
-        )
+        .filter(pl.col("id_cnpj").is_in(farmacias) & pl.col("competencia").is_between(comp_ini, comp_fim))
         .select([
             pl.col("id_cnpj").cast(pl.Int32),
             pl.col("dt_alerta").cast(pl.Utf8).str.slice(0, 10).alias("dt"),
@@ -210,24 +212,17 @@ def _multiplos(id_medico: str, comp_ini: int, comp_fim: int, id_cnpj: Optional[i
             pl.col("id_severidade").cast(pl.Int32),
         ])
         .collect()
-        .with_row_index("_alerta")
     )
-    if alertas.is_empty():
-        return vazio
     if alertas.select(pl.col("dt_ini_hora").is_null() | pl.col("dt_fim_hora").is_null()).to_series().any():
         raise HTTPException(status_code=503, detail="Alerta de multiplos CRMs sem inicio/fim da janela.")
     _conferir_severidades(alertas, "sequencias de multiplos CRMs")
-    cruzado = (
-        tx.join(alertas, on=["id_cnpj", "dt"], how="inner")
-        .filter(pl.col("data_hora").is_between(pl.col("dt_ini_hora"), pl.col("dt_fim_hora")))
-        .group_by("_alerta")
-        .agg([
-            pl.col("num_autorizacao").n_unique().cast(pl.Int64).alias("nu_autorizacoes_crm"),
-            *(pl.col(c).first() for c in vazio.columns if c != "nu_autorizacoes_crm"),
-        ])
-        .select(vazio.columns)
-    )
-    return cruzado
+    cruzado = ponte.join(alertas, on=["id_cnpj", "dt_ini_hora"], how="left")
+    if cruzado.get_column("dt").null_count():
+        raise HTTPException(
+            status_code=503,
+            detail="Janela de multiplos CRMs do medico sem alerta correspondente (modulos de execucoes diferentes).",
+        )
+    return cruzado.select(vazio.columns)
 
 
 def _distancia(id_medico: str, comp_ini: int, comp_fim: int, id_cnpj: Optional[int]) -> pl.DataFrame:

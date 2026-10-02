@@ -36,13 +36,21 @@ Regras (sempre no periodo da pagina):
   (id_ibge7 da farmacia) com prescricao do medico no periodo, no Brasil. Mesma
   regra dos demais filtros de atuacao, calculo proprio (_municipios_por_medico)
   -- o KPI "municipios" do modal do historico;
-* autorizacoes em sequencia (unico CRM): dias com sequencia do medico no
-  periodo (crm_concentracao_unico_alertas_global, todas as farmacias), so os
-  de severidade >= a minima escolhida (1 alta, 2 grave, 3 critica, 4
-  extrema). Faixa de dias inclusiva; medico sem nenhum dia de sequencia tem 0
-  dias (ausencia na tabela de alertas = nenhuma sequencia). Severidade sem
-  faixa de dias = pelo menos 1 dia. Mesma regra do ponto de atencao
-  "rajadas_unico" do modal do historico.
+* autorizacoes em sequencia: dias com sequencia do medico no periodo, todas as
+  farmacias, so os de severidade >= a minima escolhida (1 alta, 2 grave, 3
+  critica, 4 extrema). Faixa de dias inclusiva; medico sem nenhum dia de
+  sequencia tem 0 dias (ausencia na tabela = nenhuma sequencia). Severidade
+  sem faixa de dias = pelo menos 1 dia. O tipo escolhe a origem dos dias:
+    - unico (padrao): sequencias do proprio CRM
+      (crm_concentracao_unico_alertas_global) -- mesma regra do ponto de
+      atencao "rajadas_unico" do modal do historico;
+    - multiplo: janelas de varios CRMs na farmacia em que o medico tem pelo
+      menos SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES autorizacoes
+      (crm_concentracao_multiplo_medico_global, a ponte medico x janela
+      derivada do Raio-X). A participacao minima existe porque a janela e um
+      evento da farmacia: a mediana e 1 autorizacao do medico por janela, e
+      sem o minimo o filtro alcancaria ~40% dos medicos;
+    - qualquer: dias distintos de um tipo ou de outro.
 """
 
 from dataclasses import dataclass, replace
@@ -55,8 +63,10 @@ from fastapi import HTTPException
 from pyroaring import BitMap
 
 from data_cache import (
+    conferir_crm_concentracao_multiplo_medico_global,
     get_dados_medico_df,
     get_df_perfil_estabelecimento,
+    scan_crm_concentracao_multiplo_medico_global,
     scan_crm_concentracao_unico_alertas_global,
     scan_crm_farmacia_medico_ano,
     scan_crm_medico_dim,
@@ -71,6 +81,14 @@ UFS_CRM = frozenset({
     "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA",
     "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
 })
+TIPOS_SEQUENCIA = frozenset({"unico", "multiplo", "qualquer"})
+TIPO_SEQUENCIA_PADRAO = "unico"
+# Janela de multiplos CRMs so conta para o medico com pelo menos N autorizacoes nela.
+# Com 3 o filtro alcancava ~107 mil medicos (qualquer severidade, >= 1 dia); com 5,
+# ~45 mil (-58%), perto do filtro de unico CRM (~59 mil). Tirar a severidade "alta"
+# cortaria so 29%: o ruido vem do medico de passagem na janela, nao da severidade.
+# O modulo guarda o numero por janela, entao mudar este valor nao exige sincronizar.
+SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES = 5
 _ID_MEDICO_RE = r"^\d+/[A-Z]{2}$"
 # Chave unica medico x farmacia (medico * 2^31 + id_cnpj; id_cnpj e Int32 >= 0):
 # agrupar por uma coluna Int64 foi ~40% mais rapido que por duas (benchmark).
@@ -101,6 +119,8 @@ class FiltrosMedico:
     sequencia_severidade_min: Optional[int] = None
     sequencia_dias_min: Optional[int] = None
     sequencia_dias_max: Optional[int] = None
+    # Origem dos dias de sequencia; so vale com severidade ou faixa de dias.
+    sequencia_tipo: str = TIPO_SEQUENCIA_PADRAO
 
     @property
     def usa_sequencia(self) -> bool:
@@ -157,6 +177,7 @@ class FiltrosMedico:
             self.exclusividade_min, self.exclusividade_max, self.farmacias_min, self.farmacias_max,
             self.municipios_min, self.municipios_max,
             self.sequencia_severidade_min, self.sequencia_dias_min, self.sequencia_dias_max,
+            self.sequencia_tipo,
         )
 
     def sem_faixas(self) -> "FiltrosMedico":
@@ -218,6 +239,7 @@ def montar_filtros_medico(
     sequencia_severidade_min: Optional[int] = None,
     sequencia_dias_min: Optional[int] = None,
     sequencia_dias_max: Optional[int] = None,
+    sequencia_tipo: Optional[str] = None,
 ) -> FiltrosMedico:
     """Valida e normaliza os filtros de medico recebidos pela API.
 
@@ -231,15 +253,17 @@ def montar_filtros_medico(
         farmacias_min / farmacias_max: faixa do no de farmacias onde atuou.
         municipios_min / municipios_max: faixa do no de municipios onde atuou.
         sequencia_severidade_min: severidade minima (1..4) dos dias de
-            sequencia (unico CRM) que contam.
+            sequencia que contam.
         sequencia_dias_min / sequencia_dias_max: faixa de dias com sequencia.
+        sequencia_tipo: "unico" (padrao), "multiplo" ou "qualquer"; so tem
+            efeito com severidade ou faixa de dias (sem elas vira o padrao).
 
     Returns:
         FiltrosMedico com UFs ordenadas e sem repeticao.
 
     Raises:
-        HTTPException 422: situacao ou UF invalida ou faixa invalida
-            (negativa, exclusividade acima de 100% ou minimo maior que maximo).
+        HTTPException 422: situacao, UF ou tipo de sequencia invalido ou faixa
+            invalida (negativa, exclusividade acima de 100% ou minimo maior que maximo).
     """
     if situacao_cfm is not None and situacao_cfm not in SITUACOES_CFM:
         raise HTTPException(status_code=422, detail="situacao_cfm deve ser localizado ou nao_localizado.")
@@ -260,6 +284,9 @@ def montar_filtros_medico(
             raise HTTPException(status_code=422, detail=f"Faixa de {nome}: minimo maior que maximo.")
     if sequencia_severidade_min is not None and sequencia_severidade_min not in SEVERIDADES_SEQUENCIA:
         raise HTTPException(status_code=422, detail="sequencia_severidade_min deve ser 1 (alta), 2 (grave), 3 (critica) ou 4 (extrema).")
+    if sequencia_tipo is not None and sequencia_tipo not in TIPOS_SEQUENCIA:
+        raise HTTPException(status_code=422, detail="sequencia_tipo deve ser unico, multiplo ou qualquer.")
+    usa_sequencia = any(v is not None for v in (sequencia_severidade_min, sequencia_dias_min, sequencia_dias_max))
     if any(v is not None and not 0 <= v <= 100 for v in (exclusividade_min, exclusividade_max)):
         raise HTTPException(status_code=422, detail="Faixa de exclusividade deve estar entre 0 e 100%.")
     if exclusividade_min is not None and exclusividade_max is not None and exclusividade_min > exclusividade_max:
@@ -280,6 +307,8 @@ def montar_filtros_medico(
         sequencia_severidade_min=sequencia_severidade_min,
         sequencia_dias_min=sequencia_dias_min,
         sequencia_dias_max=sequencia_dias_max,
+        # Sem filtro de sequencia o tipo nao escolhe nada: fica o padrao (mesma chave de cache).
+        sequencia_tipo=(sequencia_tipo or TIPO_SEQUENCIA_PADRAO) if usa_sequencia else TIPO_SEQUENCIA_PADRAO,
     )
 
 
@@ -560,40 +589,97 @@ def farmacias_dos_medicos(id_medicos: list[str], inicio: date, fim: date) -> pl.
     )
 
 
-def _sequencia_por_medico(inicio: date, fim: date, severidade_min: int) -> pl.DataFrame:
-    """Dias com sequencia (unico CRM) de severidade >= severidade_min, por medico.
+def _conferir_severidades_sequencia(linhas: pl.DataFrame) -> None:
+    desconhecidas = set(linhas.get_column("id_severidade").unique().to_list()) - SEVERIDADES_SEQUENCIA
+    if desconhecidas:
+        raise HTTPException(status_code=503, detail=f"Severidade de sequencia desconhecida nos alertas: {sorted(desconhecidas)}.")
 
-    Mesma contagem do ponto de atencao "rajadas_unico" do modal (dias
-    distintos de dt_alerta no periodo, todas as farmacias). A tabela tem 1,9 mi
-    linhas: a agregacao leva centesimos de segundo.
+
+def _dias_sequencia_unico(inicio: date, fim: date, severidade_min: int) -> pl.DataFrame:
+    """Medico x dia com sequencia do proprio CRM (id_medico, dt), severidade >= minima."""
+    try:
+        alertas = (
+            scan_crm_concentracao_unico_alertas_global()
+            .filter(pl.col("competencia").cast(pl.Int32).is_between(_competencia(inicio), _competencia(fim)))
+            .select(
+                pl.col("id_medico").cast(pl.Utf8),
+                pl.col("dt_alerta").cast(pl.Utf8).str.slice(0, 10).alias("dt"),
+                pl.col("id_severidade").cast(pl.Int32),
+            )
+            .collect()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Alertas de sequencia (unico CRM) indisponiveis: {exc}") from exc
+    _conferir_severidades_sequencia(alertas)
+    return alertas.filter(pl.col("id_severidade") >= severidade_min).select(["id_medico", "dt"]).unique()
+
+
+def _dias_sequencia_multiplo(inicio: date, fim: date, severidade_min: int) -> pl.DataFrame:
+    """Medico x dia em janela de multiplos CRMs (id_medico, dt), severidade >= minima.
+
+    So as janelas em que o medico tem pelo menos
+    SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES autorizacoes. Competencia e no de
+    autorizacoes sao comparados sem cast, para o Polars usar as estatisticas
+    do arquivo (15 mi de linhas).
+    """
+    try:
+        # Ponte montada com outro Raio-X/alertas: 503 em vez de numeros antigos.
+        conferir_crm_concentracao_multiplo_medico_global()
+        janelas = (
+            scan_crm_concentracao_multiplo_medico_global()
+            .filter(
+                pl.col("competencia").is_between(_competencia(inicio), _competencia(fim))
+                & (pl.col("nu_autorizacoes_crm") >= SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES)
+            )
+            .select(
+                pl.col("id_medico").cast(pl.Utf8),
+                pl.col("dt_alerta").cast(pl.Utf8).alias("dt"),
+                pl.col("id_severidade").cast(pl.Int32),
+            )
+            .collect()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Sequencias de multiplos CRMs por medico indisponiveis: {exc}",
+        ) from exc
+    _conferir_severidades_sequencia(janelas)
+    return janelas.filter(pl.col("id_severidade") >= severidade_min).select(["id_medico", "dt"]).unique()
+
+
+def _sequencia_por_medico(
+    inicio: date, fim: date, severidade_min: int, tipo: str = TIPO_SEQUENCIA_PADRAO,
+) -> pl.DataFrame:
+    """Dias com sequencia de severidade >= severidade_min, por medico, no periodo.
+
+    Args:
+        inicio: inicio do periodo da pagina.
+        fim: fim do periodo da pagina.
+        severidade_min: severidade minima (1..4) dos dias que contam.
+        tipo: "unico" (sequencias do proprio CRM; mesma contagem do ponto de
+            atencao "rajadas_unico" do modal), "multiplo" (janelas de varios
+            CRMs com participacao minima do medico) ou "qualquer" (dias
+            distintos de um ou de outro).
 
     Returns:
         id_medico (Utf8) e dias (UInt32), so os medicos com pelo menos 1 dia.
     """
+    if tipo not in TIPOS_SEQUENCIA:
+        raise ValueError(f"Tipo de sequencia invalido: {tipo}")
+
     def calcular() -> pl.DataFrame:
-        try:
-            alertas = (
-                scan_crm_concentracao_unico_alertas_global()
-                .filter(pl.col("competencia").cast(pl.Int32).is_between(_competencia(inicio), _competencia(fim)))
-                .select(
-                    pl.col("id_medico").cast(pl.Utf8),
-                    pl.col("dt_alerta").cast(pl.Utf8),
-                    pl.col("id_severidade").cast(pl.Int32),
-                )
-                .collect()
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=f"Alertas de sequencia (unico CRM) indisponiveis: {exc}") from exc
-        desconhecidas = set(alertas.get_column("id_severidade").unique().to_list()) - SEVERIDADES_SEQUENCIA
-        if desconhecidas:
-            raise HTTPException(status_code=503, detail=f"Severidade de sequencia desconhecida nos alertas: {sorted(desconhecidas)}.")
+        partes = []
+        if tipo in ("unico", "qualquer"):
+            partes.append(_dias_sequencia_unico(inicio, fim, severidade_min))
+        if tipo in ("multiplo", "qualquer"):
+            partes.append(_dias_sequencia_multiplo(inicio, fim, severidade_min))
         return (
-            alertas.filter(pl.col("id_severidade") >= severidade_min)
+            pl.concat(partes)
             .group_by("id_medico")
-            .agg(pl.col("dt_alerta").n_unique().alias("dias"))
+            .agg(pl.col("dt").n_unique().alias("dias"))
         )
 
-    return _CACHE_BASES.obter(("sequencia", inicio, fim, severidade_min), calcular)
+    return _CACHE_BASES.obter(("sequencia", tipo, inicio, fim, severidade_min), calcular)
 
 
 def medicos_filtrados(filtros: FiltrosMedico, inicio: date, fim: date, recorte: Recorte) -> BitMap:
@@ -643,7 +729,7 @@ def medicos_filtrados(filtros: FiltrosMedico, inicio: date, fim: date, recorte: 
             # Medico fora da tabela de alertas tem 0 dias de sequencia (nao e dado ausente).
             dias = (
                 dim.select("id_medico")
-                .join(_sequencia_por_medico(inicio, fim, severidade), on="id_medico", how="left")
+                .join(_sequencia_por_medico(inicio, fim, severidade, filtros.sequencia_tipo), on="id_medico", how="left")
                 .with_columns(pl.col("dias").fill_null(0))
             )
             condicoes = []

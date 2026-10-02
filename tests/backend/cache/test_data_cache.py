@@ -2296,6 +2296,19 @@ def test_crm_doctor_dimension_simple_sync_and_bitmap_index_delegate(
     cache._sync_crm_indice_bitmaps(progress_callback=progress.append)
     assert calls == [(str(tmp_path / "bitmap.parquet"), progress.append)]
 
+    # Ponte medico x janela de multiplos CRMs: tambem montada localmente.
+    bridge_calls = []
+    fake_bridge = SimpleNamespace(
+        construir=lambda output, progress_callback: bridge_calls.append((output, progress_callback)),
+        conferir_fontes=lambda path: bridge_calls.append(("conferir", path)),
+    )
+    bridge_path = str(tmp_path / "ponte.parquet")
+    monkeypatch.setitem(sys.modules, "crm_multiplo_medico", fake_bridge)
+    monkeypatch.setattr(cache, "_CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH", bridge_path)
+    cache._sync_crm_concentracao_multiplo_medico_global(progress_callback=progress.append)
+    cache.conferir_crm_concentracao_multiplo_medico_global()
+    assert bridge_calls == [(bridge_path, progress.append), ("conferir", bridge_path)]
+
 
 def test_sync_orchestrators_forward_identifiers_and_progress(monkeypatch, isolated_cache_state):
     cache = isolated_cache_state

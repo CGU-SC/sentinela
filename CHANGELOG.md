@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.0.3] - 2026-10-02
+
+### Adicionado
+- **Filtro de autorizações em sequência para múltiplos CRMs.** Na análise de prescrições por CRM, o filtro de médicos passa a oferecer o tipo da sequência: único CRM, múltiplos CRMs ou qualquer. Em múltiplos CRMs, contam as sequências da farmácia em que o médico tem pelo menos 5 autorizações.
+- **Módulo de dados de médicos por sequência de múltiplos CRMs.** O novo módulo é montado na sincronização a partir do Raio-X de CRM e dos alertas de múltiplos CRMs, sem consulta ao banco. O filtro de múltiplos CRMs e as evidências do histórico do CRM dependem dele; se o Raio-X ou os alertas forem sincronizados de novo, o módulo precisa ser refeito.
+- **Ícones nos campos de filtro.** Período de análise, valor mínimo sem comprovação, população do município, UF, município, Jurisdição PF, estabelecimento e busca de médico exibem um ícone dentro do campo.
+- **Exportação das Farmácias Monitoradas.** A lista pode ser baixada em Excel (planilha formatada, com totais e aba de critérios) ou CSV, com os números do período de análise.
+- **Busca, filtros e agrupamento nas Farmácias Monitoradas.** Busca por nome, CNPJ, município ou observação; filtros por classificação de risco, UF, farmácias com evidências e com observação; agrupamento por UF ou por classificação, com subtotal por grupo; e linhas confortáveis ou compactas. A visão escolhida fica salva no navegador.
+- **Totais das Farmácias Monitoradas.** Farmácias, total movimentado, valor sem comprovação e percentual sem comprovação das farmácias exibidas, com a composição por classificação de risco.
+- **Favoritar farmácias na Teia Societária.** O painel de uma farmácia do programa, inclusive a farmácia em análise, permite adicioná-la às Farmácias Monitoradas e registrar uma anotação.
+
+### Alterado
+- **Filtro de autorizações em sequência dos médicos reorganizado.** Tipo, severidade mínima e dias com sequência aparecem como um único filtro, com uma explicação e um botão de limpar, no grupo "Alertas", no mesmo formato do filtro equivalente dos estabelecimentos.
+- **Evidências de múltiplos CRMs no histórico do CRM.** A lista de sequências passa a ser lida do novo módulo de dados; os resultados exibidos são os mesmos.
+- **Ordem dos filtros da barra lateral.** "Período e valores" passa a ser o primeiro grupo da seção Geral, e "Aumento semestral atípico" aparece antes de "Autorizações em sequência".
+- **Campos das duas barras de filtros com a mesma altura.** Os seletores e a busca de médico da análise de CRMs ficaram do mesmo tamanho dos campos da barra de filtros principal.
+- **Farmácias Monitoradas reorganizadas.** A tela ganhou uma barra única com título, período e exportação; o período pode ser alterado direto na tela; as colunas podem ser ordenadas (padrão: maior valor sem comprovação primeiro); valores aparecem por extenso, com o mesmo destaque de alto valor sem comprovação da lista de estabelecimentos; as ações das linhas ficam discretas até o mouse passar sobre elas; e a regional das Notas Técnicas passou para o rodapé da tabela.
+- **Formato dos números nas Farmácias Monitoradas.** Score de risco e percentuais passam a usar vírgula decimal (ex.: 61,52 e 57,6%).
+- **Validação mais rígida dos dados de CRM e de indicadores.** A leitura dos caches passa a informar erro quando faltam colunas obrigatórias, em vez de completar o dado com valores vazios.
+
+### Corrigido
+- **Cores da classificação de risco nas Farmácias Monitoradas.** A tela passa a usar as classificações reais da matriz (crítico, atenção e normal); farmácias normais apareciam em amarelo.
+
+### Removido
+- **Explicação do selo "Não localizado no CFM"** no ranking de médicos. O selo continua sendo exibido.
+- **Aba "Evidências" das Farmácias Monitoradas.** As evidências continuam acessíveis pela coluna "Evidências" de cada farmácia, no painel da farmácia.
+
 ## [2.0.2] - 2026-10-01
 
 ### Adicionado

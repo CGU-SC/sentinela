@@ -9,7 +9,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic_core import PydanticUndefined
 
 from api.endpoints import analytics as endpoints
-from api.schemas.analytics import CrmPerfilExportRequest
+from api.schemas.analytics import CrmPerfilExportRequest, ListaInteresseExportRequest
 from api.services.analytics.crm_filtros_medico import FiltrosMedico
 from api.services.analytics.filtros_farmacia import FiltrosFarmacia
 
@@ -309,6 +309,20 @@ def test_other_export_routes_return_expected_response_types(monkeypatch):
     perfil_csv = _invoke("export_crm_prescritores", cnpj=_CNPJ, body=body)
     assert isinstance(perfil_csv, StreamingResponse)
     assert perfil_csv.headers["content-disposition"].endswith('perfil.csv"')
+
+    # Farmácias Monitoradas (/listas): mesmo par Excel/CSV, com a sessão do banco repassada.
+    lista = ListaInteresseExportRequest(formato="xlsx", data_inicio=date(2024, 1, 1), data_fim=date(2024, 6, 30))
+    pedidos = []
+    monkeypatch.setattr(endpoints, "export_watchlist_xlsx", lambda *a: pedidos.append(a) or ("lista.xlsx", b"l"))
+    lista_excel = _invoke("export_lista_interesse", body=lista, db="sessao")
+    assert isinstance(lista_excel, Response) and lista_excel.body == b"l"
+    assert pedidos == [("sessao", date(2024, 1, 1), date(2024, 6, 30))]
+
+    lista.formato = "csv"
+    monkeypatch.setattr(endpoints, "export_watchlist_csv", lambda *a: ("lista.csv", iter([b"l"])))
+    lista_csv = _invoke("export_lista_interesse", body=lista, db="sessao")
+    assert isinstance(lista_csv, StreamingResponse)
+    assert lista_csv.headers["content-disposition"].endswith('lista.csv"')
 
 
 def test_note_generation_translates_missing_readiness_to_unprocessable(monkeypatch):

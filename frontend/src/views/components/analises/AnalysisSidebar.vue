@@ -7,7 +7,7 @@ import {
 } from '@/config/analysisTooltipConfig';
 import { filterActionTooltip } from '@/config/filterTooltipConfig';
 import {
-  CRM_SEQUENCIA_SEVERIDADES, CRM_SITUACAO_CFM_OPCOES, CRM_UF_ATALHOS, CRM_UFS, crmFaixasDoGrupo,
+  CRM_SEQUENCIA_SEVERIDADES, CRM_SEQUENCIA_TIPO_PADRAO, CRM_SEQUENCIA_TIPOS, CRM_SITUACAO_CFM_OPCOES, CRM_UF_ATALHOS, CRM_UFS, crmFaixasDoGrupo,
 } from '@/config/crmFiltrosMedico';
 import { useCrmFiltrosMedicoStore } from '@/stores/crmFiltrosMedico';
 import MultiOptionPicker from '@/views/components/common/MultiOptionPicker.vue';
@@ -22,7 +22,9 @@ const props = defineProps({
 const emit = defineEmits(['search']);
 
 const filtrosStore = useCrmFiltrosMedicoStore();
-const { situacaoCfm, ufsCrm, sequenciaSeveridadeMin, qtdAtivos: qtdFiltrosCadastro } = storeToRefs(filtrosStore);
+const {
+  situacaoCfm, ufsCrm, sequenciaSeveridadeMin, sequenciaTipo, sequenciaAtiva, qtdAtivos: qtdFiltrosCadastro,
+} = storeToRefs(filtrosStore);
 
 // A busca conta como filtro do painel e também é apagada pelo "Limpar Filtros".
 const temBusca = computed(() => props.searchQuery.trim() !== '');
@@ -49,7 +51,9 @@ const ufRotulo = computed(() => {
   return `${ufs.length} UFs`;
 });
 const FAIXAS_SEQUENCIA = crmFaixasDoGrupo('sequencia');
-const sequenciaTooltip = analysisTooltip('crmFiltroSequenciaSeveridade');
+const sequenciaTooltip = analysisTooltip('crmFiltroSequencia');
+// A borracha aparece com o filtro escolhendo médicos ou com o tipo fora do padrão.
+const sequenciaAlterada = computed(() => sequenciaAtiva.value || sequenciaTipo.value !== CRM_SEQUENCIA_TIPO_PADRAO);
 
 const limparTooltip = filterActionTooltip('Limpar filtro', 'Restaura este filtro ao valor padrão.', 'pi-eraser');
 const buscaTooltip = analysisTooltip('crmFiltroBusca');
@@ -173,32 +177,46 @@ const ufTooltip = analysisTooltip('crmFiltroUfCrm');
         </div>
 
         <div class="filtro-bloco">
-          <div class="filtro-bloco-titulo"><i class="pi pi-bolt" aria-hidden="true" />Autorizações em sequência</div>
-          <div class="filtro" :class="{ 'is-ativo': sequenciaSeveridadeMin !== null }">
+          <div class="filtro-bloco-titulo"><i class="pi pi-bell" aria-hidden="true" />Alertas</div>
+          <!-- Um filtro só com três campos, como na barra da esquerda: título com ajuda
+               e borracha, campos recuados e ligados por uma linha-guia. -->
+          <div class="filtro" :class="{ 'is-ativo': sequenciaAtiva }">
             <div class="filtro-rotulo">
-              <span>Severidade mínima</span>
+              <span>Autorizações em sequência</span>
               <i class="pi pi-info-circle filtro-info help-icon" v-tooltip.left="sequenciaTooltip" tabindex="0" aria-label="Sobre as autorizações em sequência" />
               <button
-                v-if="sequenciaSeveridadeMin !== null"
+                v-if="sequenciaAlterada"
                 type="button"
                 class="filtro-limpar"
-                aria-label="Limpar o filtro severidade mínima"
+                aria-label="Limpar o filtro autorizações em sequência"
                 v-tooltip.left="limparTooltip"
-                @click="filtrosStore.setSequenciaSeveridadeMin(null)"
+                @click="filtrosStore.limparSequencia()"
               >
                 <i class="pi pi-eraser" aria-hidden="true" />
               </button>
             </div>
-            <div class="filtro-picker">
-              <OptionPicker
-                :valor="sequenciaSeveridadeMin"
-                :opcoes="CRM_SEQUENCIA_SEVERIDADES"
-                rotulo-acessivel="Severidade mínima das autorizações em sequência"
-                @select="filtrosStore.setSequenciaSeveridadeMin($event)"
-              />
+            <div class="seq-filtro">
+              <span class="seq-filtro-rotulo">Tipo</span>
+              <div class="filtro-picker">
+                <OptionPicker
+                  :valor="sequenciaTipo"
+                  :opcoes="CRM_SEQUENCIA_TIPOS"
+                  rotulo-acessivel="Tipo das autorizações em sequência"
+                  @select="filtrosStore.setSequenciaTipo($event)"
+                />
+              </div>
+              <span class="seq-filtro-rotulo">Severidade mínima</span>
+              <div class="filtro-picker">
+                <OptionPicker
+                  :valor="sequenciaSeveridadeMin"
+                  :opcoes="CRM_SEQUENCIA_SEVERIDADES"
+                  rotulo-acessivel="Severidade mínima das autorizações em sequência"
+                  @select="filtrosStore.setSequenciaSeveridadeMin($event)"
+                />
+              </div>
+              <CrmFiltroFaixa v-for="tipo in FAIXAS_SEQUENCIA" :key="tipo" :tipo="tipo" campo />
             </div>
           </div>
-          <CrmFiltroFaixa v-for="tipo in FAIXAS_SEQUENCIA" :key="tipo" :tipo="tipo" />
         </div>
 
         <!-- Mesmo botão da barra de filtros da esquerda (AppSidebar). -->
@@ -329,6 +347,12 @@ const ufTooltip = analysisTooltip('crmFiltroUfCrm');
 /* Título do filtro: texto principal do tema a 70% (o mesmo da sidebar esquerda). */
 .filtro-rotulo { display: flex; align-items: center; gap: 0.35rem; color: color-mix(in srgb, var(--text-color) 70%, transparent); font-size: 0.8125rem; font-weight: 500; }
 .filtro-rotulo label { cursor: pointer; }
+/* Filtro composto (Autorizações em sequência): campos recuados sob o título e ligados
+   por uma linha-guia, laranja quando o filtro tem valor (mesmo desenho da AppSidebar). */
+.seq-filtro { display: flex; flex-direction: column; gap: 0.35rem; margin-left: 0.15rem; padding: 0.1rem 0 0.1rem 0.65rem; border-left: 2px solid var(--card-border); transition: border-color 0.15s ease; }
+.filtro.is-ativo > .seq-filtro { border-left-color: var(--primary-color); }
+.seq-filtro :deep(.seq-filtro-rotulo) { color: var(--text-muted); font-size: 0.75rem; font-weight: 500; }
+.seq-filtro :deep(.seq-filtro-rotulo:not(:first-child)) { margin-top: 0.15rem; }
 /* Botão do seletor ocupa a largura do bloco, como os filtros de faixa. */
 /* Mesma altura e recuo dos campos da sidebar esquerda (32px; 0,6rem). */
 .filtro-picker :deep(.rp-gatilho) { width: 100%; height: 32px; min-height: 32px; padding: 0 0.6rem; color: var(--text-color-85); font-size: 0.8125rem; font-weight: 400; }

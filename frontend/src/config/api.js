@@ -61,6 +61,7 @@ export const API_ENDPOINTS = {
     return `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/raio-x/exportar?${params.toString()}`;
   },
   analyticsCrmPrescritoresExport: (cnpj) => `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/prescritores/exportar`,
+  analyticsListaInteresseExport: `${BASE_URL}/api/v1/analytics/lista-interesse/exportar`,
   analyticsCrmRaioX: (cnpj, dateStr, hour) => {
     let url = `${BASE_URL}/api/v1/analytics/cnpj/${cnpj}/crm/raio-x?date_str=${dateStr}`;
     if (hour != null) url += `&hour=${hour}`;

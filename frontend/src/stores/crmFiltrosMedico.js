@@ -2,12 +2,15 @@ import { defineStore } from 'pinia';
 import {
   CRM_FAIXAS,
   CRM_SEQUENCIA_SEVERIDADES,
+  CRM_SEQUENCIA_TIPO_PADRAO,
+  CRM_SEQUENCIA_TIPOS,
   CRM_SITUACAO_CFM_OPCOES,
   CRM_UFS,
 } from '@/config/crmFiltrosMedico';
 
 const SITUACOES = new Set(CRM_SITUACAO_CFM_OPCOES.map((opcao) => opcao.value));
 const SEVERIDADES = new Map(CRM_SEQUENCIA_SEVERIDADES.map((opcao) => [opcao.value, opcao]));
+const TIPOS_SEQUENCIA = new Set(CRM_SEQUENCIA_TIPOS.map((opcao) => opcao.value));
 const FAIXA_VAZIA = Object.freeze({ min: null, max: null });
 
 function formatarNumero(valor, casas) {
@@ -54,8 +57,10 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
     situacaoCfm: null,
     /** UFs do CRM selecionadas (vazio = todas). */
     ufsCrm: [],
-    /** Severidade mínima das sequências (único CRM): null | 1..4. */
+    /** Severidade mínima das sequências: null | 1..4. */
     sequenciaSeveridadeMin: null,
+    /** Tipo das sequências que contam: 'unico' | 'multiplo' | 'qualquer'. */
+    sequenciaTipo: CRM_SEQUENCIA_TIPO_PADRAO,
     /** Faixas por tipo (chaves de CRM_FAIXAS): { min, max }. */
     faixas: Object.fromEntries(Object.keys(CRM_FAIXAS).map((tipo) => [tipo, { ...FAIXA_VAZIA }])),
   }),
@@ -75,8 +80,18 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
         if (min !== null) params[`${config.param}_min`] = min;
         if (max !== null) params[`${config.param}_max`] = max;
       }
+      // O tipo só escolhe algo junto com a severidade ou os dias; no padrão não é
+      // enviado (o backend assume único CRM e a chave de cache não muda).
+      const filtraSequencia = state.sequenciaSeveridadeMin !== null || faixaAtiva(state.faixas.sequenciaDias);
+      if (filtraSequencia && state.sequenciaTipo !== CRM_SEQUENCIA_TIPO_PADRAO) {
+        params.sequencia_tipo = state.sequenciaTipo;
+      }
       return params;
     },
+    /** O filtro de sequência está escolhendo médicos (severidade ou dias preenchidos). */
+    sequenciaAtiva: (state) => (
+      state.sequenciaSeveridadeMin !== null || faixaAtiva(state.faixas.sequenciaDias)
+    ),
     /** Quantos filtros estão ligados (a lista de UFs conta como um filtro). */
     qtdAtivos: (state) => (
       (state.situacaoCfm ? 1 : 0)
@@ -101,6 +116,16 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
       if (!SEVERIDADES.has(value)) throw new Error(`Severidade de sequência inválida: ${value}`);
       this.sequenciaSeveridadeMin = value;
     },
+    setSequenciaTipo(value) {
+      if (!TIPOS_SEQUENCIA.has(value)) throw new Error(`Tipo de sequência inválido: ${value}`);
+      this.sequenciaTipo = value;
+    },
+    /** Volta o filtro de sequência inteiro ao padrão (tipo, severidade e dias). */
+    limparSequencia() {
+      this.sequenciaTipo = CRM_SEQUENCIA_TIPO_PADRAO;
+      this.sequenciaSeveridadeMin = null;
+      this.limparFaixa('sequenciaDias');
+    },
     /** Aplica uma faixa já validada (validarFaixa); null = limite vazio. */
     setFaixa(tipo, faixa) {
       const erro = validarFaixa(tipo, faixa);
@@ -117,6 +142,7 @@ export const useCrmFiltrosMedicoStore = defineStore('crmFiltrosMedico', {
       this.situacaoCfm = null;
       this.ufsCrm = [];
       this.sequenciaSeveridadeMin = null;
+      this.sequenciaTipo = CRM_SEQUENCIA_TIPO_PADRAO;
       this.faixas = Object.fromEntries(Object.keys(CRM_FAIXAS).map((tipo) => [tipo, { ...FAIXA_VAZIA }]));
     },
   },

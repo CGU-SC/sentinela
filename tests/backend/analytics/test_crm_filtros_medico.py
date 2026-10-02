@@ -75,6 +75,15 @@ def test_filter_constructor_normalizes_and_rejects_invalid_ranges():
     assert normalized.ufs_crm == ("RJ", "SP")
     assert normalized.situacao_cfm == "localizado"
     assert normalized.sequencia_severidade_min == 4
+    # Sem tipo informado vale o padrao (unico CRM); com filtro de sequencia o tipo e mantido.
+    assert normalized.sequencia_tipo == "unico"
+    multiple = medico.montar_filtros_medico(
+        situacao_cfm=None, uf_crm=None, sequencia_severidade_min=2, sequencia_tipo="multiplo",
+    )
+    assert multiple.sequencia_tipo == "multiplo" and multiple.chave != normalized.chave
+    # Tipo sem severidade nem faixa de dias nao filtra nada: volta ao padrao e o filtro fica inativo.
+    type_only = medico.montar_filtros_medico(situacao_cfm=None, uf_crm=None, sequencia_tipo="qualquer")
+    assert type_only.sequencia_tipo == "unico" and type_only.ativo is False
 
     invalid = (
         ({"situacao_cfm": "qualquer"}, "situacao_cfm"),
@@ -90,6 +99,7 @@ def test_filter_constructor_normalizes_and_rejects_invalid_ranges():
         ({"sequencia_dias_min": -1}, "Faixa de dias com sequencia nao pode ser negativa"),
         ({"sequencia_dias_min": 4, "sequencia_dias_max": 2}, "Faixa de dias com sequencia: minimo maior"),
         ({"sequencia_severidade_min": 5}, "sequencia_severidade_min deve ser"),
+        ({"sequencia_tipo": "duplo"}, "sequencia_tipo deve ser"),
         ({"exclusividade_min": -1}, "exclusividade deve estar entre"),
         ({"exclusividade_max": 101}, "exclusividade deve estar entre"),
         ({"exclusividade_min": 75, "exclusividade_max": 20}, "exclusividade: minimo maior"),
@@ -192,6 +202,57 @@ def test_sequence_filter_validates_alert_severity_and_reports_source_failures(mo
     monkeypatch.setattr(medico, "scan_crm_concentracao_unico_alertas_global", lambda: (_ for _ in ()).throw(RuntimeError("offline")))
     with pytest.raises(HTTPException, match="Alertas de sequencia.*offline"):
         medico._sequencia_por_medico(date(2024, 1, 1), date(2024, 1, 31), 1)
+    with pytest.raises(ValueError, match="Tipo de sequencia invalido"):
+        medico._sequencia_por_medico(date(2024, 1, 1), date(2024, 1, 31), 1, "duplo")
+
+
+def test_sequence_filter_counts_multi_crm_windows_with_minimum_participation(monkeypatch):
+    monkeypatch.setattr(medico, "_CACHE_BASES", _ImmediateCache())
+    single = pl.DataFrame(
+        {"competencia": [202401, 202401], "id_medico": ["123/SP", "789/SP"],
+         "dt_alerta": ["2024-01-02", "2024-01-09"], "id_severidade": [3, 3]}
+    )
+    windows = pl.DataFrame(
+        {
+            "competencia": [202401, 202401, 202401, 202401, 202402, 202401],
+            "id_medico": ["123/SP", "123/SP", "123/SP", "456/RJ", "456/RJ", "456/RJ"],
+            # 123/SP: duas janelas no mesmo dia (1 dia) e uma abaixo do minimo de autorizacoes.
+            "dt_alerta": ["2024-01-02", "2024-01-02", "2024-01-03", "2024-01-04", "2024-02-01", "2024-01-05"],
+            "nu_autorizacoes_crm": [5, 8, 4, 6, 9, 5],
+            "id_severidade": [3, 4, 4, 3, 4, 1],
+        }
+    )
+    checks = []
+    monkeypatch.setattr(medico, "scan_crm_concentracao_unico_alertas_global", lambda: single.lazy())
+    monkeypatch.setattr(medico, "scan_crm_concentracao_multiplo_medico_global", lambda: windows.lazy())
+    monkeypatch.setattr(medico, "conferir_crm_concentracao_multiplo_medico_global", lambda: checks.append("ok"))
+    period = (date(2024, 1, 1), date(2024, 1, 31))
+
+    def days(tipo, severity=3):
+        rows = medico._sequencia_por_medico(*period, severity, tipo).sort("id_medico")
+        return dict(zip(rows.get_column("id_medico").to_list(), rows.get_column("dias").to_list()))
+
+    assert medico.SEQUENCIA_MULTIPLO_MIN_AUTORIZACOES == 5
+    assert days("multiplo") == {"123/SP": 1, "456/RJ": 1}
+    # Severidade 1 inclui a janela de 2024-01-05 do 456/RJ; fevereiro fica fora do periodo.
+    assert days("multiplo", severity=1) == {"123/SP": 1, "456/RJ": 2}
+    assert days("unico") == {"123/SP": 1, "789/SP": 1}
+    # Qualquer: dias distintos dos dois tipos (o dia 02 do 123/SP e o mesmo nos dois).
+    assert days("qualquer") == {"123/SP": 1, "456/RJ": 1, "789/SP": 1}
+    assert checks  # a ponte e conferida contra as fontes antes de cada leitura
+
+    unknown = windows.with_columns(pl.lit(9).alias("id_severidade"))
+    monkeypatch.setattr(medico, "scan_crm_concentracao_multiplo_medico_global", lambda: unknown.lazy())
+    with pytest.raises(HTTPException, match="Severidade de sequencia desconhecida"):
+        medico._sequencia_por_medico(*period, 1, "multiplo")
+
+    def stale():
+        raise RuntimeError("modulo desatualizado")
+
+    monkeypatch.setattr(medico, "conferir_crm_concentracao_multiplo_medico_global", stale)
+    with pytest.raises(HTTPException, match="multiplos CRMs por medico indisponiveis: modulo desatualizado") as error:
+        medico._sequencia_por_medico(*period, 1, "multiplo")
+    assert error.value.status_code == 503
 
 
 def test_activity_aggregates_annual_and_monthly_pharmacy_pairs_and_validates_period(monkeypatch):

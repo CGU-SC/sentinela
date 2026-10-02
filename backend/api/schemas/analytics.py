@@ -753,6 +753,13 @@ class CrmPerfilExportRequest(BaseModel):
     filtro: Optional[str] = Field(None, max_length=300, description="Descrição do filtro da tela; obrigatória com ids.")
 
 
+class ListaInteresseExportRequest(BaseModel):
+    """Pedido de exportação das Farmácias Monitoradas (tela /listas) no período de análise."""
+    formato: Literal["csv", "xlsx"]
+    data_inicio: date
+    data_fim: date
+
+
 class CrmRankingAlertasResponse(BaseModel):
     """Pontos de atencao dos CRMs de uma pagina do ranking de /analises."""
     periodo_inicio: date

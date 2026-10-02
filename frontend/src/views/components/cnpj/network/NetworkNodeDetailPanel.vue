@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   formatCnaeEvidence,
@@ -7,6 +7,9 @@ import {
   formatSocietyDate,
 } from "@/utils/network/networkFormatters";
 import { useStatusClass } from "@/composables/useStatusClass";
+import { useToast } from "primevue/usetoast";
+import { useFarmaciaListsStore } from "@/stores/farmaciaLists";
+import ObservationDialog from "@/views/components/cnpj/ObservationDialog.vue";
 
 const props = defineProps({
   node: {
@@ -98,6 +101,41 @@ const conexaoMs = computed(() => {
 });
 
 const formatStatusBadge = (value) => String(value).toLocaleUpperCase("pt-BR");
+
+// Favoritar a farmácia (lista de interesse / Farmácias monitoradas), como na
+// tabela de /estabelecimentos. Vale para as farmácias do programa na teia e para a
+// farmácia central (PJ_ALVO, o CNPJ em análise).
+const TIPOS_FAVORITAVEIS = new Set(["PJ_FARMACIA_POPULAR", "PJ_ALVO"]);
+const podeFavoritar = computed(() => TIPOS_FAVORITAVEIS.has(props.node.type));
+const farmaciaLists = useFarmaciaListsStore();
+const toast = useToast();
+const cnpjFarmacia = computed(() => String(props.node.id || "").replace(/\D/g, ""));
+const ehFavorita = computed(() => farmaciaLists.isInteresse(cnpjFarmacia.value));
+async function alternarFavorita() {
+  if (!podeFavoritar.value) {
+    throw new Error(`Nó ${props.node.type} não pode ser favoritado.`);
+  }
+  const nome = props.node.razao_social || props.node.nome_fantasia || cnpjFarmacia.value;
+  const salvou = await farmaciaLists.toggleInteresse(cnpjFarmacia.value, nome);
+  // null = remoção cancelada pelo usuário no diálogo de evidências.
+  if (salvou === false && farmaciaLists.loadState === "ready") {
+    toast.add({
+      severity: "error",
+      summary: "Favorito não alterado",
+      detail: farmaciaLists.error || "Não foi possível salvar a alteração.",
+      life: 5000,
+    });
+  }
+}
+
+// Anotação da farmácia favorita (o mesmo diálogo da tabela de /estabelecimentos).
+const observacao = computed(() => farmaciaLists.getObservacao(cnpjFarmacia.value));
+const mostrarObservacao = ref(false);
+const nomeFarmacia = computed(() => props.node.razao_social || props.node.nome_fantasia || cnpjFarmacia.value);
+function abrirObservacao() {
+  if (!farmaciaLists.canEdit || !ehFavorita.value) return;
+  mostrarObservacao.value = true;
+}
 
 function openEstablishmentDetail() {
   if (props.node.type !== "PJ_FARMACIA_POPULAR") {
@@ -342,12 +380,48 @@ function openEstablishmentDetail() {
         </button>
       </div>
 
-      <div v-if="node.type === 'PJ_FARMACIA_POPULAR'" class="panel-actions">
-        <button class="panel-action-btn" @click="openEstablishmentDetail">
+      <div v-if="podeFavoritar" class="panel-actions panel-actions--farmacia">
+        <button
+          type="button"
+          class="panel-action-btn favorite-btn"
+          :class="{ 'is-favorite': ehFavorita }"
+          :aria-pressed="ehFavorita"
+          :disabled="!farmaciaLists.canEdit"
+          v-tooltip.top="ehFavorita ? 'Remover das Farmácias monitoradas' : 'Adicionar às Farmácias monitoradas'"
+          @click="alternarFavorita"
+        >
+          <i :class="ehFavorita ? 'pi pi-star-fill' : 'pi pi-star'" aria-hidden="true" />
+          <span>{{ ehFavorita ? "Favorita" : "Favoritar" }}</span>
+        </button>
+        <button
+          v-if="ehFavorita"
+          type="button"
+          class="panel-action-btn observation-btn"
+          :class="{ 'has-observation': Boolean(observacao) }"
+          :aria-label="`${observacao ? 'Editar' : 'Adicionar'} anotação para ${nomeFarmacia}`"
+          :disabled="!farmaciaLists.canEdit"
+          v-tooltip.top="observacao ? `Anotação: ${observacao}` : 'Adicionar anotação'"
+          @click="abrirObservacao"
+        >
+          <i :class="observacao ? 'pi pi-comment' : 'pi pi-pencil'" aria-hidden="true" />
+        </button>
+        <button
+          v-if="node.type === 'PJ_FARMACIA_POPULAR'"
+          type="button"
+          class="panel-action-btn detail-btn"
+          @click="openEstablishmentDetail"
+        >
           <i class="pi pi-external-link" />
           <span>Abrir detalhamento</span>
         </button>
       </div>
+
+      <ObservationDialog
+        v-if="podeFavoritar && ehFavorita"
+        v-model:visible="mostrarObservacao"
+        :cnpj="cnpjFarmacia"
+        :entity-name="nomeFarmacia"
+      />
 
       <div class="panel-hint">
         <i class="pi pi-mouse" /> Clique no fundo para fechar
@@ -614,11 +688,11 @@ function openEstablishmentDetail() {
 }
 
 .cadunico-field {
-  color: color-mix(in srgb, #f59e0b 75%, var(--text-color-85));
+  color: color-mix(in srgb, var(--primary-color) 75%, var(--text-color-85));
 }
 
 .cadunico-field i {
-  color: #f59e0b;
+  color: var(--primary-color);
 }
 
 .cadunico-badge,
@@ -637,9 +711,9 @@ function openEstablishmentDetail() {
 }
 
 .cadunico-badge {
-  border: 1px solid color-mix(in srgb, #f59e0b 42%, transparent);
-  background: color-mix(in srgb, #f59e0b 16%, transparent);
-  color: color-mix(in srgb, #f59e0b 82%, var(--text-color-85));
+  border: 1px solid color-mix(in srgb, var(--primary-color) 42%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+  color: color-mix(in srgb, var(--primary-color) 82%, var(--text-color-85));
 }
 
 .esocial-field {
@@ -833,6 +907,46 @@ function openEstablishmentDetail() {
 .panel-action-btn:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
+}
+
+/* Farmácia Popular: Favoritar ao lado de Abrir detalhamento. */
+/* Farmácia: "Abrir detalhamento" na primeira linha; Favoritar e a anotação abaixo. */
+.panel-actions--farmacia {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.panel-actions--farmacia .panel-action-btn { white-space: nowrap; }
+.panel-actions--farmacia .detail-btn { flex: 1 0 100%; order: -1; }
+.panel-actions--farmacia .favorite-btn {
+  flex: 1 1 auto;
+  width: auto;
+  padding: 0 0.8rem;
+  border-color: var(--tabs-border);
+  background: var(--card-bg);
+  color: var(--text-color-85);
+}
+.panel-actions--farmacia .favorite-btn:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg));
+}
+.panel-actions--farmacia .observation-btn {
+  flex: 0 0 2.25rem;
+  width: 2.25rem;
+  padding: 0;
+  border-color: var(--tabs-border);
+  background: var(--card-bg);
+  color: var(--text-muted);
+}
+.panel-actions--farmacia .observation-btn:hover:not(:disabled),
+.panel-actions--farmacia .observation-btn.has-observation {
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--tabs-border));
+  color: var(--primary-color);
+}
+.panel-actions--farmacia .favorite-btn.is-favorite {
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--tabs-border));
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg));
+  color: var(--primary-color);
 }
 
 .panel-action-btn:disabled {

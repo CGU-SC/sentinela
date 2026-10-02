@@ -74,6 +74,7 @@ _DISABLED_BOOT_MODULES: frozenset[str] = frozenset({
     "crm_medico_dim",
     "crm_farmacia_medico_ano",
     "crm_indice_bitmaps",
+    "crm_concentracao_multiplo_medico_global",
     "crm_mapa_municipio_regiao_periodo",
     "crm_mapa_uf_periodo",
     "crm_limiar_p95_mes",
@@ -351,6 +352,16 @@ _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
         "severidade",
         "_crm_alerts_cache_version",
     },
+    "crm_concentracao_multiplo_medico_global": {
+        "id_medico",
+        "id_cnpj",
+        "competencia",
+        "dt_alerta",
+        "dt_ini_concentracao",
+        "nu_autorizacoes_crm",
+        "id_severidade",
+        "_crm_multiplo_medico_cache_version",
+    },
     "crm_timeline_dia_global": {
         "id_cnpj",
         "dt_janela",
@@ -549,6 +560,7 @@ _PAR_TEIA_ALVOS_PARQUET_PATH = _global_cache_path("par_teia_alvos")
 _GEOGRAFICO_GLOBAL_PARQUET_PATH = _global_cache_path("geografico_global")
 _CRM_CONCENTRACAO_UNICO_ALERTAS_GLOBAL_PARQUET_PATH = _global_cache_path("crm_concentracao_unico_alertas_global")
 _CRM_CONCENTRACAO_MULTIPLO_ALERTAS_GLOBAL_PARQUET_PATH = _global_cache_path("crm_concentracao_multiplo_alertas_global")
+_CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH = _global_cache_path("crm_concentracao_multiplo_medico_global")
 _CRM_TIMELINE_DIA_GLOBAL_PARQUET_PATH = _global_cache_path("crm_timeline_dia_global")
 _CRM_TIMELINE_HORA_GLOBAL_PARQUET_PATH = _global_cache_path("crm_timeline_hora_global")
 _CRM_TIMELINE_EVENTOS_GLOBAL_PARQUET_PATH = _global_cache_path("crm_timeline_eventos_global")
@@ -1390,6 +1402,17 @@ def _sync_crm_concentracao_multiplo_alertas_global(engine, progress_callback=Non
         query, engine, progress_callback,
         extra_columns={"_crm_alerts_cache_version": 4}
     )
+
+def _sync_crm_concentracao_multiplo_medico_global(engine=None, progress_callback=None):
+    """Monta a ponte medico x janela de multiplos CRMs a partir do Raio-X e dos
+    alertas ja sincronizados (nao consulta o banco). Ver crm_multiplo_medico.py."""
+    from crm_multiplo_medico import construir
+    construir(_CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH, progress_callback=progress_callback)
+    _mark_on_demand_global_cache_ready(
+        "crm_concentracao_multiplo_medico_global",
+        _CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH,
+    )
+
 
 def _sync_crm_timeline_dia_global(engine, progress_callback=None):
     """Sincroniza o CRM Timeline Dia global em partes mensais retomaveis."""
@@ -5707,6 +5730,20 @@ def scan_crm_concentracao_unico_alertas_global() -> pl.LazyFrame:
 def scan_crm_concentracao_multiplo_alertas_global() -> pl.LazyFrame:
     return _scan_on_demand_global_parquet("crm_concentracao_multiplo_alertas_global", _CRM_CONCENTRACAO_MULTIPLO_ALERTAS_GLOBAL_PARQUET_PATH)
 
+def scan_crm_concentracao_multiplo_medico_global() -> pl.LazyFrame:
+    """Ponte medico x janela de multiplos CRMs (use conferir_... antes de consultar)."""
+    return _scan_on_demand_global_parquet(
+        "crm_concentracao_multiplo_medico_global",
+        _CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH,
+    )
+
+
+def conferir_crm_concentracao_multiplo_medico_global() -> None:
+    """Falha (ModuloDesatualizado) se a ponte medico x janela nao foi montada
+    com o Raio-X e os alertas de multiplos CRMs atualmente carregados."""
+    from crm_multiplo_medico import conferir_fontes
+    conferir_fontes(_CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH)
+
 def scan_crm_timeline_dia_global() -> pl.LazyFrame:
     return _scan_on_demand_global_parquet("crm_timeline_dia_global", _CRM_TIMELINE_DIA_GLOBAL_PARQUET_PATH)
 
@@ -5828,6 +5865,7 @@ def get_cache_status() -> dict:
         "geografico_global": {"label": "CRM Geografico Global", "path": _GEOGRAFICO_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("geografico_global", _GEOGRAFICO_GLOBAL_PARQUET_PATH)},
         "crm_concentracao_unico_alertas_global": {"label": "CRM Concentracao Unico Global", "path": _CRM_CONCENTRACAO_UNICO_ALERTAS_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_concentracao_unico_alertas_global", _CRM_CONCENTRACAO_UNICO_ALERTAS_GLOBAL_PARQUET_PATH)},
         "crm_concentracao_multiplo_alertas_global": {"label": "CRM Concentracao Multiplo Global", "path": _CRM_CONCENTRACAO_MULTIPLO_ALERTAS_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_concentracao_multiplo_alertas_global", _CRM_CONCENTRACAO_MULTIPLO_ALERTAS_GLOBAL_PARQUET_PATH)},
+        "crm_concentracao_multiplo_medico_global": {"label": "CRM Concentracao Multiplo por Medico (local)", "path": _CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_concentracao_multiplo_medico_global", _CRM_CONCENTRACAO_MULTIPLO_MEDICO_GLOBAL_PARQUET_PATH)},
         "crm_timeline_dia_global": {"label": "CRM Timeline Dia Global", "path": _CRM_TIMELINE_DIA_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_timeline_dia_global", _CRM_TIMELINE_DIA_GLOBAL_PARQUET_PATH)},
         "crm_timeline_hora_global": {"label": "CRM Timeline Hora Global", "path": _CRM_TIMELINE_HORA_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_timeline_hora_global", _CRM_TIMELINE_HORA_GLOBAL_PARQUET_PATH)},
         "crm_timeline_eventos_global": {"label": "CRM Timeline Eventos Global", "path": _CRM_TIMELINE_EVENTOS_GLOBAL_PARQUET_PATH, "loaded": _is_on_demand_global_cache_ready("crm_timeline_eventos_global", _CRM_TIMELINE_EVENTOS_GLOBAL_PARQUET_PATH)},

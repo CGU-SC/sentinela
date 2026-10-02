@@ -120,11 +120,6 @@ function abrirFarmacia() {
   router.push({ name: 'EstablishmentDetail', params: { cnpj: cnpjDigits.value } });
 }
 
-function irParaListas() {
-  visivel.value = false;
-  router.push({ path: '/listas', query: { aba: 'evidencias', cnpj: cnpjDigits.value } });
-}
-
 async function exportarExcel() {
   if (exportando.value || todas.value.length === 0) return;
   exportando.value = true;
@@ -286,10 +281,6 @@ function onEditorKeydown(event, ev) {
       </button>
       <button v-if="contexto === 'listas'" type="button" class="evid-sb-link" @click="abrirFarmacia">
         Abrir a farmácia
-        <i class="pi pi-arrow-right" aria-hidden="true" />
-      </button>
-      <button v-else type="button" class="evid-sb-link" @click="irParaListas">
-        Ver todas as evidências em Listas
         <i class="pi pi-arrow-right" aria-hidden="true" />
       </button>
     </footer>

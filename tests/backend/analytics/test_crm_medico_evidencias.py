@@ -72,6 +72,20 @@ def _multi_alerts_scan():
     ).lazy()
 
 
+def _ponte_scan():
+    """Ponte medico x janela: 123/SP e 999/RJ na janela das 09:00 da farmacia 1."""
+    return pl.DataFrame(
+        {
+            "id_medico": ["123/SP", "999/RJ"],
+            "id_cnpj": [1, 1],
+            "competencia": [202401, 202401],
+            "dt_ini_concentracao": [datetime(2024, 1, 3, 9), datetime(2024, 1, 3, 9)],
+            "nu_autorizacoes_crm": [1, 1],
+        },
+        schema_overrides={"id_cnpj": pl.Int32, "competencia": pl.Int32, "nu_autorizacoes_crm": pl.Int32},
+    ).lazy()
+
+
 def _geografico_scan():
     return pl.DataFrame(
         {
@@ -86,12 +100,14 @@ def _geografico_scan():
     ).lazy()
 
 
-def _install_scans(monkeypatch, perfil, *, unico=None, raiox=None, multiplos=None, geografico=None):
+def _install_scans(monkeypatch, perfil, *, unico=None, raiox=None, multiplos=None, geografico=None, ponte=None):
     monkeypatch.setattr(evidencias, "get_df_perfil_estabelecimento", lambda: perfil)
     monkeypatch.setattr(evidencias, "scan_crm_concentracao_unico_alertas_global", lambda: unico if unico is not None else _unico_scan())
     monkeypatch.setattr(evidencias, "scan_crm_raiox_tx_global", lambda: raiox if raiox is not None else _raiox_scan())
     monkeypatch.setattr(evidencias, "scan_crm_concentracao_multiplo_alertas_global", lambda: multiplos if multiplos is not None else _multi_alerts_scan())
     monkeypatch.setattr(evidencias, "scan_geografico_global", lambda: geografico if geografico is not None else _geografico_scan())
+    monkeypatch.setattr(evidencias, "scan_crm_concentracao_multiplo_medico_global", lambda: ponte if ponte is not None else _ponte_scan())
+    monkeypatch.setattr(evidencias, "conferir_crm_concentracao_multiplo_medico_global", lambda: None)
 
 
 def test_farmacia_and_municipality_helpers_require_unique_records(monkeypatch, perfil):
@@ -129,18 +145,20 @@ def test_single_crm_sequences_cast_fields_filter_pharmacy_and_reject_unknown_sev
     assert error.value.status_code == 503
 
 
-def test_multiple_crm_sequences_cover_empty_bad_data_and_crossed_authorizations(monkeypatch, perfil):
-    _install_scans(monkeypatch, perfil, raiox=_raiox_scan().filter(pl.lit(False)))
+def test_multiple_crm_sequences_read_bridge_and_reject_inconsistent_modules(monkeypatch, perfil):
+    # Medico sem janela na ponte (ou fora da farmacia filtrada): nenhuma evidencia.
+    _install_scans(monkeypatch, perfil, ponte=_ponte_scan().filter(pl.lit(False)))
     assert evidencias._multiplos("123/SP", 202401, 202412, None).is_empty()
+    _install_scans(monkeypatch, perfil)
+    assert evidencias._multiplos("123/SP", 202401, 202412, 2).is_empty()
+    assert evidencias._multiplos("123/SP", 202402, 202412, None).is_empty()
 
-    invalid_tx = _raiox_scan().with_columns(pl.lit(None, dtype=pl.String).alias("data_hora"))
-    _install_scans(monkeypatch, perfil, raiox=invalid_tx)
-    with pytest.raises(HTTPException, match="sem data/hora valida"):
-        evidencias._multiplos("123/SP", 202401, 202412, None)
-
+    # Janela na ponte sem alerta correspondente: modulos de execucoes diferentes.
     empty_alerts = _multi_alerts_scan().filter(pl.lit(False))
     _install_scans(monkeypatch, perfil, multiplos=empty_alerts)
-    assert evidencias._multiplos("123/SP", 202401, 202412, None).is_empty()
+    with pytest.raises(HTTPException, match="sem alerta correspondente") as mismatch:
+        evidencias._multiplos("123/SP", 202401, 202412, None)
+    assert mismatch.value.status_code == 503
 
     missing_window = _multi_alerts_scan().with_columns(pl.lit(None, dtype=pl.String).alias("dt_ini_concentracao"))
     _install_scans(monkeypatch, perfil, multiplos=missing_window)
@@ -152,9 +170,20 @@ def test_multiple_crm_sequences_cover_empty_bad_data_and_crossed_authorizations(
     with pytest.raises(HTTPException, match="Severidade desconhecida"):
         evidencias._multiplos("123/SP", 202401, 202412, None)
 
+    # Ponte montada com outras fontes: a conferencia falha antes de qualquer leitura.
+    _install_scans(monkeypatch, perfil)
+
+    def stale():
+        raise RuntimeError("modulo desatualizado")
+
+    monkeypatch.setattr(evidencias, "conferir_crm_concentracao_multiplo_medico_global", stale)
+    with pytest.raises(RuntimeError, match="modulo desatualizado"):
+        evidencias._multiplos("123/SP", 202401, 202412, None)
+
     _install_scans(monkeypatch, perfil)
     crossed = evidencias._multiplos("123/SP", 202401, 202412, None)
     assert crossed.height == 1
+    assert crossed.item(0, "dt") == "2024-01-03" and crossed.item(0, "hr_janela") == 9
     assert crossed.item(0, "nu_autorizacoes_crm") == 1
     assert crossed.item(0, "nu_autorizacoes_total") == 2
     assert crossed.item(0, "nu_crms") == 2
