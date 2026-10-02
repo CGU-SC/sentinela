@@ -113,7 +113,11 @@ function dismissEntry() {
 
 <style scoped>
 .admin-layout {
-  --sidebar-width: 280px;
+  --sidebar-width: 260px;
+  /* Largura do conteúdo da barra (não muda ao recolher; ver AppSidebar). */
+  --sidebar-width-aberta: 260px;
+  /* Faixa visível com a barra recolhida (botão de reabrir). */
+  --sidebar-rail-width: 44px;
   display: block !important;
   height: 100vh !important;
   width: 100vw;
@@ -124,7 +128,7 @@ function dismissEntry() {
 }
 
 .admin-layout.collapsed {
-  --sidebar-width: 0px;
+  --sidebar-width: var(--sidebar-rail-width);
 }
 
 .admin-layout.no-sidebar {
@@ -135,24 +139,18 @@ function dismissEntry() {
   margin-left: 0;
 }
 
-/* Oculta conteúdo da sidebar ao colapsar — usa :deep() para cruzar o componente */
-:deep(.sidebar-content),
-:deep(.sidebar-footer) {
+/* Conteúdo da barra: ao recolher some rápido, antes de a borda passar por ele; ao
+   abrir aparece só depois de a barra estar quase aberta, já na largura final. */
+:deep(.admin-sidebar > *) {
   opacity: 1;
   pointer-events: auto;
-  transition: opacity var(--sidebar-motion-duration) ease;
+  transition: opacity calc(var(--sidebar-motion-duration) * 0.6) ease-out calc(var(--sidebar-motion-duration) * 0.5);
 }
 
-.admin-layout.collapsed :deep(.sidebar-content),
-.admin-layout.collapsed :deep(.sidebar-footer) {
+.admin-layout.collapsed :deep(.admin-sidebar > *) {
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--sidebar-motion-duration) ease;
-}
-
-/* Remove borda direita quando colapsada */
-.admin-layout.collapsed :deep(.admin-sidebar) {
-  border-right: none;
+  transition: opacity calc(var(--sidebar-motion-duration) * 0.45) ease-in 0ms;
 }
 
 .main-container {
@@ -169,8 +167,7 @@ function dismissEntry() {
 
 @media (prefers-reduced-motion: reduce) {
   .main-container,
-  :deep(.sidebar-content),
-  :deep(.sidebar-footer),
+  :deep(.admin-sidebar > *),
   .page-entry-enter-active,
   .page-entry-leave-active {
     transition-duration: 0ms;
@@ -178,7 +175,7 @@ function dismissEntry() {
 }
 
 .page-content {
-  padding: 1.25rem 0.8rem 1.5rem 1.4rem;
+  padding: 1.25rem 0.8rem 1.5rem 1rem;
   flex: 1;
   background: transparent !important;
 }

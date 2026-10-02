@@ -102,6 +102,9 @@ def test_dashboard_cnpj_section_uses_explicit_cnpj_list_and_risk_snapshot(monkey
     movimento, perfil = _dashboard_frames()
     monkeypatch.setattr(dashboard, "get_df", lambda: movimento)
     monkeypatch.setattr(dashboard, "get_df_perfil_estabelecimento", lambda: perfil)
+    monkeypatch.setattr(dashboard, "get_df_dados_farmacia", lambda: pl.DataFrame(
+        {"id_cnpj": [1, 2], "nome_fantasia": ["Fantasia Um", "Dois"]}
+    ))
     _install_dynamic_matrix(monkeypatch, perfil)
     result = dashboard.get_dashboard_data(
         db=None, cnpjs=["11111111000101"], secoes={"cnpjs"}
@@ -111,6 +114,20 @@ def test_dashboard_cnpj_section_uses_explicit_cnpj_list_and_risk_snapshot(monkey
     assert result.resultado_cnpjs[0].classificacao_risco == "CRÍTICO"
     assert result.resultado_cnpjs[0].score_risco_final is not None
     assert result.resultado_cnpjs[0].totalMov == 100.0
+    assert result.resultado_cnpjs[0].nome_fantasia == "Fantasia Um"
+
+    # Farmácia sem nome fantasia na Receita: o campo fica nulo.
+    monkeypatch.setattr(dashboard, "get_df_dados_farmacia", lambda: pl.DataFrame(
+        {"id_cnpj": [1, 2], "nome_fantasia": [None, "Dois"]}, schema_overrides={"nome_fantasia": pl.Utf8},
+    ))
+    sem_fantasia = dashboard.get_dashboard_data(db=None, cnpjs=["11111111000101"], secoes={"cnpjs"})
+    assert sem_fantasia.resultado_cnpjs[0].nome_fantasia is None
+
+    # Farmácia fora do cadastro: caches de execuções diferentes, 503.
+    monkeypatch.setattr(dashboard, "get_df_dados_farmacia", lambda: pl.DataFrame({"id_cnpj": [2], "nome_fantasia": ["Dois"]}))
+    with pytest.raises(HTTPException) as ausente:
+        dashboard.get_dashboard_data(db=None, cnpjs=["11111111000101"], secoes={"cnpjs"})
+    assert ausente.value.status_code == 503 and "sem cadastro de farm" in ausente.value.detail
 
 
 def test_producao_semestral_aggregates_and_respects_risk_filters(monkeypatch):

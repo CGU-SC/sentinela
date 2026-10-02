@@ -10,7 +10,7 @@ import zlib
 import json
 import copy
 from decimal import Decimal, ROUND_HALF_UP
-from data_cache import get_df, get_rede_df, get_df_bench_crm_regiao, get_df_bench_crm_br, get_df_perfil_estabelecimento, get_cache_dir
+from data_cache import get_df, get_rede_df, get_df_bench_crm_regiao, get_df_bench_crm_br, get_df_perfil_estabelecimento, get_df_dados_farmacia, get_cache_dir
 from .alertas_alvos import build_perfil_filtrado
 from .dispersao_uf import get_dispersao_uf_sem_fronteira_id_cnpjs_df
 from .matriz_risco_dinamica import build_dynamic_matriz_risco
@@ -323,6 +323,20 @@ def get_dashboard_data(db: Session, data_inicio=None, data_fim=None, uf=None, re
                 data_fim=fim,
             ).select(risco_cols)
             cnpj_df = cnpj_df.join(risco_df, on="id_cnpj", how="left")
+            # Nome fantasia vem do cadastro das farmácias (o perfil não o carrega).
+            # Farmácia sem nome fantasia na Receita fica com null; farmácia ausente
+            # do cadastro indica caches de execuções diferentes (503).
+            cadastro = get_df_dados_farmacia().select([
+                pl.col("id_cnpj").cast(cnpj_df.schema["id_cnpj"]),
+                pl.col("nome_fantasia").cast(pl.Utf8),
+            ])
+            cnpj_df = cnpj_df.join(cadastro, on="id_cnpj", how="left", coalesce=True)
+            ausentes = cnpj_df.join(cadastro, on="id_cnpj", how="anti")
+            if ausentes.height:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"CNPJs sem cadastro de farmácia: {', '.join(ausentes.get_column('cnpj').head(5).to_list())}.",
+                )
 
             resultado_cnpjs = [
                 ResultadoSentinelaCnpjSchema(**r)

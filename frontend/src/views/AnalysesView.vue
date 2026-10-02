@@ -10,6 +10,8 @@ import { getCrmMapLevel, useCrmPrescricoesAnalysis } from '@/composables/useCrmP
 import { ANALISES_HIDDEN_KPI_LABELS } from '@/config/constants';
 
 import AnalysisSidebar from './components/analises/AnalysisSidebar.vue';
+import { filterActionTooltip } from '@/config/filterTooltipConfig';
+import { TIMING } from '@/config/constants';
 import CrmPrescricoesMap from './components/analises/CrmPrescricoesMap.vue';
 import CrmPrescricoesRanking from './components/analises/CrmPrescricoesRanking.vue';
 import CrmHistoricoDialog from './components/analises/CrmHistoricoDialog.vue';
@@ -138,6 +140,33 @@ function onMensalSort(event) {
     event.sortField, event.sortOrder === 1 ? 'asc' : 'desc',
   );
 }
+// Painel lateral (filtros dos médicos): fecha pelo ícone do cabeçalho e reabre pela
+// faixa estreita que fica no lugar, como a barra de filtros da esquerda. Atalho:
+// Ctrl+Alt+B (Ctrl+B é da barra da esquerda). O estado fica salvo no navegador.
+const LATERAL_STORAGE = 'sentinela_analises_lateral_recolhida';
+function lateralSalva() {
+  try { return localStorage.getItem(LATERAL_STORAGE) === 'true'; } catch { return false; }
+}
+const lateralRecolhida = ref(lateralSalva());
+function alternarLateral() {
+  lateralRecolhida.value = !lateralRecolhida.value;
+  try { localStorage.setItem(LATERAL_STORAGE, String(lateralRecolhida.value)); } catch { /* preferência só do navegador */ }
+}
+const lateralTooltip = computed(() => filterActionTooltip(
+  lateralRecolhida.value ? 'Abrir painel' : 'Fechar painel',
+  lateralRecolhida.value ? 'Exibe as análises disponíveis e os filtros dos médicos. Atalho: Ctrl+Alt+B.' : 'Oculta as análises disponíveis e os filtros dos médicos. Atalho: Ctrl+Alt+B.',
+  lateralRecolhida.value ? 'pi-angle-double-left' : 'pi-angle-double-right',
+));
+const lateralMotion = `${TIMING.SIDEBAR_MOTION_MS}ms`;
+function atalhoLateral(evento) {
+  if (evento.code !== 'KeyB' || !evento.ctrlKey || !evento.altKey || evento.shiftKey || evento.metaKey) return;
+  if (evento.target instanceof HTMLElement && evento.target.isContentEditable) return;
+  evento.preventDefault();
+  alternarLateral();
+}
+window.addEventListener('keydown', atalhoLateral);
+onScopeDispose(() => window.removeEventListener('keydown', atalhoLateral));
+
 let searchTimer = null;
 onScopeDispose(() => clearTimeout(searchTimer));
 
@@ -323,11 +352,44 @@ function onRankingSort(event) {
           />
         </main>
 
-        <AnalysisSidebar
-          :search-query="searchInput"
-          :search-disabled="rankingInitialLoading"
-          @search="onRankingSearch"
-        />
+        <div class="analises-lateral" :class="{ 'is-recolhida': lateralRecolhida }" :style="{ '--lateral-motion': lateralMotion }">
+          <div class="lateral-trilho" :inert="!lateralRecolhida || undefined">
+            <div class="lateral-trilho-card">
+              <button
+                type="button"
+                class="lateral-icon-btn"
+                aria-expanded="false"
+                aria-label="Abrir painel de análises"
+                aria-keyshortcuts="Control+Alt+B"
+                v-tooltip.left="lateralTooltip"
+                @click="alternarLateral"
+              >
+                <i class="pi pi-angle-double-left" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          <div class="analises-lateral-clip" :inert="lateralRecolhida || undefined">
+            <AnalysisSidebar
+              :search-query="searchInput"
+              :search-disabled="rankingInitialLoading"
+              @search="onRankingSearch"
+            >
+              <template #header-acoes>
+                <button
+                  type="button"
+                  class="lateral-icon-btn"
+                  aria-expanded="true"
+                  aria-label="Fechar painel de análises"
+                  aria-keyshortcuts="Control+Alt+B"
+                  v-tooltip.bottom="lateralTooltip"
+                  @click="alternarLateral"
+                >
+                  <i class="pi pi-angle-double-right" aria-hidden="true" />
+                </button>
+              </template>
+            </AnalysisSidebar>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -342,9 +404,94 @@ function onRankingSort(event) {
 </template>
 
 <style scoped>
-.analises-page { --indicator-selector-width: 240px; display: flex; flex-direction: column; gap: 1rem; width: 100%; }
+.analises-page { --indicator-selector-width: 250px; --lateral-trilho-width: 44px; display: flex; flex-direction: column; gap: 1rem; width: 100%; }
 .analises-main { min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 1rem; }
 .analises-layout { display: flex; align-items: flex-start; gap: 1rem; width: 100%; }
+
+/* Painel lateral recolhível: a área encolhe por cima do conteúdo (largura fixa),
+   como a barra de filtros da esquerda — nada se reorganiza durante a animação. */
+.analises-lateral {
+  display: flex;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+.analises-lateral-clip {
+  width: var(--indicator-selector-width);
+  overflow-x: clip;
+  transition: width var(--lateral-motion) cubic-bezier(0.4, 0, 0.2, 1);
+}
+.analises-lateral-clip > :deep(*) {
+  width: var(--indicator-selector-width);
+  opacity: 1;
+  transition: opacity calc(var(--lateral-motion) * 0.6) ease-out calc(var(--lateral-motion) * 0.5);
+}
+.analises-lateral.is-recolhida .analises-lateral-clip { width: 0; }
+.analises-lateral.is-recolhida .analises-lateral-clip > :deep(*) {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity calc(var(--lateral-motion) * 0.45) ease-in 0ms;
+}
+
+/* Faixa do painel recolhido: cresce enquanto o painel encolhe (a largura total anima
+   de 250px para 44px) e só mostra o botão depois de o painel sair. */
+.lateral-trilho {
+  width: 0;
+  flex-shrink: 0;
+  overflow-x: clip;
+  transition: width var(--lateral-motion) cubic-bezier(0.4, 0, 0.2, 1);
+}
+.analises-lateral.is-recolhida .lateral-trilho { width: var(--lateral-trilho-width); }
+.lateral-trilho-card {
+  position: sticky;
+  top: 0;
+  width: var(--lateral-trilho-width);
+  min-height: calc(100dvh - 56px - 1.25rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 0.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity calc(var(--lateral-motion) * 0.45) ease-in 0ms;
+}
+.analises-lateral.is-recolhida .lateral-trilho-card {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity calc(var(--lateral-motion) * 0.6) ease-out calc(var(--lateral-motion) * 0.5);
+}
+
+/* Botão do painel (cabeçalho e faixa): destaque primary, como o cadeado travado da barra da esquerda. */
+.lateral-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+  color: var(--primary-color);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.lateral-icon-btn:hover {
+  background: color-mix(in srgb, var(--primary-color) 24%, transparent);
+}
+.lateral-icon-btn .pi { font-size: 0.8rem; }
+.lateral-icon-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .analises-lateral-clip,
+  .analises-lateral-clip > :deep(*),
+  .lateral-trilho,
+  .lateral-trilho-card { transition-duration: 0ms; transition-delay: 0ms; }
+}
 .analysis-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1rem; padding-bottom: 1rem; }
 .analysis-error { min-height: 180px; padding: 2rem; display: flex; align-items: center; justify-content: center; gap: .8rem; border: 1px solid color-mix(in srgb, var(--risk-high) 35%, var(--card-border)); border-radius: 12px; background: color-mix(in srgb, var(--risk-high) 7%, var(--card-bg)); color: var(--text-muted); text-align: left; }
 .analysis-error > i { color: var(--risk-high); font-size: 1.35rem; }

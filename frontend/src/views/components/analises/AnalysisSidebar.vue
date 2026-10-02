@@ -67,6 +67,9 @@ const ufTooltip = analysisTooltip('crmFiltroUfCrm');
     <div class="selector-header">
       <i class="pi pi-chart-bar selector-header-icon" />
       <span class="selector-header-label">Análises disponíveis</span>
+      <div v-if="$slots['header-acoes']" class="selector-header-acoes">
+        <slot name="header-acoes" />
+      </div>
     </div>
 
     <div class="selector-groups">
@@ -266,6 +269,13 @@ const ufTooltip = analysisTooltip('crmFiltroUfCrm');
 .selector-header-icon {
   font-size: 0.9rem;
   color: var(--sidebar-heading-icon);
+}
+
+/* Ações do cabeçalho (ex.: fechar o painel), à direita sem aumentar a altura. */
+.selector-header-acoes {
+  display: flex;
+  align-items: center;
+  margin: -0.4rem -0.45rem -0.4rem auto;
 }
 
 .selector-header-label {

@@ -208,9 +208,9 @@ const panelTooltip = computed(() =>
   filterActionTooltip(
     isCollapsed.value ? "Abrir painel" : "Fechar painel",
     isCollapsed.value
-      ? "Exibe a sidebar com os filtros de pesquisa."
-      : "Oculta a sidebar com os filtros de pesquisa.",
-    isCollapsed.value ? "pi-angle-right" : "pi-angle-left",
+      ? "Exibe a sidebar com os filtros de pesquisa. Atalho: Ctrl+B."
+      : "Oculta a sidebar com os filtros de pesquisa. Atalho: Ctrl+B.",
+    isCollapsed.value ? "pi-angle-double-right" : "pi-angle-double-left",
   ),
 );
 
@@ -276,6 +276,16 @@ const isSidebarLocked = computed({
 const toggleSidebarLock = () => {
   isSidebarLocked.value = !isSidebarLocked.value;
 };
+
+// Atalho Ctrl+B abre e fecha a barra (Ctrl+Alt+B fica para o painel da direita).
+function atalhoPainel(evento) {
+  if (evento.code !== "KeyB" || !evento.ctrlKey || evento.altKey || evento.shiftKey || evento.metaKey) return;
+  if (evento.target instanceof HTMLElement && evento.target.isContentEditable) return;
+  evento.preventDefault();
+  isCollapsed.value = !isCollapsed.value;
+}
+onMounted(() => window.addEventListener("keydown", atalhoPainel));
+onBeforeUnmount(() => window.removeEventListener("keydown", atalhoPainel));
 
 // ── Rotas que bloqueiam todos os filtros e colapsam a sidebar ────────────────
 const LOCKED_ROUTES = ["/listas"];
@@ -777,34 +787,68 @@ const clearSearch = () => {
     <span class="filter-count-badge">{{ activeFilterCount }}</span>
   </button>
 
-  <!-- BOTÃO FLUTUANTE (ALÇA) — Segue a borda da sidebar -->
-  <button
-    class="sidebar-float-btn"
-    @click="isCollapsed = !isCollapsed"
-    v-tooltip.right="panelTooltip"
-  >
-    <i :class="isCollapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'"></i>
-  </button>
-
-  <!-- BOTÃO DE CADEADO -->
-  <button
-    class="sidebar-lock-btn"
-    :class="{ locked: isSidebarLocked }"
-    @click="toggleSidebarLock"
-    v-tooltip.right="lockTooltip"
-  >
-    <i :class="isSidebarLocked ? 'pi pi-lock' : 'pi pi-lock-open'"></i>
-  </button>
+  <!-- FAIXA DA BARRA RECOLHIDA — reabre pelo mesmo ícone do cabeçalho -->
+  <div class="sidebar-rail" :class="{ 'is-visivel': isCollapsed }" :inert="!isCollapsed || undefined">
+    <button
+      type="button"
+      class="sidebar-icon-btn is-primario"
+      aria-expanded="false"
+      aria-label="Abrir painel de filtros"
+      aria-keyshortcuts="Control+B"
+      @click="isCollapsed = false"
+      v-tooltip.right="panelTooltip"
+    >
+      <i class="pi pi-angle-double-right"></i>
+    </button>
+    <button
+      type="button"
+      class="sidebar-icon-btn"
+      :class="{ locked: isSidebarLocked }"
+      :aria-pressed="isSidebarLocked"
+      aria-label="Travar sidebar"
+      @click="toggleSidebarLock"
+      v-tooltip.right="lockTooltip"
+    >
+      <i :class="isSidebarLocked ? 'pi pi-lock' : 'pi pi-lock-open'"></i>
+    </button>
+  </div>
 
   <!-- BARRA LATERAL -->
-  <aside class="admin-sidebar">
-    <DataIntegrityBanner />
-
-    <div class="sidebar-content">
+  <aside class="admin-sidebar" :inert="isCollapsed || undefined">
+    <div class="sidebar-header">
       <div class="sidebar-title-simple">
         <i class="pi pi-sliders-h"></i>
         <span>FILTROS DE PESQUISA</span>
       </div>
+      <div class="sidebar-header-acoes">
+        <button
+          type="button"
+          class="sidebar-icon-btn"
+          :class="{ locked: isSidebarLocked }"
+          :aria-pressed="isSidebarLocked"
+          aria-label="Travar sidebar"
+          @click="toggleSidebarLock"
+          v-tooltip.bottom="lockTooltip"
+        >
+          <i :class="isSidebarLocked ? 'pi pi-lock' : 'pi pi-lock-open'"></i>
+        </button>
+        <button
+          type="button"
+          class="sidebar-icon-btn is-primario"
+          aria-expanded="true"
+          aria-label="Fechar painel de filtros"
+          aria-keyshortcuts="Control+B"
+          @click="isCollapsed = true"
+          v-tooltip.bottom="panelTooltip"
+        >
+          <i class="pi pi-angle-double-left"></i>
+        </button>
+      </div>
+    </div>
+
+    <DataIntegrityBanner />
+
+    <div class="sidebar-content">
 
       <!-- BUSCA DE FILTROS -->
       <div class="sidebar-search" :class="{ 'has-value': sidebarSearch }">
@@ -1867,6 +1911,18 @@ const clearSearch = () => {
   overflow: hidden;
 }
 
+/* O conteúdo fica sempre na largura aberta: ao recolher, a barra encolhe por cima
+   dele (overflow: hidden) como uma cortina, em vez de espremer e reempilhar os
+   campos a cada quadro da animação. Fixado no token de base (o --sidebar-width do
+   layout vai a 0 ao recolher). */
+.admin-sidebar > * {
+  flex-shrink: 0;
+  width: var(--sidebar-width-aberta, 260px);
+}
+.admin-sidebar > .sidebar-content {
+  flex-shrink: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .admin-sidebar { transition-duration: 0ms; }
 }
@@ -1955,90 +2011,105 @@ const clearSearch = () => {
   line-height: 1;
 }
 
-/* BOTÃO FLUTUANTE DE REABERTURA */
-.sidebar-float-btn {
-  position: fixed;
-  top: 50%;
-  left: var(--sidebar-width);
-  transform: translateY(-50%);
-  z-index: 250;
-  will-change: left;
-  width: 20px;
-  height: 48px;
-  background: color-mix(in srgb, var(--sidebar-bg) 80%, white);
-  border: 1px solid var(--sidebar-border);
-  border-left: none;
-  border-radius: 0 8px 8px 0;
-  cursor: pointer;
+/* CABEÇALHO: título à esquerda; cadeado e botão do painel à direita */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem 0.45rem 0.85rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.sidebar-header-acoes {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+/* Botão de ícone do cabeçalho e da faixa recolhida: sem borda em repouso */
+.sidebar-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   color: var(--text-muted);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1);
-}
-
-.sidebar-float-btn:hover {
-  width: 28px;
-  box-shadow: 6px 0 15px rgba(0, 0, 0, 0.15);
-}
-
-.sidebar-float-btn i {
-  font-size: 0.8rem;
-}
-
-/* BOTÃO DE CADEADO */
-.sidebar-lock-btn {
-  position: fixed;
-  top: calc(50% + 48px);
-  left: var(--sidebar-width);
-  transform: translateY(-50%);
-  z-index: 300;
-  will-change: left;
-  width: 20px;
-  height: 36px;
-  background: color-mix(in srgb, var(--sidebar-bg) 80%, white);
-  border: 1px solid var(--sidebar-border);
-  border-left: none;
-  border-radius: 0 8px 8px 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary-color);
+  font-size: 0.95rem;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1);
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.sidebar-lock-btn:hover {
-  width: 28px;
-  box-shadow: 6px 0 15px rgba(0, 0, 0, 0.15);
-}
-
-.sidebar-lock-btn.locked {
-  opacity: 1;
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 12%, var(--sidebar-bg));
-}
-
-.sidebar-lock-btn i {
+.sidebar-icon-btn i {
   font-size: 0.8rem;
+}
+
+.sidebar-icon-btn:hover {
+  background: color-mix(in srgb, var(--sidebar-text) 14%, transparent);
+  color: var(--text-color);
+}
+
+.sidebar-icon-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* Destaque primary: cadeado travado e botão do painel (abrir/fechar). */
+.sidebar-icon-btn.locked,
+.sidebar-icon-btn.is-primario {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+}
+
+.sidebar-icon-btn.is-primario:hover {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 24%, transparent);
+}
+
+/* FAIXA DA BARRA RECOLHIDA: aparece depois de a barra encolher; some antes de abrir */
+.sidebar-rail {
+  position: fixed;
+  top: 56px;
+  left: 0;
+  z-index: 201;
+  width: var(--sidebar-rail-width, 44px);
+  height: calc(100vh - 56px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding-top: 0.45rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity calc(var(--sidebar-motion-duration) * 0.45) ease-in 0ms;
+}
+
+.sidebar-rail.is-visivel {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity calc(var(--sidebar-motion-duration) * 0.6) ease-out calc(var(--sidebar-motion-duration) * 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-rail,
+  .sidebar-rail.is-visivel { transition-duration: 0ms; transition-delay: 0ms; }
 }
 
 .sidebar-title-simple {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 0.5rem;
+  min-width: 0;
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--text-color-85);
   opacity: 0.85;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 0.2rem 0.5rem 0.3rem;
-  margin-bottom: 0rem;
-  border-bottom: 1px solid var(--sidebar-border);
 }
 
 .sidebar-title-simple i {

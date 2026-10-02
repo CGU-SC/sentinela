@@ -197,6 +197,7 @@ const listaEnriquecida = computed(() =>
     return {
       ...item,
       razaoSocial:    item.razaoSocial || a.razao_social || '—',
+      nomeFantasia:   a.nome_fantasia || null,
       municipio:      a.municipio || '—',
       uf:             a.uf || '—',
       percValSemComp: a.percValSemComp ?? null,
@@ -216,7 +217,6 @@ const COLUNAS_ORDENAVEIS = Object.freeze({
   estabelecimento: { valor: (item) => (item.razaoSocial === '—' ? null : item.razaoSocial), inicial: 'asc' },
   localizacao: { valor: (item) => (item.municipio === '—' ? null : `${item.municipio} ${item.uf}`), inicial: 'asc' },
   risco: { valor: (item) => item.scoreRisco, inicial: 'desc' },
-  percentual: { valor: (item) => item.percValSemComp, inicial: 'desc' },
   valSemComp: { valor: (item) => item.valSemComp, inicial: 'desc' },
   totalMov: { valor: (item) => item.totalMov, inicial: 'desc' },
   evidencias: { valor: (item) => evidenciasStore.contar(item.cnpj), inicial: 'desc' },
@@ -353,7 +353,7 @@ const listaFiltrada = computed(() => {
     if (soComObservacao.value && !item.observacao) return false;
     if (!termo) return true;
     if (digitos.length >= 3 && item.cnpj.includes(digitos)) return true;
-    return normalizarTexto(`${item.razaoSocial} ${item.municipio} ${item.uf} ${item.observacao ?? ""}`).includes(termo);
+    return normalizarTexto(`${item.razaoSocial} ${item.nomeFantasia ?? ""} ${item.municipio} ${item.uf} ${item.observacao ?? ""}`).includes(termo);
   });
 });
 
@@ -1072,22 +1072,16 @@ function formatScore(v) {
                   <i :class="['pi', iconeOrdenacao('risco')]" aria-hidden="true" />
                 </button>
               </th>
-              <th class="col-perc col-right" :aria-sort="ariaOrdenacao('percentual')">
-                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'percentual' }" @click="ordenarPor('percentual')">
-                  <span>% sem comp.</span>
-                  <i :class="['pi', iconeOrdenacao('percentual')]" aria-hidden="true" />
-                </button>
-              </th>
-              <th class="col-valor col-right" :aria-sort="ariaOrdenacao('valSemComp')">
-                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'valSemComp' }" @click="ordenarPor('valSemComp')">
-                  <span>Valor sem comp.</span>
-                  <i :class="['pi', iconeOrdenacao('valSemComp')]" aria-hidden="true" />
-                </button>
-              </th>
               <th class="col-valor col-right" :aria-sort="ariaOrdenacao('totalMov')">
                 <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'totalMov' }" @click="ordenarPor('totalMov')">
                   <span>Total mov.</span>
                   <i :class="['pi', iconeOrdenacao('totalMov')]" aria-hidden="true" />
+                </button>
+              </th>
+              <th class="col-valor col-right" :aria-sort="ariaOrdenacao('valSemComp')">
+                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'valSemComp' }" @click="ordenarPor('valSemComp')">
+                  <span>Sem comprovação</span>
+                  <i :class="['pi', iconeOrdenacao('valSemComp')]" aria-hidden="true" />
                 </button>
               </th>
               <th class="col-evid" :aria-sort="ariaOrdenacao('evidencias')">
@@ -1097,13 +1091,19 @@ function formatScore(v) {
                 </button>
               </th>
               <th class="col-obs">Observação</th>
+              <th class="col-data" :aria-sort="ariaOrdenacao('adicionadoEm')">
+                <button type="button" class="th-ordenar" :class="{ 'is-ativo': ordenacao.coluna === 'adicionadoEm' }" @click="ordenarPor('adicionadoEm')">
+                  <span>Adicionada em</span>
+                  <i :class="['pi', iconeOrdenacao('adicionadoEm')]" aria-hidden="true" />
+                </button>
+              </th>
               <th class="col-actions"><span class="sr-only">Ações</span></th>
             </tr>
           </thead>
           <tbody>
             <template v-for="linha in linhasTabela" :key="linha.chave">
               <tr v-if="linha.tipo === 'grupo'" class="grupo-linha">
-                <td :colspan="9">
+                <td :colspan="10">
                   <span class="grupo-nome">{{ linha.rotulo }}</span>
                   <span class="grupo-dado">{{ linha.qtd }} {{ linha.qtd === 1 ? 'farmácia' : 'farmácias' }}</span>
                   <span v-if="linha.valSemComp !== null && !watchlistLoading" class="grupo-dado">
@@ -1124,6 +1124,11 @@ function formatScore(v) {
                 <td class="col-estab">
                   <div class="estab">
                     <span class="estab-nome" v-tooltip.top="linha.item.razaoSocial">{{ linha.item.razaoSocial }}</span>
+                    <span
+                      v-if="linha.item.nomeFantasia && normalizarTexto(linha.item.nomeFantasia) !== normalizarTexto(linha.item.razaoSocial)"
+                      class="estab-fantasia"
+                      v-tooltip.top="`Nome fantasia: ${linha.item.nomeFantasia}`"
+                    >{{ linha.item.nomeFantasia }}</span>
                     <span class="estab-meta">
                       <span class="estab-cnpj">{{ formatCnpj(linha.item.cnpj) }}</span>
                       <button
@@ -1136,11 +1141,11 @@ function formatScore(v) {
                         <i :class="copiedCnpj === linha.item.cnpj ? 'pi pi-check' : 'pi pi-copy'" aria-hidden="true" />
                       </button>
                     </span>
-                    <span class="estab-meta estab-meta--sec">
-                      <span v-if="linha.item.municipio !== '—'" class="estab-local">{{ linha.item.municipio }}/{{ linha.item.uf }}</span>
-                      <span v-if="linha.item.municipio !== '—'" class="estab-sep" aria-hidden="true">·</span>
-                      <span class="estab-desde">na lista desde {{ formatDate(linha.item.adicionadoEm) }}</span>
-                    </span>
+                    <span
+                      v-if="linha.item.municipio !== '—'"
+                      class="estab-local"
+                      v-tooltip.top="`${linha.item.municipio}/${linha.item.uf}`"
+                    ><i class="pi pi-map-marker" aria-hidden="true" />{{ linha.item.municipio }}/{{ linha.item.uf }}</span>
                   </div>
                 </td>
                 <td class="col-risco">
@@ -1152,27 +1157,19 @@ function formatScore(v) {
                   <span v-else-if="!watchlistError && linha.item.totalMov == null" class="tag-sem-dados">Sem dados no período</span>
                   <span v-else class="col-vazio">—</span>
                 </td>
-                <td class="col-perc col-right">
-                  <span v-if="watchlistLoading" class="sk sk-num" aria-hidden="true" />
-                  <span v-else-if="linha.item.percValSemComp != null" class="perc" :class="faixaPerc(linha.item.percValSemComp)">
-                    <span class="perc-valor">{{ formatPerc(linha.item.percValSemComp) }}</span>
-                    <span class="perc-trilha" aria-hidden="true">
-                      <span class="perc-barra" :style="{ width: `${Math.min(100, Math.max(0, linha.item.percValSemComp))}%` }" />
-                    </span>
-                  </span>
-                  <span v-else class="col-vazio">—</span>
-                </td>
-                <td class="col-valor col-right col-destaque">
-                  <span v-if="watchlistLoading" class="sk sk-num" aria-hidden="true" />
-                  <span
-                    v-else-if="linha.item.valSemComp != null"
-                    :class="{ 'high-value-audit': linha.item.valSemComp >= auditHighValue }"
-                  >{{ formatCurrencyFull(linha.item.valSemComp) }}</span>
-                  <template v-else>—</template>
-                </td>
                 <td class="col-valor col-right">
                   <span v-if="watchlistLoading" class="sk sk-num" aria-hidden="true" />
                   <template v-else>{{ linha.item.totalMov != null ? formatCurrencyFull(linha.item.totalMov) : '—' }}</template>
+                </td>
+                <td class="col-valor col-right col-destaque">
+                  <span v-if="watchlistLoading" class="sk sk-num" aria-hidden="true" />
+                  <div v-else-if="linha.item.valSemComp != null" class="semcomp">
+                    <span :class="{ 'high-value-audit': linha.item.valSemComp >= auditHighValue }">{{ formatCurrencyFull(linha.item.valSemComp) }}</span>
+                    <span v-if="linha.item.percValSemComp != null" class="semcomp-perc" :class="faixaPerc(linha.item.percValSemComp)">
+                      {{ formatPerc(linha.item.percValSemComp) }}
+                    </span>
+                  </div>
+                  <template v-else>—</template>
                 </td>
                 <td class="col-evid">
                   <button
@@ -1202,6 +1199,7 @@ function formatScore(v) {
                     <span v-else class="obs-adicionar"><i class="pi pi-plus" aria-hidden="true" /> Adicionar observação</span>
                   </button>
                 </td>
+                <td class="col-data">{{ formatDate(linha.item.adicionadoEm) }}</td>
                 <td class="col-actions">
                   <div class="action-btns">
                     <button
@@ -1322,7 +1320,7 @@ function formatScore(v) {
 }
 .lists-titulo h2 {
   margin: 0;
-  color: var(--text-color);
+  color: var(--text-color-85);
   font-size: 1.25rem;
   font-weight: 600;
   line-height: 1.2;
@@ -1488,7 +1486,7 @@ function formatScore(v) {
   white-space: nowrap;
 }
 .lists-total-valor {
-  color: var(--text-color);
+  color: var(--text-color-85);
   font-size: 1.15rem;
   font-weight: 600;
   line-height: 1.15;
@@ -1543,12 +1541,12 @@ function formatScore(v) {
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
-.risco-chip:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text-color) 35%, var(--card-border)); color: var(--text-color); }
+.risco-chip:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text-color) 35%, var(--card-border)); color: var(--text-color-85); }
 .risco-chip:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent); outline-offset: 1px; }
 .risco-chip.is-ativo {
   border-color: var(--primary-color);
   background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-  color: var(--text-color);
+  color: var(--text-color-85);
 }
 .risco-chip:disabled { cursor: default; opacity: 0.45; }
 .risco-ponto { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
@@ -1625,7 +1623,7 @@ function formatScore(v) {
   color: var(--text-muted);
   cursor: pointer;
 }
-.lists-busca-limpar:hover { color: var(--text-color); background: color-mix(in srgb, var(--text-color) 10%, transparent); }
+.lists-busca-limpar:hover { color: var(--text-color-85); background: color-mix(in srgb, var(--text-color) 10%, transparent); }
 .lists-busca-limpar .pi { font-size: 0.65rem; }
 
 .lists-filtro :deep(.rp-gatilho) {
@@ -1717,10 +1715,10 @@ function formatScore(v) {
 .lists-table th.col-right { text-align: right; }
 .lists-table th.col-num { width: 44px; }
 .lists-table th.col-risco { width: 9%; }
-.lists-table th.col-perc { width: 10%; }
 .lists-table th.col-valor { width: 12%; }
+.lists-table th.col-data { width: 9%; }
 .lists-table th.col-evid { width: 7%; }
-.lists-table th.col-obs { width: 17%; }
+.lists-table th.col-obs { width: 16%; }
 .lists-table th.col-actions { width: 150px; }
 
 .lists-table td {
@@ -1743,7 +1741,7 @@ function formatScore(v) {
 .col-vazio { color: var(--text-muted); opacity: 0.6; }
 td.col-num { color: var(--text-muted); font-size: 0.74rem; }
 td.col-valor { color: var(--text-secondary); font-weight: 400; white-space: nowrap; }
-td.col-destaque { color: var(--text-color); font-weight: 600; }
+td.col-destaque { color: var(--text-color-85); font-weight: 600; }
 tr.is-sem-dados .estab-nome { color: var(--text-secondary); }
 
 /* Cabeçalho ordenável: o botão ocupa a célula e herda a tipografia do cabeçalho. */
@@ -1764,7 +1762,7 @@ tr.is-sem-dados .estab-nome { color: var(--text-secondary); }
 }
 .th-ordenar .pi { font-size: 0.7rem; opacity: 0.45; }
 .th-ordenar:hover,
-.th-ordenar:focus-visible { color: var(--text-color); }
+.th-ordenar:focus-visible { color: var(--text-color-85); }
 .th-ordenar:hover .pi,
 .th-ordenar:focus-visible .pi { opacity: 0.85; }
 .th-ordenar:focus-visible {
@@ -1782,14 +1780,14 @@ tr.is-sem-dados .estab-nome { color: var(--text-secondary); }
   color: var(--text-secondary);
   font-size: 0.76rem;
 }
-.grupo-nome { margin-right: 0.75rem; color: var(--text-color); font-weight: 600; }
+.grupo-nome { margin-right: 0.75rem; color: var(--text-color-85); font-weight: 600; }
 .grupo-dado + .grupo-dado::before { content: "·"; margin: 0 0.5rem; color: var(--text-muted); }
 
 /* Estabelecimento: nome e, abaixo, CNPJ, município e data de inclusão */
 .estab { display: flex; flex-direction: column; gap: 0.12rem; min-width: 0; }
 .estab-nome {
   overflow: hidden;
-  color: var(--text-color);
+  color: var(--text-color-85);
   font-weight: 500;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -1805,12 +1803,23 @@ tr.is-sem-dados .estab-nome { color: var(--text-secondary); }
   font-size: 0.72rem;
   white-space: nowrap;
 }
-.estab-meta--sec { gap: 0.35rem; }
-.estab-local { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; }
-.estab-desde { flex-shrink: 0; }
-.estab-sep { opacity: 0.6; }
-.is-compacta .estab-desde,
-.is-compacta .estab-local + .estab-sep { display: none; }
+.estab-fantasia {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.estab-local {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.estab-local .pi { margin-right: 0.3rem; color: var(--text-muted); font-size: 0.62rem; }
+.estab-sep { flex-shrink: 0; opacity: 0.6; }
+td.col-data { color: var(--text-muted); font-size: 0.74rem; white-space: nowrap; }
 .copy-btn {
   display: inline-flex;
   align-items: center;
@@ -1857,20 +1866,11 @@ tr.is-sem-dados .estab-nome { color: var(--text-secondary); }
   white-space: nowrap;
 }
 
-/* % sem comprovação: número e barra proporcional */
-.perc { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; --perc-cor: var(--text-secondary); }
-.perc.is-alto { --perc-cor: var(--risk-critical); }
-.perc.is-medio { --perc-cor: var(--risk-medium); }
-.perc-valor { color: var(--perc-cor); font-weight: 600; }
-.perc-trilha {
-  width: 4.5rem;
-  height: 3px;
-  border-radius: 2px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--text-color) 10%, transparent);
-}
-.perc-barra { display: block; height: 100%; border-radius: 2px; background: var(--perc-cor); }
-.is-compacta .perc-trilha { display: none; }
+/* Sem comprovação: valor e, abaixo, o percentual do total movimentado (como em /estabelecimentos) */
+.semcomp { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+.semcomp-perc { color: var(--text-muted); font-size: 0.7rem; font-weight: 500; }
+.semcomp-perc.is-alto { color: var(--risk-critical); }
+.semcomp-perc.is-medio { color: var(--risk-medium); }
 
 /* Alto valor sem comprovação (mesmo destaque da tabela de /estabelecimentos) */
 .high-value-audit {

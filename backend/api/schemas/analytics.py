@@ -38,6 +38,7 @@ class ResultadoSentinelaCnpjSchema(BaseModel):
     municipio_uf: str
     cnpj: str
     razao_social: Optional[str] = None
+    nome_fantasia: Optional[str] = None
     totalMov: float = 0.0
     valSemComp: float = 0.0
     percValSemComp: Optional[float] = 0.0
