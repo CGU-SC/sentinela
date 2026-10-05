@@ -397,6 +397,7 @@ def test_history_uses_crm_suffix_when_cfm_record_is_missing(monkeypatch):
         frame = scan().collect().with_columns(pl.lit("M1/RJ").alias("id_medico"))
         monkeypatch.setattr(historico, name, lambda frame=frame: frame.lazy())
     monkeypatch.setattr(historico, "get_dados_medico_df", lambda: pl.DataFrame(schema={"id_medico": pl.String}))
+    monkeypatch.setattr(historico, "mais_medicos_por_id", lambda _: {})
 
     result = historico.get_crm_medico_historico("M1/RJ", date(2024, 1, 1), date(2024, 3, 31))
 

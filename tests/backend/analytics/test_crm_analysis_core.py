@@ -266,6 +266,7 @@ def test_farmacia_counts_and_ranking_response_main_branches(monkeypatch):
     counts = pl.DataFrame({"id_medico": ["M1", "M2"], "qtd_farmacias": [2, 1], "qtd_municipios": [1, 1]})
     monkeypatch.setattr(crm, "ids_busca_medico", lambda _: None)
     monkeypatch.setattr(crm, "get_dados_medico_df", lambda: doctors)
+    monkeypatch.setattr(crm, "mais_medicos_por_id", lambda _: {})
     monkeypatch.setattr(crm, "farmacias_dos_medicos", lambda *args: counts)
     monkeypatch.setattr(crm, "farmacias_por_medico", lambda *args: counts)
     enriched = crm._com_farmacias(ranking, date(2024, 1, 1), date(2024, 1, 31), todos=False)

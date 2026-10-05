@@ -283,6 +283,7 @@ def test_atypical_medicine_context_handles_no_data_and_contributing_gtins(temp_d
 
 
 def test_atypical_medicine_context_covers_empty_cache_period_and_bad_descriptions(temp_dir, monkeypatch):
+    _set_medicine_lookup(monkeypatch)
     monkeypatch.setattr(contexts, "get_evolucao_mensal_gtin", lambda *args: None)
     monkeypatch.setattr(contexts, "_get_cnpj_cache_dir", lambda _: str(temp_dir))
     monkeypatch.setattr(contexts, "MOVIMENTACAO_MENSAL_GTIN_PARQUET", "missing.parquet")

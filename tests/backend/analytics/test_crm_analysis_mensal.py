@@ -132,6 +132,7 @@ def test_monthly_rate_calculation_joins_p95_and_marks_high_rates():
 
 
 def test_monthly_view_returns_sorted_rows_and_handles_search_and_empty_page(monkeypatch):
+    monkeypatch.setattr(mensal, "mais_medicos_por_id", lambda _: {})
     _install_monthly(monkeypatch, doctors=_doctor_cache().head(1))
     result = mensal.get_crm_prescricoes_mensal(page=1, page_size=10)
     assert result.qtd_linhas == 2 and result.escopo == "Brasil"

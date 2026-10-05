@@ -826,7 +826,14 @@ def test_get_crm_raio_x_filters_hour_and_enriches_transactions(temp_dir, monkeyp
 
 
 def test_get_crm_raio_x_propagates_cache_and_required_rate_errors(temp_dir, monkeypatch):
+    import data_cache
+
     cnpj = "00123456000199"
+    monkeypatch.setattr(
+        data_cache,
+        "get_dados_medico_df",
+        lambda: pl.DataFrame({"id_medico": ["CRM-A"], "no_medico": ["Ana"]}),
+    )
     pl.DataFrame(
         {
             "dt_janela": ["2024-01-10 09:00:00"], "hr_janela": [9],
