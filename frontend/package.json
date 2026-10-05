@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:unit": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "node scripts/run-api-integration.mjs"
   },
   "dependencies": {
     "axios": "^1.6.0",

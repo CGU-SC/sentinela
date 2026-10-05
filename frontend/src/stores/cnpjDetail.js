@@ -191,9 +191,6 @@ function assertSocios(data) {
 }
 
 function assertCadastroBootstrap(cadastro) {
-  if (!cadastro) {
-    throw new Error('Contrato invalido em bootstrap: cadastro obrigatorio.');
-  }
   [
     'is_dispersao_uf_nao_vizinha',
     'pct_dispersao_uf_nao_vizinha',
@@ -1694,4 +1691,3 @@ export const useCnpjDetailStore = defineStore('cnpjDetail', {
     },
   },
 });
-

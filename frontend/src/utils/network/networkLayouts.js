@@ -31,18 +31,6 @@ function positionOnEllipse(center, radiusX, radiusY, angle) {
   };
 }
 
-function circularMeanAngle(angles) {
-  if (!angles.length) return 0;
-  const sum = angles.reduce(
-    (acc, angle) => ({
-      x: acc.x + Math.cos(angle),
-      y: acc.y + Math.sin(angle),
-    }),
-    { x: 0, y: 0 },
-  );
-  return Math.atan2(sum.y, sum.x);
-}
-
 function getAnchorSide(anchor, center) {
   const dx = anchor.x - center.x;
   const dy = anchor.y - center.y;
