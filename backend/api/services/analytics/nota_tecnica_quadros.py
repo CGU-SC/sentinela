@@ -880,7 +880,7 @@ def _add_tabela_repasses_anuais(
 
     p_foot = doc.add_paragraph()
     _format_quadro_footnote(p_foot)
-    _run(p_foot, 'Fonte: Sistema Integrado de Administração Financeira do Governo Federal (SIAFI).', color='0F172A', size=10)
+    _run(p_foot, 'Fonte: Ordens bancárias emitidas pelo Fundo Nacional de Saúde (FNS/MS).', color='0F172A', size=10)
     _keep_small_table_together(p_title, table, [p_foot])
 
     p_atencao = doc.add_paragraph()

@@ -1035,9 +1035,10 @@ def generate_nota_tecnica(
     p_item5_intro = doc.add_paragraph()
     _run(p_item5_intro, 'A NT traz ainda, em seu item 5, análise da empresa em relação aos seus sócios, capital social, porte, situação cadastral junto à Receita Federal do Brasil e ao PFPB, bem como da compatibilidade entre o número de empregados e o volume de recursos recebidos do MS.', color='0F172A', size=12)
 
-    fontes = ['Cadastro Nacional de Pessoas Jurídicas (CNPJ) e Cadastro de Pessoa Física (CPF) da Receita Federal do Brasil', 'Sistema de Escrituração Digital das Obrigações Fiscais, Previdenciárias e Trabalhistas (eSocial)', 'Sistema Integrado de Administração Financeira do Governo Federal (SIAFI)']
+    fontes = ['Cadastro Nacional de Pessoas Jurídicas (CNPJ) e Cadastro de Pessoa Física (CPF) da Receita Federal do Brasil', 'Sistema de Escrituração Digital das Obrigações Fiscais, Previdenciárias e Trabalhistas (eSocial)']
     if 'polimedicamento' in criticos or 'teto' in criticos: fontes.append('dados demográficos oficiais fornecidos pelo Instituto Brasileiro de Geografia e Estatística (IBGE)')
     if any(k in criticos for k in ['hhi_crm', 'crms_irregulares']): fontes.append('cadastros de médicos do Conselho Regional de Medicina (CRM)')
+    fontes.append('Fundo Nacional de Saúde (FNS/MS), referentes às ordens bancárias emitidas em favor da farmácia')
     fontes_txt = ("; ".join(fontes[:-1]) + "; e " + fontes[-1]) if len(fontes) > 1 else fontes[0]
     p_fontes = doc.add_paragraph()
     _run(p_fontes, f'Os achados advindos das análises realizadas, consignados nos itens 5, 6 e 7 desta Nota Técnica, tomaram por base informações registradas pela Farmácia {razao_social} no Sistema Autorizador de Vendas (SAV) do Programa Farmácia Popular do Brasil e cópias de notas fiscais eletrônicas relativas às aquisições de medicamentos por ela realizadas, compartilhadas pela Receita Federal do Brasil. Além dessas informações, foram utilizados dados extraídos das seguintes fontes: {fontes_txt}.', color='0F172A', size=12)

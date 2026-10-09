@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.6] - 2026-10-08
+
+### Alterado
+- **Fonte das ordens bancárias nas Notas Técnicas.** A tabela e a Introdução passam a identificar o Fundo Nacional de Saúde (FNS/MS) nas informações sobre as ordens bancárias.
+
 ## [2.0.5] - 2026-10-02
 
 ### Adicionado
