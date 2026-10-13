@@ -2029,7 +2029,7 @@ def _add_crms_irregulares_text(
         doc,
         p1,
         17,
-        "O Ministério da Saúde disponibiliza a relação de médicos ativos no Painel Mais Médicos - APS do Ministério da Saúde: https://www.gov.br/saude/pt-br/composicao/sgtes/mais-medicos/painel-aps.",
+        "O Ministério da Saúde disponibiliza a relação de médicos ativos no Painel Mais Médicos - APS do Ministério da Saúde: https://maismedicos.saude.gov.br/new/web/app.php/maismedicos/rms.",
     )
     _run(
         p1,

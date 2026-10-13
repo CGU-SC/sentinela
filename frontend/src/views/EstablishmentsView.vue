@@ -7,7 +7,8 @@ import { useGeoStore } from '@/stores/geo';
 import { useFetchAnalytics } from '@/composables/useFetchAnalytics';
 import { useRiskIndicatorAnalysis } from '@/composables/useRiskIndicatorAnalysis';
 import { INDICATOR_GROUPS } from '@/config/riskConfig';
-import { ESTABLISHMENTS_HIDDEN_KPI_LABELS } from '@/config/constants';
+import { ESTABLISHMENTS_HIDDEN_KPI_LABELS, TIMING } from '@/config/constants';
+import { filterActionTooltip } from '@/config/filterTooltipConfig';
 
 import RiskIndicatorSelector from './components/risk-indicators/RiskIndicatorSelector.vue';
 import EstablishmentRiskMap from './components/establishments/EstablishmentRiskMap.vue';
@@ -23,6 +24,37 @@ const {
 } = storeToRefs(riskIndicatorsStore);
 const { fetchRiskIndicator, fetchRiskIndicatorEstablishmentsPage } = useRiskIndicatorAnalysis();
 useFetchAnalytics({ secoes: ['kpis'], includeFatorRisco: false, includeNationalContext: false });
+
+const INDICATOR_PANEL_STORAGE = 'sentinela_estabelecimentos_painel_indicadores_recolhido';
+
+function indicadorPainelSalvo() {
+  try {
+    return localStorage.getItem(INDICATOR_PANEL_STORAGE) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+const indicadorPainelRecolhido = ref(indicadorPainelSalvo());
+
+function alternarPainelIndicadores() {
+  indicadorPainelRecolhido.value = !indicadorPainelRecolhido.value;
+  try {
+    localStorage.setItem(INDICATOR_PANEL_STORAGE, String(indicadorPainelRecolhido.value));
+  } catch {
+    // A preferência continua funcionando durante a sessão mesmo sem armazenamento local.
+  }
+}
+
+const indicadorPainelTooltip = computed(() => filterActionTooltip(
+  indicadorPainelRecolhido.value ? 'Abrir painel' : 'Fechar painel',
+  indicadorPainelRecolhido.value
+    ? 'Exibe novamente os indicadores de risco.'
+    : 'Oculta os indicadores de risco para ampliar a área de análise.',
+  indicadorPainelRecolhido.value ? 'pi-angle-double-left' : 'pi-angle-double-right',
+));
+
+const indicadorPainelMotion = `${TIMING.SIDEBAR_MOTION_MS}ms`;
 
 // Metadados do indicador ativo (label, formato, metodologia)
 const activeRiskIndicatorMeta = computed(() => {
@@ -239,7 +271,43 @@ function onCnpjTableLazy(event) {
     </div>
 
     <!-- Painel lateral de seleção de indicadores (direita) -->
-    <RiskIndicatorSelector @select="onRiskIndicatorSelect" />
+    <div
+      class="indicadores-lateral"
+      :class="{ 'is-recolhida': indicadorPainelRecolhido }"
+      :style="{ '--lateral-motion': indicadorPainelMotion }"
+    >
+      <div class="indicadores-trilho" :inert="!indicadorPainelRecolhido || undefined">
+        <div class="indicadores-trilho-card">
+          <button
+            type="button"
+            class="lateral-icon-btn"
+            aria-expanded="false"
+            aria-label="Abrir painel de indicadores"
+            v-tooltip.left="indicadorPainelTooltip"
+            @click="alternarPainelIndicadores"
+          >
+            <i class="pi pi-angle-double-left" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+
+      <div class="indicadores-lateral-clip" :inert="indicadorPainelRecolhido || undefined">
+        <RiskIndicatorSelector @select="onRiskIndicatorSelect">
+          <template #header-actions>
+            <button
+              type="button"
+              class="lateral-icon-btn"
+              aria-expanded="true"
+              aria-label="Fechar painel de indicadores"
+              v-tooltip.bottom="indicadorPainelTooltip"
+              @click="alternarPainelIndicadores"
+            >
+              <i class="pi pi-angle-double-right" aria-hidden="true" />
+            </button>
+          </template>
+        </RiskIndicatorSelector>
+      </div>
+    </div>
     </div>
     </div>
   </div>
@@ -248,6 +316,7 @@ function onCnpjTableLazy(event) {
 <style scoped>
 .indicadores-page {
   --indicator-selector-width: 250px;
+  --lateral-trilho-width: 44px;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -267,6 +336,98 @@ function onCnpjTableLazy(event) {
   align-items: flex-start;
   gap: 1rem;
   width: 100%;
+}
+
+.indicadores-lateral {
+  display: flex;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+
+.indicadores-lateral-clip {
+  width: var(--indicator-selector-width);
+  overflow-x: clip;
+  transition: width var(--lateral-motion) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.indicadores-lateral-clip > :deep(*) {
+  width: var(--indicator-selector-width);
+  opacity: 1;
+  transition: opacity calc(var(--lateral-motion) * 0.6) ease-out calc(var(--lateral-motion) * 0.5);
+}
+
+.indicadores-lateral.is-recolhida .indicadores-lateral-clip { width: 0; }
+
+.indicadores-lateral.is-recolhida .indicadores-lateral-clip > :deep(*) {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity calc(var(--lateral-motion) * 0.45) ease-in 0ms;
+}
+
+.indicadores-trilho {
+  width: 0;
+  flex-shrink: 0;
+  overflow-x: clip;
+  transition: width var(--lateral-motion) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.indicadores-lateral.is-recolhida .indicadores-trilho { width: var(--lateral-trilho-width); }
+
+.indicadores-trilho-card {
+  position: sticky;
+  top: 0;
+  width: var(--lateral-trilho-width);
+  min-height: calc(100dvh - 56px - 1.25rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 0.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity calc(var(--lateral-motion) * 0.45) ease-in 0ms;
+}
+
+.indicadores-lateral.is-recolhida .indicadores-trilho-card {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity calc(var(--lateral-motion) * 0.6) ease-out calc(var(--lateral-motion) * 0.5);
+}
+
+.lateral-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+  color: var(--primary-color);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.lateral-icon-btn:hover { background: color-mix(in srgb, var(--primary-color) 24%, transparent); }
+.lateral-icon-btn .pi { font-size: 0.8rem; }
+.lateral-icon-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 70%, transparent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicadores-lateral-clip,
+  .indicadores-lateral-clip > :deep(*),
+  .indicadores-trilho,
+  .indicadores-trilho-card {
+    transition-duration: 0ms;
+    transition-delay: 0ms;
+  }
 }
 
 .analysis-panel {

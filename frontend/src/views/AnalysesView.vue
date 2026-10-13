@@ -199,6 +199,8 @@ const rankingFixados = computed(() => {
   return ids ? ids.split(',').length : null;
 });
 const rankingInitialLoading = computed(() => isRankingLoading.value && ranking.value.length === 0);
+const rankingSearchDisabled = computed(() => isRankingLoading.value
+  && (!rankingResponse.value || rankingResponseKey.value !== activeKey.value));
 const rankingPageLoading = computed(() => isRankingPageLoading.value && ranking.value.length > 0);
 const rankingIsStale = computed(() => Boolean(
   rankingResponse.value && (
@@ -371,7 +373,7 @@ function onRankingSort(event) {
           <div class="analises-lateral-clip" :inert="lateralRecolhida || undefined">
             <AnalysisSidebar
               :search-query="searchInput"
-              :search-disabled="rankingInitialLoading"
+              :search-disabled="rankingSearchDisabled"
               @search="onRankingSearch"
             >
               <template #header-acoes>

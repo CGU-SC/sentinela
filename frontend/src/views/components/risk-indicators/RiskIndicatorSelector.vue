@@ -27,8 +27,11 @@ function hideTooltipOnBlur(event) {
 <template>
   <aside class="indicator-selector">
     <div class="selector-header">
-      <i class="pi pi-shield selector-header-icon" />
-      <span class="selector-header-label">Indicadores</span>
+      <div class="selector-header-title">
+        <i class="pi pi-shield selector-header-icon" />
+        <span class="selector-header-label">Indicadores</span>
+      </div>
+      <slot name="header-actions" />
     </div>
 
     <div class="selector-groups">
@@ -96,10 +99,18 @@ function hideTooltipOnBlur(event) {
 .selector-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.6rem;
   padding: 0.9rem 1rem;
   border-bottom: 1px solid var(--card-border);
   background: var(--sidebar-heading-tint);
+}
+
+.selector-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
 }
 
 .selector-header-icon {

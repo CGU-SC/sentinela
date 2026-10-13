@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.7] - 2026-10-13
+
+### Adicionado
+- **Recolhimento do painel de indicadores em Estabelecimentos.** O painel lateral pode ser recolhido e reaberto, e a preferência fica salva no navegador.
+
+### Alterado
+- **Referência ao Mais Médicos na Nota Técnica.** O link do antigo Painel APS foi substituído pelo endereço atualizado da relação de RMS.
+
+### Corrigido
+- **Busca de médicos na análise de CRMs.** O campo permanece disponível após uma pesquisa sem resultados, permitindo corrigir o termo sem clicar novamente.
+
 ## [2.0.6] - 2026-10-08
 
 ### Alterado
