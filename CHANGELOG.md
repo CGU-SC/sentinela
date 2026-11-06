@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.8] - 2026-11-06
+
+### Corrigido
+- **Histórico de CRMs após copiar o cache para outro computador.** A ponte de médicos por janela de múltiplos CRMs e o índice de bitmaps deixam de comparar a data dos arquivos de origem e passam a comparar o tamanho e o rodapé do parquet. Copiar `modules/global` para outra máquina não invalida mais os dois módulos nem causa erro 503 na análise de CRMs.
+
+### Alterado
+- **Mensagens de módulo desatualizado.** A mensagem passa a nomear só a fonte que mudou, em vez de listar todas.
+
+### Ação necessária
+- Os dois módulos montados nas versões anteriores são recusados pela 2.0.8. Reconstrua-os com os itens 54 (índice de bitmaps) e 55 (ponte de médicos por janela) do `sincronizar_cache`, ou copie os módulos já atualizados.
+
 ## [2.0.7] - 2026-10-13
 
 ### Adicionado
