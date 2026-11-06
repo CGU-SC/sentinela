@@ -13,8 +13,10 @@ Com um filtro de farmacia, a uniao dos bitmaps das farmacias filtradas de um
 territorio da, em milissegundos, os medicos que prescreveram nelas; a
 intersecao com o bitmap de alta do territorio da os de alta intensidade.
 
-O arquivo guarda a assinatura (tamanho e data) dos .smod de origem; se algum
-for sincronizado de novo sem remontar o indice, a consulta responde 503.
+O arquivo guarda a assinatura (tamanho e hash do rodape do parquet) dos .smod
+de origem; a data do arquivo nao entra, para que copiar o cache para outra
+maquina nao invalide o indice. Se algum for sincronizado de novo sem remontar o
+indice, a consulta responde 503.
 """
 
 from __future__ import annotations
@@ -91,7 +93,7 @@ def construir_indice(destino: str, progress_callback: Optional[Callable[[int], N
 
     t0 = time.perf_counter()
     print("Montando indice de bitmaps CRM (filtros de farmacia)...")
-    assinatura = {nome: list(dc.get_global_cache_signature(nome)[1:]) for nome in FONTES}
+    assinatura = {nome: list(dc.get_global_content_signature(nome)) for nome in FONTES}
 
     dim = dc.scan_crm_medico_dim().select([
         pl.col("id_medico").cast(pl.Utf8),
@@ -318,10 +320,21 @@ def obter_indice() -> IndiceBitmaps:
         if meta.height != 1:
             raise IndiceDesatualizado("Indice de bitmaps CRM sem assinatura. Monte o indice de novo.")
         info = json.loads(meta.item(0, "bitmap").decode("utf-8"))
-        atual = {nome: list(dc.get_global_cache_signature(nome)[1:]) for nome in FONTES}
-        if info.get("versao") != CRM_INDICE_BITMAPS_VERSION or info.get("fontes") != atual:
+        atual = {nome: list(dc.get_global_content_signature(nome)) for nome in FONTES}
+        if info.get("versao") != CRM_INDICE_BITMAPS_VERSION:
             raise IndiceDesatualizado(
-                "Indice de bitmaps CRM desatualizado em relacao aos modulos CRM sincronizados. "
+                "Indice de bitmaps CRM de versao antiga. "
+                "Monte o indice de novo (sincronizar_cache.py, opcao 54)."
+            )
+        gravadas = info.get("fontes")
+        if gravadas != atual:
+            divergentes = [
+                nome for nome in FONTES
+                if not isinstance(gravadas, dict) or gravadas.get(nome) != atual[nome]
+            ]
+            raise IndiceDesatualizado(
+                "Indice de bitmaps CRM desatualizado em relacao a "
+                f"{', '.join(divergentes)}. "
                 "Monte o indice de novo (sincronizar_cache.py, opcao 54)."
             )
         dim = dc.scan_crm_medico_dim().select([

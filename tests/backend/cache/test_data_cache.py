@@ -192,6 +192,103 @@ def test_schema_validation_and_signature_fail_for_absent_files(tmp_path, monkeyp
         data_cache._validate_parquet_schema("missing", str(missing))
     with pytest.raises(FileNotFoundError):
         data_cache.get_global_cache_signature("missing")
+    with pytest.raises(FileNotFoundError):
+        data_cache.get_global_content_signature("missing")
+
+
+def _modulo_global(tmp_path, monkeypatch, nome="fixture"):
+    monkeypatch.setattr(data_cache, "_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(data_cache, "_GLOBAL_PARQUETS", {nome: f"{nome}.smod"})
+    monkeypatch.setattr(data_cache, "_CONTENT_SIGNATURE_MEMORIA", {})
+    return tmp_path / f"{nome}.smod"
+
+
+def test_content_signature_ignores_mtime_and_detects_changed_values_with_same_row_count(tmp_path, monkeypatch):
+    import os
+
+    path = _modulo_global(tmp_path, monkeypatch)
+    pl.DataFrame({"id": [1, 2, 3]}).write_parquet(path)
+    assinatura = data_cache.get_global_content_signature("fixture")
+    tamanho, hash_rodape = assinatura
+    assert tamanho == path.stat().st_size
+    assert len(hash_rodape) == 32
+
+    # Copia para outra maquina: mesmos bytes, mtime diferente e memoria vazia.
+    os.utime(path, ns=(1_000_000_000, 1_000_000_000))
+    data_cache._CONTENT_SIGNATURE_MEMORIA.clear()
+    assert data_cache.get_global_content_signature("fixture") == assinatura
+
+    # Mesmo numero de linhas, valor diferente (muda a estatistica maxima): hash diferente.
+    os.utime(path, ns=(2_000_000_000, 2_000_000_000))
+    pl.DataFrame({"id": [1, 2, 4]}).write_parquet(path)
+    assert data_cache.get_global_content_signature("fixture")[1] != hash_rodape
+
+
+def test_content_signature_memory_rereads_only_when_mtime_or_size_change(tmp_path, monkeypatch):
+    import os
+
+    path = _modulo_global(tmp_path, monkeypatch)
+    pl.DataFrame({"id": [1, 2, 3]}).write_parquet(path)
+    leituras = []
+    real = data_cache._ler_assinatura_rodape
+    monkeypatch.setattr(data_cache, "_ler_assinatura_rodape", lambda caminho: leituras.append(caminho) or real(caminho))
+
+    primeira = data_cache.get_global_content_signature("fixture")
+    assert data_cache.get_global_content_signature("fixture") == primeira
+    assert len(leituras) == 1
+
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    assert data_cache.get_global_content_signature("fixture") == primeira
+    assert len(leituras) == 2
+
+    pl.DataFrame({"id": list(range(500))}).write_parquet(path)
+    assert data_cache.get_global_content_signature("fixture") != primeira
+    assert len(leituras) == 3
+
+
+def test_content_signature_reuses_value_stored_by_another_thread_while_waiting_for_lock(tmp_path, monkeypatch):
+    path = _modulo_global(tmp_path, monkeypatch)
+    pl.DataFrame({"id": [1]}).write_parquet(path)
+    stat = path.stat()
+
+    class TravaComOutraThreadPreenchendo:
+        def __enter__(self):
+            data_cache._CONTENT_SIGNATURE_MEMORIA[str(path)] = ((stat.st_mtime_ns, stat.st_size), (1, "da-outra-thread"))
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(data_cache, "_CONTENT_SIGNATURE_LOCK", TravaComOutraThreadPreenchendo())
+    monkeypatch.setattr(
+        data_cache, "_ler_assinatura_rodape",
+        lambda _caminho: pytest.fail("nao deveria reler: outra thread ja gravou a assinatura"),
+    )
+    assert data_cache.get_global_content_signature("fixture") == (1, "da-outra-thread")
+
+
+def test_footer_signature_rejects_files_that_are_not_valid_parquet(tmp_path):
+    import struct
+
+    pequeno = tmp_path / "pequeno.smod"
+    pequeno.write_bytes(b"PAR1")
+    with pytest.raises(ValueError, match="apenas 4 bytes"):
+        data_cache._ler_assinatura_rodape(str(pequeno))
+
+    sem_marcador = tmp_path / "sem_marcador.smod"
+    sem_marcador.write_bytes(b"x" * 40)
+    with pytest.raises(ValueError, match="marcador final PAR1 ausente"):
+        data_cache._ler_assinatura_rodape(str(sem_marcador))
+
+    rodape_vazio = tmp_path / "rodape_vazio.smod"
+    rodape_vazio.write_bytes(b"PAR1" + struct.pack("<I", 0) + b"PAR1")
+    with pytest.raises(ValueError, match="rodape de 0 bytes"):
+        data_cache._ler_assinatura_rodape(str(rodape_vazio))
+
+    rodape_maior_que_arquivo = tmp_path / "rodape_maior.smod"
+    rodape_maior_que_arquivo.write_bytes(b"PAR1" + struct.pack("<I", 100) + b"PAR1")
+    with pytest.raises(ValueError, match="rodape de 100 bytes"):
+        data_cache._ler_assinatura_rodape(str(rodape_maior_que_arquivo))
 
 
 def test_fast_cache_boot_rejects_parquet_missing_required_columns(

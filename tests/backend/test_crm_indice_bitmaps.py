@@ -62,7 +62,9 @@ def _install_sources(monkeypatch, destination):
     }
     for name, frame in sources.items():
         monkeypatch.setattr(dc, name, lambda frame=frame: frame.lazy())
+    # Chave de memoria (mtime, tamanho) e assinatura de conteudo (tamanho, hash do rodape).
     monkeypatch.setattr(dc, "get_global_cache_signature", lambda name: (name, 123, 456))
+    monkeypatch.setattr(dc, "get_global_content_signature", lambda name: (456, f"hash-{name}"))
     monkeypatch.setattr(dc, "_CRM_INDICE_BITMAPS_PATH", str(destination), raising=False)
     return dim
 
@@ -169,10 +171,21 @@ def test_obter_indice_validates_signatures_metadata_dimension_and_reuses_instanc
     assert loaded.ids_medico(BitMap([1])).to_list() == ["B/RJ"]
     assert index.obter_indice() is loaded
 
-    changed_key = lambda name: (name, 999, 456)
-    monkeypatch.setattr(dc, "get_global_cache_signature", changed_key)
-    with pytest.raises(index.IndiceDesatualizado, match="desatualizado"):
+    # Copia para outra maquina: so o mtime muda. O indice continua valido e e recarregado.
+    monkeypatch.setattr(dc, "get_global_cache_signature", lambda name: (name, 999, 456))
+    recarregado = index.obter_indice()
+    assert recarregado is not loaded
+    assert recarregado.ids_medico(BitMap([1])).to_list() == ["B/RJ"]
+
+    # Fonte sincronizada de novo (rodape diferente): o erro nomeia so a fonte que mudou.
+    monkeypatch.setattr(dc, "get_global_cache_signature", lambda name: (name, 1000, 456))
+    monkeypatch.setattr(
+        dc, "get_global_content_signature",
+        lambda name: (456, "hash-novo" if name == "crm_farmacia_medico_ano" else f"hash-{name}"),
+    )
+    with pytest.raises(index.IndiceDesatualizado, match="desatualizado em relacao a crm_farmacia_medico_ano\\. ") as erro:
         index.obter_indice()
+    assert "crm_medico_dim" not in str(erro.value)
 
     monkeypatch.setattr(dc, "get_global_cache_signature", lambda _name: (_ for _ in ()).throw(FileNotFoundError("missing")))
     with pytest.raises(index.IndiceDesatualizado, match="Modulo CRM ausente"):
@@ -191,20 +204,33 @@ def test_obter_indice_rejects_absent_metadata_and_dimension_mismatch(tmp_path, m
     with pytest.raises(index.IndiceDesatualizado, match="sem assinatura"):
         index.obter_indice()
 
+    def gravar_meta(info):
+        meta = pl.DataFrame(
+            {
+                "tipo": ["meta"], "granularidade": ["-"], "periodo": [0],
+                "chave": ["assinatura"], "bitmap": [json.dumps(info).encode("utf-8")],
+            },
+            schema_overrides={"periodo": pl.Int32, "bitmap": pl.Binary},
+        )
+        pl.concat([meta, original.filter(pl.col("tipo") != "meta")], how="diagonal_relaxed").write_parquet(destination)
+
     info = {
         "versao": index.CRM_INDICE_BITMAPS_VERSION,
-        "fontes": {name: [123, 456] for name in index.FONTES},
+        "fontes": {name: [456, f"hash-{name}"] for name in index.FONTES},
         "medicos": 1,
         "meses": [202401, 202402],
     }
-    meta = pl.DataFrame(
-        {
-            "tipo": ["meta"], "granularidade": ["-"], "periodo": [0],
-            "chave": ["assinatura"], "bitmap": [json.dumps(info).encode("utf-8")],
-        },
-        schema_overrides={"periodo": pl.Int32, "bitmap": pl.Binary},
-    )
-    rows = pl.concat([meta, original.filter(pl.col("tipo") != "meta")], how="diagonal_relaxed")
-    rows.write_parquet(destination)
+    gravar_meta(info)
     with pytest.raises(index.IndiceDesatualizado, match="nao corresponde ao indice"):
         index.obter_indice()
+
+    # Formato antigo ([mtime_ns, tamanho]): recusado pela versao, sem comparar por mtime.
+    gravar_meta({**info, "versao": 1, "fontes": {name: [123, 456] for name in index.FONTES}})
+    with pytest.raises(index.IndiceDesatualizado, match="versao antiga"):
+        index.obter_indice()
+
+    # Mesma versao, mas fontes que nao sao um dicionario: todas as fontes divergem.
+    gravar_meta({**info, "fontes": [456, "hash"]})
+    with pytest.raises(index.IndiceDesatualizado) as erro:
+        index.obter_indice()
+    assert all(name in str(erro.value) for name in index.FONTES)

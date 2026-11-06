@@ -15,9 +15,11 @@ Nao calcula regra de negocio nova: quem consulta decide a participacao minima
 (ver crm_filtros_medico). A janela e identificada por (id_cnpj,
 dt_ini_concentracao), chave unica da tabela de alertas.
 
-O arquivo guarda, nos metadados, a assinatura (data e tamanho) dos .smod de
-origem; se algum for sincronizado de novo sem refazer este modulo, a consulta
-responde 503 (ModuloDesatualizado) em vez de usar a ponte antiga.
+O arquivo guarda, nos metadados, a assinatura (tamanho e hash do rodape do
+parquet) dos .smod de origem; a data do arquivo nao entra, para que copiar o
+cache para outra maquina nao invalide a ponte. Se algum for sincronizado de
+novo sem refazer este modulo, a consulta responde 503 (ModuloDesatualizado) em
+vez de usar a ponte antiga.
 """
 
 from __future__ import annotations
@@ -45,7 +47,7 @@ class ModuloDesatualizado(RuntimeError):
 def _assinatura_fontes() -> dict[str, list[int]]:
     import data_cache as dc
 
-    return {nome: list(dc.get_global_cache_signature(nome)[1:]) for nome in FONTES}
+    return {nome: list(dc.get_global_content_signature(nome)) for nome in FONTES}
 
 
 def construir(destino: str, progress_callback: Optional[Callable[[int], None]] = None) -> None:
@@ -166,7 +168,13 @@ def conferir_fontes(caminho: str) -> None:
     meta = json.loads(bruto)
     if meta.get("versao") != CRM_CONCENTRACAO_MULTIPLO_MEDICO_CACHE_VERSION:
         raise ModuloDesatualizado(f"{NOME} de versao antiga; sincronize o modulo novamente.")
-    if meta.get("fontes") != _assinatura_fontes():
+    gravadas = meta.get("fontes")
+    atuais = _assinatura_fontes()
+    if gravadas != atuais:
+        divergentes = [
+            nome for nome in FONTES
+            if not isinstance(gravadas, dict) or gravadas.get(nome) != atuais[nome]
+        ]
         raise ModuloDesatualizado(
-            f"{NOME} montado com outra versao de {' / '.join(FONTES)}; sincronize o modulo novamente."
+            f"{NOME} montado com outra versao de {' / '.join(divergentes)}; sincronize o modulo novamente."
         )

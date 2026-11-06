@@ -42,12 +42,12 @@ def _autorizacoes(linhas=None):
     )
 
 
-def _instalar(monkeypatch, *, alertas=None, autorizacoes=None, assinatura=(123, 456)):
+def _instalar(monkeypatch, *, alertas=None, autorizacoes=None, assinatura=(456, "hash-a")):
     alertas = alertas if alertas is not None else _alertas()
     autorizacoes = autorizacoes if autorizacoes is not None else _autorizacoes()
     monkeypatch.setattr(dc, "scan_crm_concentracao_multiplo_alertas_global", lambda: alertas.lazy())
     monkeypatch.setattr(dc, "scan_crm_raiox_tx_global", lambda: autorizacoes.lazy())
-    monkeypatch.setattr(dc, "get_global_cache_signature", lambda nome: (nome, *assinatura))
+    monkeypatch.setattr(dc, "get_global_content_signature", lambda nome: assinatura)
 
 
 def test_build_writes_one_row_per_doctor_and_window_with_source_signature(tmp_path, monkeypatch):
@@ -74,7 +74,7 @@ def test_build_writes_one_row_per_doctor_and_window_with_source_signature(tmp_pa
     meta = json.loads(pl.read_parquet_metadata(destino)[ponte.META_CHAVE])
     assert meta == {
         "versao": ponte.CRM_CONCENTRACAO_MULTIPLO_MEDICO_CACHE_VERSION,
-        "fontes": {nome: [123, 456] for nome in ponte.FONTES},
+        "fontes": {nome: [456, "hash-a"] for nome in ponte.FONTES},
     }
 
     # Mesmas fontes: o modulo vale; sem progresso informado a montagem tambem funciona.
@@ -89,11 +89,21 @@ def test_source_check_rejects_missing_signature_old_version_and_changed_sources(
     ponte.construir(str(destino))
 
     # Raio-X ou alertas sincronizados de novo: a ponte antiga nao vale mais.
-    monkeypatch.setattr(dc, "get_global_cache_signature", lambda nome: (nome, 999, 456))
+    monkeypatch.setattr(dc, "get_global_content_signature", lambda nome: (456, "hash-b"))
     with pytest.raises(ponte.ModuloDesatualizado, match="montado com outra versao"):
         ponte.conferir_fontes(str(destino))
 
-    monkeypatch.setattr(dc, "get_global_cache_signature", lambda nome: (nome, 123, 456))
+    # O erro nomeia so a fonte que mudou.
+    monkeypatch.setattr(
+        dc, "get_global_content_signature",
+        lambda nome: (456, "hash-b") if nome == "crm_raiox_tx_global" else (456, "hash-a"),
+    )
+    with pytest.raises(ponte.ModuloDesatualizado) as erro:
+        ponte.conferir_fontes(str(destino))
+    assert "versao de crm_raiox_tx_global;" in str(erro.value)
+    assert "crm_concentracao_multiplo_alertas_global" not in str(erro.value).replace(ponte.NOME, "")
+
+    monkeypatch.setattr(dc, "get_global_content_signature", lambda nome: (456, "hash-a"))
     monkeypatch.setattr(ponte, "CRM_CONCENTRACAO_MULTIPLO_MEDICO_CACHE_VERSION", 99)
     with pytest.raises(ponte.ModuloDesatualizado, match="versao antiga"):
         ponte.conferir_fontes(str(destino))
@@ -102,6 +112,56 @@ def test_source_check_rejects_missing_signature_old_version_and_changed_sources(
     pl.DataFrame({"id_medico": ["A/SP"]}).write_parquet(sem_assinatura)
     with pytest.raises(ponte.ModuloDesatualizado, match="sem assinatura"):
         ponte.conferir_fontes(str(sem_assinatura))
+
+
+def test_source_check_rejects_legacy_signature_format_without_mtime_fallback(tmp_path, monkeypatch):
+    destino = tmp_path / "ponte.smod"
+    _instalar(monkeypatch)
+    ponte.construir(str(destino))
+
+    # Ponte gravada no formato antigo ([mtime_ns, tamanho]) e rejeitada pela versao.
+    antigo = {"versao": 1, "fontes": {nome: [123, 456] for nome in ponte.FONTES}}
+    pl.read_parquet(destino).write_parquet(destino, metadata={ponte.META_CHAVE: json.dumps(antigo)})
+    with pytest.raises(ponte.ModuloDesatualizado, match="versao antiga"):
+        ponte.conferir_fontes(str(destino))
+
+    # Mesma versao mas fontes que nao sao um dicionario: todas as fontes divergem.
+    malformado = {"versao": ponte.CRM_CONCENTRACAO_MULTIPLO_MEDICO_CACHE_VERSION, "fontes": [456, "hash-a"]}
+    pl.read_parquet(destino).write_parquet(destino, metadata={ponte.META_CHAVE: json.dumps(malformado)})
+    with pytest.raises(ponte.ModuloDesatualizado) as erro:
+        ponte.conferir_fontes(str(destino))
+    assert all(nome in str(erro.value) for nome in ponte.FONTES)
+
+
+def test_bridge_survives_copy_and_detects_resynced_source_with_real_signature(tmp_path, monkeypatch):
+    """Assinatura real (rodape do parquet): mtime diferente passa; valores trocados nao."""
+    import os
+
+    cache = tmp_path / "global"
+    cache.mkdir()
+    monkeypatch.setattr(dc, "_CACHE_DIR", str(cache))
+    monkeypatch.setattr(dc, "_GLOBAL_PARQUETS", {nome: f"{nome}.smod" for nome in ponte.FONTES})
+    monkeypatch.setattr(dc, "_CONTENT_SIGNATURE_MEMORIA", {})
+    alertas, autorizacoes = _alertas(), _autorizacoes()
+    alertas.write_parquet(cache / "crm_concentracao_multiplo_alertas_global.smod")
+    autorizacoes.write_parquet(cache / "crm_raiox_tx_global.smod")
+    monkeypatch.setattr(dc, "scan_crm_concentracao_multiplo_alertas_global", lambda: alertas.lazy())
+    monkeypatch.setattr(dc, "scan_crm_raiox_tx_global", lambda: autorizacoes.lazy())
+
+    destino = tmp_path / "ponte.smod"
+    ponte.construir(str(destino))
+    ponte.conferir_fontes(str(destino))
+
+    # Copia para outra maquina: mesmos bytes, data diferente. A ponte continua valida.
+    for fonte in cache.iterdir():
+        os.utime(fonte, ns=(1_000_000_000, 1_000_000_000))
+    ponte.conferir_fontes(str(destino))
+
+    # Re-sincronizacao com o mesmo numero de linhas e valores diferentes: detectada.
+    (cache / "crm_concentracao_multiplo_alertas_global.smod").unlink()
+    _alertas(id_severidade=[2, 2]).write_parquet(cache / "crm_concentracao_multiplo_alertas_global.smod")
+    with pytest.raises(ponte.ModuloDesatualizado, match="versao de crm_concentracao_multiplo_alertas_global;"):
+        ponte.conferir_fontes(str(destino))
 
 
 def test_build_fails_visibly_on_invalid_sources(tmp_path, monkeypatch):

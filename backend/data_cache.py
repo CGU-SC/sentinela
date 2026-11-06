@@ -1,5 +1,7 @@
 import sys
 import os
+import hashlib
+import struct
 import threading
 import json
 import time
@@ -455,6 +457,70 @@ def get_global_cache_signature(name: str) -> tuple[str, int, int]:
     """Identifica a versao em disco de um modulo global (nome, mtime, tamanho)."""
     stat = os.stat(_global_cache_path(name))
     return (name, stat.st_mtime_ns, stat.st_size)
+
+
+_PARQUET_MARCADOR = b"PAR1"
+# Menor parquet possivel: marcador inicial (4) + tamanho do rodape (4) + marcador final (4).
+_PARQUET_TAMANHO_MINIMO = 12
+_CONTENT_SIGNATURE_MEMORIA: dict[str, tuple[tuple[int, int], tuple[int, str]]] = {}
+_CONTENT_SIGNATURE_LOCK = threading.Lock()
+
+
+def _ler_assinatura_rodape(caminho: str) -> tuple[int, str]:
+    """Le o rodape (footer) de um parquet e devolve (tamanho do arquivo, hash do rodape).
+
+    O rodape guarda schema, numero de linhas e, por bloco e coluna, offsets,
+    tamanhos e estatisticas; nao guarda os valores. Os 4 bytes antes do marcador
+    final ``PAR1`` dizem o tamanho do rodape.
+
+    Raises:
+        ValueError: arquivo pequeno demais, sem o marcador ``PAR1`` no fim ou
+            com tamanho de rodape inconsistente.
+    """
+    with open(caminho, "rb") as arquivo:
+        tamanho = arquivo.seek(0, os.SEEK_END)
+        if tamanho < _PARQUET_TAMANHO_MINIMO:
+            raise ValueError(f"{caminho} nao e um parquet valido: apenas {tamanho} bytes.")
+        arquivo.seek(-8, os.SEEK_END)
+        cauda = arquivo.read(8)
+        if cauda[4:] != _PARQUET_MARCADOR:
+            raise ValueError(f"{caminho} nao e um parquet valido: marcador final PAR1 ausente.")
+        (tamanho_rodape,) = struct.unpack("<I", cauda[:4])
+        if tamanho_rodape == 0 or tamanho_rodape > tamanho - _PARQUET_TAMANHO_MINIMO:
+            raise ValueError(f"{caminho} nao e um parquet valido: rodape de {tamanho_rodape} bytes.")
+        arquivo.seek(-8 - tamanho_rodape, os.SEEK_END)
+        rodape = arquivo.read(tamanho_rodape)
+    return tamanho, hashlib.blake2b(rodape, digest_size=16).hexdigest()
+
+
+def get_global_content_signature(name: str) -> tuple[int, str]:
+    """Assinatura de conteudo de um modulo global: (tamanho em bytes, hash do rodape).
+
+    Nao depende do ``mtime``: copiar o arquivo para outra maquina nao a altera,
+    e uma sincronizacao que traga dados diferentes a muda. Os derivados (ponte
+    de multiplos CRMs e indice de bitmaps) gravam esta assinatura das suas fontes.
+
+    O resultado fica em memoria, relido so quando o ``mtime`` ou o tamanho do
+    arquivo mudam. O ``mtime`` entra apenas como chave desse cache em memoria,
+    nunca na decisao de validade do derivado.
+
+    Raises:
+        FileNotFoundError: modulo ausente.
+        ValueError: arquivo que nao e um parquet valido.
+    """
+    caminho = _global_cache_path(name)
+    stat = os.stat(caminho)
+    chave = (stat.st_mtime_ns, stat.st_size)
+    atual = _CONTENT_SIGNATURE_MEMORIA.get(caminho)
+    if atual is not None and atual[0] == chave:
+        return atual[1]
+    with _CONTENT_SIGNATURE_LOCK:
+        atual = _CONTENT_SIGNATURE_MEMORIA.get(caminho)
+        if atual is not None and atual[0] == chave:
+            return atual[1]
+        assinatura = _ler_assinatura_rodape(caminho)
+        _CONTENT_SIGNATURE_MEMORIA[caminho] = (chave, assinatura)
+        return assinatura
 
 
 def _validate_parquet_schema(name: str, path: str, required: set[str] | None = None) -> None:
