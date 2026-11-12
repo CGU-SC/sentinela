@@ -1225,7 +1225,8 @@ INNER JOIN #esocial_vinculo_trabalhista ESO
     ON ESO.cpf = soc.cpfcnpjSocio
    AND ESO.cnpj_esocial <> soc.cnpj
 WHERE soc.indSocio = 'PF'
-  AND soc.dataExclusaoSociedade IS NULL;
+  AND COALESCE(soc.dataExclusaoSociedade,
+               TRY_CONVERT(DATE, NULLIF(soc.datfim, '00'), 112)) IS NULL;
 GO
 CREATE UNIQUE CLUSTERED INDEX ix_dados_socios_esocial
 ON #dados_socios_esocial(cpf_cnpj_socio, cnpj);
@@ -1243,7 +1244,8 @@ INNER JOIN db_CNPJ.dbo.socios soc
 INNER JOIN #seguro_defeso_cpfs DEF
     ON DEF.cpf = soc.cpfcnpjSocio
 WHERE soc.indSocio = 'PF'
-  AND soc.dataExclusaoSociedade IS NULL;
+  AND COALESCE(soc.dataExclusaoSociedade,
+               TRY_CONVERT(DATE, NULLIF(soc.datfim, '00'), 112)) IS NULL;
 GO
 CREATE UNIQUE CLUSTERED INDEX ix_dados_socios_seguro_defeso
 ON #dados_socios_seguro_defeso(cpf_cnpj_socio, cnpj);
@@ -1266,7 +1268,10 @@ SELECT DISTINCT
     CAST(temp_CGUSC.dbo.InitCapEachWord(ibge.no_municipio) AS VARCHAR(60)) AS municipio,
     CAST(ibge.sg_uf AS CHAR(2))                               AS uf,
     CAST(soc.dataEntradaSociedade AS DATE)                    AS data_entrada_sociedade,
-    CAST(soc.dataExclusaoSociedade AS DATE)                   AS data_exclusao_sociedade,
+    COALESCE(
+        CAST(soc.dataExclusaoSociedade AS DATE),
+        TRY_CONVERT(DATE, NULLIF(soc.datfim, '00'), 112)
+    )                                                         AS data_exclusao_sociedade,
     CAST(soc.percentualQualificacao / 100.0 AS DECIMAL(5,2))  AS percentual_qualificacao,
     CAST(temp_CGUSC.dbo.InitCapEachWord(soc.descQualificacaoSocio) AS VARCHAR(60)) AS descricao_qualificacao,
     NULLIF(CAST(soc.CpfRepresentante AS CHAR(11)), '00000000000') AS cpf_representante,
@@ -1450,7 +1455,10 @@ SELECT
     CAST(LEFT(s.descQualificacaoSocio, 60) AS VARCHAR(60))   AS descricao_qualificacao,
     NULLIF(CAST(s.CpfRepresentante AS CHAR(11)), '00000000000') AS cpf_representante,
     CAST(s.dataEntradaSociedade AS DATE)                     AS data_entrada_sociedade,
-    CAST(s.dataExclusaoSociedade AS DATE)                    AS data_exclusao_sociedade
+    COALESCE(
+        CAST(s.dataExclusaoSociedade AS DATE),
+        TRY_CONVERT(DATE, NULLIF(s.datfim, '00'), 112)
+    )                                                        AS data_exclusao_sociedade
 INTO #n2_formal
 FROM #cpfs_n1 e
 INNER JOIN db_CNPJ.dbo.socios s ON s.cpfcnpjSocio = e.cpf_cnpj_socio;
@@ -1852,7 +1860,10 @@ SELECT
     CAST(LEFT(s.descQualificacaoSocio, 50) AS VARCHAR(50))   AS descricao_qualificacao,
     NULLIF(CAST(s.CpfRepresentante AS CHAR(11)), '00000000000') AS cpf_representante,
     CAST(s.dataEntradaSociedade AS DATE)                     AS data_entrada_sociedade,
-    CAST(s.dataExclusaoSociedade AS DATE)                    AS data_exclusao_sociedade,
+    COALESCE(
+        CAST(s.dataExclusaoSociedade AS DATE),
+        TRY_CONVERT(DATE, NULLIF(s.datfim, '00'), 112)
+    )                                                        AS data_exclusao_sociedade,
     s.CodMunicipio
 INTO #n3_formal
 FROM (SELECT DISTINCT cnpj_empresa FROM temp_CGUSC.fp.teia_fonte_nivel2) n2
@@ -2116,7 +2127,10 @@ SELECT
     CAST(LEFT(s.descQualificacaoSocio, 60) AS VARCHAR(60))   AS descricao_qualificacao,
     NULLIF(CAST(s.CpfRepresentante AS CHAR(11)), '00000000000') AS cpf_representante,
     CAST(s.dataEntradaSociedade AS DATE)                     AS data_entrada_sociedade,
-    CAST(s.dataExclusaoSociedade AS DATE)                    AS data_exclusao_sociedade
+    COALESCE(
+        CAST(s.dataExclusaoSociedade AS DATE),
+        TRY_CONVERT(DATE, NULLIF(s.datfim, '00'), 112)
+    )                                                        AS data_exclusao_sociedade
 INTO #n4_formal
 FROM (SELECT DISTINCT cpf_cnpj_socio FROM temp_CGUSC.fp.teia_fonte_nivel3 WHERE cpf_cnpj_socio IS NOT NULL AND cpf_cnpj_socio <> '99999999999999') n3
 INNER JOIN db_CNPJ.dbo.socios s ON s.cpfcnpjSocio = n3.cpf_cnpj_socio;
