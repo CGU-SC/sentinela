@@ -5,16 +5,13 @@ import pandas as pd
 import polars as pl
 from sqlalchemy import text
 
+import cnpj_cache_versao
 from cache_files import MOVIMENTACAO_MENSAL_GTIN_PARQUET
 from cache_producers.types import CacheLoadResult
 
 
 def _get_cnpj_cache_dir(cnpj: str) -> str:
-    from data_cache import get_cnpj_cache_root
-
-    cnpj_dir = os.path.join(get_cnpj_cache_root(), cnpj)
-    os.makedirs(cnpj_dir, exist_ok=True)
-    return cnpj_dir
+    return cnpj_cache_versao.get_cnpj_cache_dir(cnpj)
 
 
 def _cache_path(cnpj: str) -> str:

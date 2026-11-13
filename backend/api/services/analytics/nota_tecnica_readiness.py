@@ -8,6 +8,7 @@ from typing import Any
 
 import cache_files
 import cache_registry
+import cnpj_cache_versao
 from data_cache import get_cache_dir, get_cnpj_cache_root
 
 
@@ -48,6 +49,17 @@ def _global_files(keys: list[str], global_files: dict[str, str], cache_dir: str)
         path = os.path.join(cache_dir, filename) if filename else ""
         files.append((display, path))
     return files
+
+
+def _conferir_versao_cache_cnpj(cnpj: str, cnpj_cache_root: str) -> None:
+    """Invalida os modulos locais do CNPJ gerados com outra versao da base global.
+
+    Sem isso a prontidao contaria como pronto um arquivo que a geracao vai
+    descartar ao abrir a pasta do CNPJ. Pasta inexistente nao tem o que conferir.
+    """
+    cnpj_dir = os.path.join(cnpj_cache_root, cnpj)
+    if os.path.isdir(cnpj_dir):
+        cnpj_cache_versao.garantir_cache_cnpj_atual(cnpj_dir)
 
 
 def _cnpj_files(cnpj: str, filenames: list[str], cnpj_cache_root: str) -> list[tuple[str, str]]:
@@ -225,6 +237,7 @@ def _document_base_modules() -> list[dict[str, Any]]:
 def _pdf_modules(cnpj: str) -> list[dict[str, Any]]:
     cache_dir = get_cache_dir()
     cnpj_cache_root = get_cnpj_cache_root()
+    _conferir_versao_cache_cnpj(cnpj, cnpj_cache_root)
     global_files = cache_registry.get_global_parquet_files_by_key()
 
     required_global_keys = [
@@ -289,6 +302,7 @@ def _pdf_modules(cnpj: str) -> list[dict[str, Any]]:
 def _nota_tecnica_modules(cnpj: str) -> list[dict[str, Any]]:
     cache_dir = get_cache_dir()
     cnpj_cache_root = get_cnpj_cache_root()
+    _conferir_versao_cache_cnpj(cnpj, cnpj_cache_root)
     global_files = cache_registry.get_global_parquet_files_by_key()
 
     return [

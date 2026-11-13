@@ -284,7 +284,8 @@ Use esta secao como mapa de navegacao antes de alterar o Sentinela. Ela descreve
 - `perfil_estabelecimento.parquet` e a dimensao cadastral/geografica por `id_cnpj`: `cnpj`, `uf`, `id_regiao_saude`, `id_ibge7`, `no_municipio`, razao/situacao cadastral, conexao, porte, rede, matriz e unidade PF.
 - Getters globais: `get_df`, `get_rede_df`, `get_localidades_df`, `get_df_matriz_risco`, `get_df_bench_crm_uf`, `get_df_bench_crm_regiao`, `get_df_bench_crm_br`, `get_df_dados_farmacia`, `get_df_perfil_estabelecimento`, `get_df_dados_socios`, `get_df_teia_fonte_nivel2/3/4`, `get_medicamentos_df`, `get_cache_status`.
 - Sync global no startup: `load_cache(engine)` tenta ler Parquets e sincronizar faltantes. `refresh_cache(engine)` forca recarga.
-- Cache por CNPJ: `sentinela_cache/{cnpj}/` guarda memoria de calculo, dados CRM e teia. Os stores de detalhe mantem chaves `cnpj|inicio|fim` para evitar refetch.
+- Cache por CNPJ: `modules/cnpjs/{cnpj}/` guarda memoria de calculo, dados CRM e teia. Os stores de detalhe mantem chaves `cnpj|inicio|fim` para evitar refetch.
+- Versao da base nos caches por CNPJ: abra a pasta do CNPJ sempre por `cnpj_cache_versao.get_cnpj_cache_dir(cnpj)` (ou pelos `_get_cnpj_cache_dir` que delegam a ela). Cada pasta guarda em `cache_manifesto.json` a versao da base global (hash das assinaturas de conteudo de todos os globais do registro); se a versao do processo for outra, os `.smod` da pasta sao apagados e regenerados sob demanda. O backend fixa a versao ao carregar a base (`load_cache`); global reescrito com o backend rodando so vale apos reiniciar.
 - Regra de fallback: nao mascarar schema antigo ou dado obrigatorio ausente. Se uma coluna obrigatoria sumir, corrija a origem/cache/schema e falhe visivelmente.
 
 ### Frontend - estado global
@@ -326,7 +327,7 @@ Use esta secao como mapa de navegacao antes de alterar o Sentinela. Ela descreve
 - Sidebar: `AppSidebar.vue` e `filters.js` controlam filtros globais, busca de estabelecimento, periodo e lock/colapso. Varios watchers mantem filtros coerentes.
 - Nacional/UF/municipio: telas usam `analyticsStore` e `geoStore`; mapas usam ECharts + GeoJSON em `public/geo/`.
 - CNPJ lista: `CnpjView.vue` usa resultados filtrados e navegacao para `/estabelecimentos/:cnpj`.
-- Detalhe CNPJ: `CnpjDetailView.vue` normaliza rota, valida acesso via `/status`, reseta store ao trocar CNPJ, dispara eager load de todas as abas e faz fallback visual de CNPJ invalido/fora da base. Abas atuais: Evolucao, Diagnostico, Memoria, Indicadores, CRMs, Falecidos, Socios, Teia e Regional.
+- Detalhe CNPJ: `CnpjDetailView.vue` normaliza rota, valida acesso via `/status`, reseta store ao trocar CNPJ, carrega na abertura so bootstrap, alertas de integridade, prontidao da Nota Tecnica/PDF e a aba ativa (as demais abas carregam sob demanda, ao serem visitadas) e faz fallback visual de CNPJ invalido/fora da base. Abas atuais: Evolucao, Diagnostico, Memoria, Indicadores, CRMs, Falecidos, Socios, Teia e Regional.
 - Exportacao no detalhe: PDF usa `usePdfExport`; Nota Tecnica baixa blob do endpoint `.docx`.
 - Indicadores: `IndicatorsView.vue` seleciona uma chave de `INDICATOR_GROUPS`, usa `indicadores-analise`, mostra KPIs, distribuicao, mapa e tabela CNPJ.
 - Regional: benchmarking por UF/regiao ID, percentis e animacoes.
@@ -370,7 +371,7 @@ Use esta secao como mapa de navegacao antes de alterar o Sentinela. Ela descreve
 - O `CLAUDE.md` tem regras mais antigas e algumas descricoes antigas; esta secao reflete a estrutura viva observada em 2026-05-13.
 - Alguns nomes legados ainda falam em `regiao_saude`; nao copie esse padrao para logica nova.
 - `resultadoSentinelaUFNacional` existe para manter o mapa do Brasil mesmo quando filtros regionais estao ativos.
-- `CnpjDetailView.vue` faz eager load de muitas abas; alteracoes ali podem aumentar muito o tempo inicial.
+- `CnpjDetailView.vue` carrega as abas sob demanda; nao passe a disparar todas na abertura sem pedido explicito, porque isso aumenta muito o tempo inicial.
 - `network.py` atualmente sincroniza antes de ler teia; mexer nisso afeta performance e consistencia dos Parquets por CNPJ.
 - `data_cache.py` carrega dataframes globais em memoria; mudancas de schema precisam invalidar/recriar Parquets.
 - Muitos arquivos exibem acentuacao estranha no terminal Windows, mas o conteudo fonte deve ser tratado com cuidado para nao introduzir troca massiva de encoding.

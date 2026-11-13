@@ -116,16 +116,15 @@ def _classify_company_node(row: dict) -> str:
 _known_cnpj_dirs: set[str] = set()
 
 def _get_cnpj_cache_dir(cnpj: str) -> str:
-    """Retorna (e garante a existência de) modules/cnpjs/{cnpj}/.
+    """Retorna modules/cnpjs/{cnpj}/, criada e conferida contra a versao da base.
 
-    Usa um cache em memória para evitar chamadas redundantes a makedirs
-    em requests frequentes ao mesmo CNPJ.
+    Delega a ``cnpj_cache_versao.get_cnpj_cache_dir``, que invalida os modulos
+    do CNPJ gerados com outra versao dos caches globais.
     """
-    from data_cache import get_cnpj_cache_root
-    cnpj_dir = os.path.join(get_cnpj_cache_root(), cnpj)
-    if not os.path.exists(cnpj_dir):
-        os.makedirs(cnpj_dir, exist_ok=True)
-        _known_cnpj_dirs.add(cnpj_dir)
+    import cnpj_cache_versao
+
+    cnpj_dir = cnpj_cache_versao.get_cnpj_cache_dir(cnpj)
+    _known_cnpj_dirs.add(cnpj_dir)
     return cnpj_dir
 
 def sync_network(cnpj: str) -> None:

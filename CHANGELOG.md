@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.9] - 2026-11-13
+
+### Corrigido
+- **Sócios que saíram da sociedade apareciam como ativos.** Quando a Receita não informa a data de exclusão, a data de saída passa a vir do campo `datfim` da base de sócios. Vale para o quadro societário, a teia societária (níveis 2 a 4), os alertas de sócios e as marcações de eSocial e seguro-defeso.
+- **Caches por CNPJ desatualizados após uma base nova.** Cada pasta de CNPJ passa a guardar a versão da base global. Quando a base muda, os arquivos do CNPJ são refeitos sozinhos na primeira abertura, sem precisar apagar nada.
+
+### Ação necessária
+- A correção dos sócios só aparece com a base reprocessada.
+- Na primeira abertura de cada CNPJ depois da atualização, os módulos locais dele são gerados de novo uma vez.
+
 ## [2.0.8] - 2026-11-06
 
 ### Corrigido

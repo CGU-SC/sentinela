@@ -10,6 +10,7 @@ import polars as pl
 from sqlalchemy import text
 from sqlalchemy.exc import InterfaceError as SQLAInterfaceError
 
+import cnpj_cache_versao
 from cache_files import (
     MEMORIA_CALCULO_CACHE_VERSION,
     MEMORIA_CALCULO_GLOBAL_PARQUET,
@@ -29,11 +30,7 @@ def _global_cache_path() -> str:
 
 
 def _get_cnpj_cache_dir(cnpj: str) -> str:
-    from data_cache import get_cnpj_cache_root
-
-    cnpj_dir = os.path.join(get_cnpj_cache_root(), cnpj)
-    os.makedirs(cnpj_dir, exist_ok=True)
-    return cnpj_dir
+    return cnpj_cache_versao.get_cnpj_cache_dir(cnpj)
 
 
 def _parse_memory_date(value):

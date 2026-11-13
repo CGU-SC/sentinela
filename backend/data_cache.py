@@ -10,6 +10,7 @@ import pandas as pd
 import polars as pl
 from sqlalchemy import text
 import cache_registry
+import cnpj_cache_versao
 from cache_files import (
     CRM_MAPA_MUNICIPIO_REGIAO_PERIODO_CACHE_VERSION,
     CRM_MEDICO_ESTABELECIMENTO_MES_CACHE_VERSION,
@@ -451,6 +452,7 @@ _ON_DEMAND_GLOBAL_REQUIRED_COLUMNS = {
 
 def _global_cache_path(key: str) -> str:
     return os.path.join(_CACHE_DIR, _GLOBAL_PARQUETS[key])
+
 
 
 def get_global_cache_signature(name: str) -> tuple[str, int, int]:
@@ -5450,6 +5452,10 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         par_teia_alvos_loaded = _try_load("par_teia_alvos", _PAR_TEIA_ALVOS_PARQUET_PATH)
         _df_par_teia_alvos = par_teia_alvos_loaded
 
+        # A versao da base dos caches por CNPJ e fixada com o que acabou de ser
+        # carregado, tambem em modo degradado (ver cnpj_cache_versao).
+        cnpj_cache_versao.registrar_base_carregada()
+
         if missing:
             print(f"[AVISO]  Cache incompleto — módulos ausentes: {', '.join(missing)}")
             print("[INFO]  Sistema iniciado em modo degradado. Sincronize pela interface para carregar os dados.")
@@ -5536,6 +5542,7 @@ def load_cache(engine, force_refresh: bool = False) -> None:
         print(f"[OK] Sincronização concluída em {time.perf_counter() - t0:.1f}s")
 
         _cache_generation += 1
+        cnpj_cache_versao.registrar_base_carregada()
 
     except Exception as e:
         _cache_status = "error"

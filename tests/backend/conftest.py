@@ -31,6 +31,21 @@ def lista_mais_medicos_vazia(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def versao_cache_cnpj_isolada(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A conferencia de versao dos caches por CNPJ le as assinaturas dos modulos
+    globais em ``modules/global`` e apaga ``.smod`` de pasta sem manifesto, o que
+    apagaria arquivos que os testes preparam em pastas temporarias. Ela fica
+    desligada por padrao; ``tests/backend/cache/test_cnpj_cache_versao.py`` a
+    exercita com as funcoes originais."""
+    import cnpj_cache_versao
+
+    monkeypatch.setattr(cnpj_cache_versao, "garantir_cache_cnpj_atual", lambda cnpj_dir: None)
+    monkeypatch.setattr(cnpj_cache_versao, "registrar_base_carregada", lambda: None)
+    monkeypatch.setattr(cnpj_cache_versao, "_VERSAO_CARREGADA", None)
+    monkeypatch.setattr(cnpj_cache_versao, "_PASTAS_CONFERIDAS", {})
+
+
 @pytest.fixture
 def isolated_db_session() -> Mock:
     """A sentinel session object; no SQLAlchemy engine or database is used."""
