@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.0] - 2026-11-16
+
+### Adicionado
+- **PDF do histórico do CRM.** O modal de Análise de CRM ganha o botão **Baixar PDF**, que gera o relatório completo do médico: capa, indicadores, pontos de atenção, todas as farmácias com a atuação mensal, linha do tempo, mapa de calor e as três abas de evidências (sequências do próprio CRM, sequências com múltiplos CRMs e farmácias distantes), em tema escuro.
+
+### Ação necessária
+- Nenhuma. A funcionalidade não altera dados nem a base.
+
 ## [2.0.9] - 2026-11-13
 
 ### Corrigido

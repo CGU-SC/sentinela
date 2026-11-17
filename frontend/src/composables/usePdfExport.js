@@ -47,7 +47,7 @@ async function ttfToBase64(url) {
   return btoa(binary);
 }
 
-async function loadFontsInto(pdf) {
+export async function loadFontsInto(pdf) {
   const results = { inter: false, primeicons: false };
   try {
     const [regular, semibold, bold] = await Promise.all([

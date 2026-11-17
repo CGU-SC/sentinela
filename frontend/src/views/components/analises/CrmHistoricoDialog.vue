@@ -46,6 +46,8 @@ import CrmEvidenciasPanel from '@/views/components/analises/CrmEvidenciasPanel.v
 import { CRM_EVIDENCIA_ABA_DO_PONTO } from '@/config/crmEvidencias';
 import MonthRangePicker from '@/views/components/common/MonthRangePicker.vue';
 import { AUDIT_PERIOD } from '@/config/constants';
+import { useToast } from 'primevue/usetoast';
+import { gerarPdfHistoricoCrm } from '@/composables/usePdfCrmHistorico';
 
 use([
   CanvasRenderer, BarChart, LineChart, ScatterChart, HeatmapChart,
@@ -290,6 +292,78 @@ function fechar() {
   atuacao.value = null;
   atuacaoCarregando.value = null;
   emit('update:modelValue', false);
+}
+
+// ── Exportação em PDF (tela inteira: indicadores, farmácias, gráficos e evidências) ──
+const toast = useToast();
+const exportandoPdf = ref(false);
+async function exportarPdf() {
+  if (exportandoPdf.value || !dados.value || carregando.value) return;
+  const d = dados.value;
+  exportandoPdf.value = true;
+  try {
+    const resultado = await gerarPdfHistoricoCrm({
+      medico: {
+        titulo: titulo.value,
+        registro: registro.value,
+        meta: [
+          registro.value,
+          d.dt_primeira_inscricao ? `1ª inscrição no CFM: ${formatarData(d.dt_primeira_inscricao)}` : null,
+          periodoTexto.value ? `Período: ${periodoTexto.value}` : null,
+        ].filter(Boolean).join('  ·  '),
+        maisMedicos: d.mais_medicos ? maisMedicosPerfilRotulo(d.mais_medicos.tp_perfil) : null,
+        localizadoCfm: d.localizado_cfm,
+      },
+      filtros: {
+        periodo: periodoRotulo.value,
+        municipio: municipioAtivo.value != null ? municipioAtivoNome.value : null,
+        farmacia: filtroAtivo.value != null ? nomeFarmacia(cadastroFarmacia(filtroAtivo.value)) : null,
+      },
+      kpis: kpis.value,
+      pontosAtencao: d.pontos_atencao,
+      capa: {
+        prescricoes: d.kpis.nu_prescricoes,
+        mesesAltaIntensidade: d.kpis.qtd_meses_alta_intensidade,
+        farmacias: farmaciasEscopo.value.length,
+        pontosAtencao: d.pontos_atencao.length,
+      },
+      farmacias: farmaciasEscopo.value.map((f) => ({ ...f, nome: nomeFarmacia(f) })),
+      atuacao: atuacaoPorFarmacia.value,
+      linhaDoTempo: linhaDoTempo.value,
+      calor: calor.value && { ...calor.value, linhas: calor.value.linhas.map((f) => ({ ...f, nome: nomeFarmacia(f) })) },
+      evidencias: {
+        idMedico: d.id_medico,
+        dataInicio: d.periodo_inicio,
+        dataFim: d.periodo_fim,
+        idCnpj: d.id_cnpj_filtro,
+        idIbge7: d.id_ibge7_filtro,
+        temEvidencias: d.tem_evidencias,
+      },
+      fmt: {
+        numero: formatNumberFull,
+        data: formatarData,
+        decimal: formatDecimal,
+        pct: formatPct,
+        cnpj: formatCnpj,
+        titulo: formatTitleCase,
+      },
+    });
+    if (resultado?.desktop) {
+      toast.add({
+        group: 'download',
+        severity: 'success',
+        summary: 'PDF do histórico salvo',
+        detail: `Arquivo salvo em notas_tecnicas\\${resultado.filename}.`,
+        data: { path: resultado.path, icon: 'pi-file-pdf' },
+      });
+    } else {
+      toast.add({ severity: 'success', summary: 'PDF do histórico baixado', detail: resultado?.filename, life: 4000 });
+    }
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Falha ao gerar o PDF', detail: err.message || 'Não foi possível gerar o PDF do histórico.', life: 7000 });
+  } finally {
+    exportandoPdf.value = false;
+  }
 }
 
 // ── Formatação ────────────────────────────────────────────────────────────────
@@ -584,6 +658,7 @@ const atuacaoPorFarmacia = computed(() => {
       periodo: inicio === fim ? formatComp(inicio) : `${formatComp(inicio)} – ${formatComp(fim)}`,
       meses: `${meses} ${meses === 1 ? 'mês' : 'meses'}`,
       total: eixo.total,
+      eixoInicio: eixo.inicio,
       divisores: eixo.divisores,
       barras,
     });
@@ -971,10 +1046,23 @@ const calorOption = computed(() => {
   >
     <template #header>
       <div class="hist-header">
-        <span class="hist-eyebrow">
-          Histórico do CRM
-          <i class="pi pi-info-circle hist-info help-icon" v-tooltip.bottom="infoTooltip" aria-label="Como ler o histórico" />
-        </span>
+        <div class="hist-topo">
+          <span class="hist-eyebrow">
+            Histórico do CRM
+            <i class="pi pi-info-circle hist-info help-icon" v-tooltip.bottom="infoTooltip" aria-label="Como ler o histórico" />
+          </span>
+          <button
+            type="button"
+            class="hist-pdf-btn"
+            :disabled="!dados || carregando || exportandoPdf"
+            :aria-busy="exportandoPdf"
+            v-tooltip.bottom="'Gera o PDF desta tela: indicadores, farmácias, gráficos e evidências completas'"
+            @click="exportarPdf"
+          >
+            <i :class="exportandoPdf ? 'pi pi-spin pi-spinner' : 'pi pi-file-pdf'" aria-hidden="true" />
+            <span>{{ exportandoPdf ? 'Gerando PDF…' : 'Baixar PDF' }}</span>
+          </button>
+        </div>
         <span class="hist-title">{{ titulo }}</span>
         <div class="hist-meta">
           <span>{{ registro }}</span>
@@ -1359,7 +1447,12 @@ const calorOption = computed(() => {
 .detail-overlay-fade-enter-active, .detail-overlay-fade-leave-active { transition: opacity .18s ease; }
 .detail-overlay-fade-enter-from, .detail-overlay-fade-leave-to { opacity: 0; }
 
-.hist-header { display: flex; flex-direction: column; gap: .2rem; }
+.hist-header { display: flex; flex-direction: column; gap: .2rem; width: 100%; }
+.hist-topo { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 2.2rem; }
+.hist-pdf-btn { display: inline-flex; align-items: center; gap: .5rem; margin-left: auto; flex-shrink: 0; padding: .45rem 1rem; border: 1px solid var(--border-color); border-radius: 9px; background: transparent; color: var(--text-color); font: inherit; font-size: .84rem; font-weight: 600; line-height: 1; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+.hist-pdf-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 10%, transparent); border-color: var(--primary-color); }
+.hist-pdf-btn:disabled { opacity: .55; cursor: default; }
+.hist-pdf-btn i { color: var(--primary-color); font-size: .9rem; }
 .hist-eyebrow { display: inline-flex; align-items: center; gap: .4rem; font-size: .66rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .hist-title { font-size: 1.05rem; font-weight: 600; color: var(--text-color); }
 .hist-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .75rem; margin-top: .55rem; }
